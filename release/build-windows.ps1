@@ -12,6 +12,8 @@ $DistRoot = Join-Path $PSScriptRoot "dist"
 $WorkRoot = Join-Path $PSScriptRoot "work"
 $LockFile = Join-Path $Backend "requirements-release-lock-windows.txt"
 $NoticeRoot = Join-Path $BuildRoot "THIRD-PARTY-NOTICES"
+$ReleaseMetadata = Join-Path $BuildRoot "release-metadata.json"
+$SmokePdf = Join-Path $BuildRoot "smoke-native.pdf"
 
 function Invoke-Checked {
     param([scriptblock]$Command, [string]$Label)
@@ -33,6 +35,11 @@ if ($NodeVersion -ne "v22.23.2") {
 $NpmVersion = (& npm --version).Trim()
 if ($NpmVersion -ne "10.9.8") {
     throw "Stage 11D release build requires npm 10.9.8 exactly; found $NpmVersion"
+}
+
+$SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $SourceSha -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "Could not resolve the full source commit SHA for release metadata."
 }
 
 if (Test-Path $BuildRoot) { Remove-Item $BuildRoot -Recurse -Force }
@@ -69,6 +76,10 @@ try {
     $env:PYTHONPATH = "."
     Invoke-Checked { & $ReleasePython -m app.release_assets_cli --output-dir $BuildRoot } "Public legal/retrieval release asset build"
     Invoke-Checked { & $ReleasePython -m app.release_notices_cli --lock $LockFile --output-dir $NoticeRoot } "Exact installed Python license/NOTICE collection"
+    Invoke-Checked {
+        & $ReleasePython -m app.release_metadata_cli --source-sha $SourceSha --node-version $NodeVersion --npm-version $NpmVersion --output $ReleaseMetadata
+    } "Release reproducibility metadata generation"
+    Invoke-Checked { & $ReleasePython -m app.release_smoke_fixture_cli --output $SmokePdf } "Synthetic native PDF smoke fixture generation"
 }
 finally {
     Pop-Location
@@ -77,6 +88,12 @@ finally {
 $PythonNoticeReport = Join-Path $NoticeRoot "python-third-party-notices.json"
 if (-not (Test-Path $PythonNoticeReport)) {
     throw "Python third-party notice collector did not emit its review report"
+}
+if (-not (Test-Path $ReleaseMetadata)) {
+    throw "Release reproducibility metadata was not generated"
+}
+if (-not (Test-Path $SmokePdf)) {
+    throw "Native PDF smoke fixture was not generated"
 }
 
 & $ReleasePython -m pip freeze --all | Sort-Object | Set-Content -Encoding UTF8 (Join-Path $BuildRoot "python-resolved.txt")
@@ -104,6 +121,7 @@ Copy-Item (Join-Path $BuildRoot "python-runtime.json") (Join-Path $Bundle "pytho
 
 Write-Host ""
 Write-Host "[Law-Rag] Windows onedir bundle created at: $Bundle"
+Write-Host "[Law-Rag] Source commit: $SourceSha"
 Write-Host "[Law-Rag] Build runtime: CPython $PythonVersion / Node $NodeVersion / npm $NpmVersion"
 Write-Host "[Law-Rag] Exact Python notices and Vite bundled dependency licenses were generated for review."
 Write-Host "[Law-Rag] No API keys, user runtime data, OCR weights, or BGE weights were bundled."
