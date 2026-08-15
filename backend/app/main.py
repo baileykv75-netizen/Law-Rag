@@ -45,6 +45,7 @@ from .legal.store import (
 )
 from .models import IngestResponse, OcrRunResult, PageEvidenceSummary
 from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
+from .runtime_health_api import router as runtime_health_router
 from .storage import job_upload_dir, legal_db_path, legal_retrieval_index_path
 
 APP_NAME = "Law-Rag Local API"
@@ -68,6 +69,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(ai_audit_router)
+app.include_router(runtime_health_router)
 
 
 class HealthResponse(BaseModel):
