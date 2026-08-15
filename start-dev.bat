@@ -14,6 +14,13 @@ if not exist "%ROOT%frontend\node_modules" (
   exit /b 1
 )
 
+echo [Law-Rag] Running non-mutating runtime diagnostics ...
+call "%ROOT%diagnose-runtime.bat"
+if errorlevel 1 (
+  echo [ERROR] Base runtime diagnostics failed. Existing runtime data was not deleted or rebuilt.
+  exit /b 1
+)
+
 echo [Law-Rag] Starting local backend on http://127.0.0.1:8000 ...
 start "Law-Rag Backend" cmd /k "cd /d ""%ROOT%backend"" && ""%ROOT%.venv\Scripts\python.exe"" -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
 
