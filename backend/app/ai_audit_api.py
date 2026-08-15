@@ -13,8 +13,10 @@ from .ai_audit import (
 )
 from .ai_audit_models import AiAuditReport, AiAuditRunRequest, ProviderHealth
 from .ai_audit_providers import PrimaryAuditProviderError, provider_from_name
+from .secondary_review_api import router as secondary_review_router
 
 router = APIRouter()
+router.include_router(secondary_review_router)
 
 
 @router.get("/api/ai/providers/health", response_model=ProviderHealth)
