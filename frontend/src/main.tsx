@@ -4,6 +4,7 @@ import App from './App'
 import LegalKnowledgePanel from './LegalKnowledgePanel'
 import LegalRetrievalPanel from './LegalRetrievalPanel'
 import PrimaryAuditPanel from './PrimaryAuditPanel'
+import SecondaryReviewPanel from './SecondaryReviewPanel'
 import './styles.css'
 
 createRoot(document.getElementById('root')!).render(
@@ -13,5 +14,6 @@ createRoot(document.getElementById('root')!).render(
     <LegalKnowledgePanel />
     <LegalRetrievalPanel />
     <PrimaryAuditPanel />
+    <SecondaryReviewPanel />
   </StrictMode>,
 )
