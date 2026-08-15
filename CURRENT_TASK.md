@@ -1,221 +1,213 @@
 # CURRENT_TASK.md
 
-# Stage 11C — Runtime, Startup, and Data-Integrity Hardening
+# Stage 11D — Windows Dependency and Reproducible Release Bundle
 
 ## Status
 
 ```text
 Stage 11A  COMPLETE — versioned benchmark schema + public synthetic evaluator
-Stage 11B  COMPLETE — layered metric helpers + failure diagnostics + deterministic CI quality gates
-Stage 11C  ACTIVE   — runtime/startup/data-integrity hardening
-Stage 11D  PENDING  — Windows dependency and release-bundle reproducibility
+Stage 11B  COMPLETE — layered metrics + failure diagnostics + deterministic CI quality gates
+Stage 11C  COMPLETE — runtime/startup/data-integrity hardening
+Stage 11D  ACTIVE   — Windows dependency + reproducible release-bundle work
 Stage 11E  PENDING  — release-candidate validation / installer decision
 ```
 
-Stage 11B public CI now independently rebuilds the checked-in legal seed/retrieval index and enforces the named repository-safe quality profile. Its scores remain scoped regression evidence, not a general legal-accuracy claim.
+Stage 11C added non-mutating startup diagnostics, read-only SQLite integrity/staleness checks, Job artifact integrity inspection, atomic Stage 4/5 writes, interrupted-write residue detection, safer Windows setup/start behavior, and explicit recovery guidance. See `docs/RUNTIME_HARDENING.md`.
 
 ## Goal
 
-Make the existing Stage 1–10 local application fail safely and diagnostically under realistic local-runtime problems before attempting a Windows release bundle.
+Produce a **reproducible Windows-oriented release bundle** that can be tested on a clean machine before deciding whether Law-Rag should have an installer or monolithic executable.
 
-This phase is **not** a new reasoning/model feature and is **not** packaging work.
+The bundle should reduce setup friction without hiding the architecture or weakening local-data/evidence boundaries.
 
 Priority:
 
 ```text
-detect runtime problem
-  -> preserve prior valid data
-  -> return explicit diagnostic
-  -> avoid destructive auto-repair
-  -> provide a clear operator action
+inventory dependencies/licences
+  -> choose the smallest defensible packaging approach
+  -> define bundle layout
+  -> automate deterministic build
+  -> validate on Windows
+  -> document first-run/optional-model behavior
+  -> only then consider installer in 11E
 ```
+
+Do not use packaging as a reason to skip runtime diagnostics or benchmark gates.
 
 ## Hard boundaries
 
-1. Do not weaken evidence, legal-version, privacy, provider, Agent, or human-review boundaries from Stages 1–10.
-2. Startup/workspace navigation must not call DeepSeek or Kimi.
-3. No private contracts, benchmark labels, runtime databases, model caches, logs, or secrets may enter Git.
-4. Never print API keys or full secret values in diagnostics.
-5. Do not silently delete/rebuild a user's runtime directory to recover from corruption.
-6. Do not overwrite a previously valid artifact with a failed/incomplete new result.
-7. `legal.db` and `retrieval.db` remain local generated stores; recovery must be explicit.
-8. OCR/semantic model downloads remain optional and outside Git.
-9. No installer, embedded Python, or executable bundle work in 11C.
-10. Existing backend tests, frontend build, and Stage 11B public quality gates must remain green.
+1. Do not embed or commit API keys, `.env`, private contracts, runtime databases, logs, private benchmarks, model caches, or user review data.
+2. Do not silently download OCR/BGE weights during bundle creation.
+3. DeepSeek/Kimi remain external opt-in providers; no provider credentials are baked into the bundle.
+4. `legal.db` / `retrieval.db` treatment must be explicit: either reproducibly generated from checked-in public seed or deliberately included as generated public release assets with fingerprints documented.
+5. OCR and semantic stacks remain optional unless a packaging experiment proves a reliable redistributable path.
+6. Do not add a repository open-source license without the owner’s explicit decision.
+7. Before redistributing binaries/dependencies, inspect current official packaging-tool documentation and relevant dependency/license obligations; do not rely on stale memory.
+8. Do not create an installer in 11D.
+9. Do not create a single opaque `.exe` merely because a bundler supports it. Prefer an inspectable folder bundle first.
+10. Stage 1–10 regressions, Stage 11B public quality gates, and Stage 11C runtime diagnostics must remain green.
 
-## 11C-1 — Runtime health model
+## 11D-1 — Packaging decision record
 
-Create a typed, local runtime-diagnostics model and service that can inspect without mutating:
+Before adding a packaging dependency, verify current primary documentation and record:
 
-```text
-Python/runtime basics
-configured runtime directory
-job storage writability
-legal.db presence/readability
-retrieval.db presence/readiness/staleness
-OCR optional dependency readiness
-semantic retrieval optional dependency readiness
-DeepSeek/Kimi configuration presence (never secret values)
-frontend/backend expected local ports or startup prerequisites where safely testable
-```
+- candidate packaging approaches and current Windows/Python support;
+- whether they support the FastAPI backend and required binary wheels cleanly;
+- folder bundle vs one-file tradeoffs;
+- startup-time/debuggability implications;
+- license/redistribution implications;
+- impact of optional PaddleOCR/PaddlePaddle and sentence-transformers/PyTorch stacks;
+- how frontend static assets are produced and served/launched;
+- whether external Node.js is still required in the release bundle.
 
-Diagnostic states should be explicit, for example:
+Choose one minimal approach for the first release bundle. Document rejected alternatives briefly.
 
-```text
-OK
-OPTIONAL_NOT_CONFIGURED
-MISSING
-STALE
-CORRUPT
-MISCONFIGURED
-UNAVAILABLE
-ACTION_REQUIRED
-```
+## 11D-2 — Release dependency inventory
 
-Do not label an optional component failure as fatal when the supported fallback path remains valid.
-
-## 11C-2 — Startup diagnostics
-
-Add a developer/user-facing local diagnostic command or endpoint that answers:
+Create a machine-readable or reviewable inventory for:
 
 ```text
-Can base Law-Rag start?
-Can native PDF processing run?
-Is OCR installed/configured?
-Is legal seed built?
-Is lexical retrieval ready?
-Is semantic retrieval available?
-Are DeepSeek/Kimi keys configured?
-What exact safe action should the user take next?
+base Python runtime dependencies
+frontend production assets
+PDF/PDFium binaries
+legal seed/retrieval generated assets
+optional OCR stack
+optional semantic stack
+external DeepSeek/Kimi configuration
 ```
 
-Examples of safe remediation messages:
+For each release-relevant dependency record at least:
+
+- package/component name;
+- pinned/resolved version used by the bundle build;
+- source/package manager;
+- whether bundled or external/optional;
+- license/redistribution note where relevant;
+- runtime role.
+
+Do not claim license compliance unless the actual notices/requirements have been checked.
+
+## 11D-3 — Reproducible base bundle
+
+Build the smallest useful Windows bundle first, targeting the base/native-PDF + deterministic/legal/retrieval/workstation path.
+
+Preferred first milestone:
 
 ```text
-Run rebuild-legal-seed.bat
-Run build-retrieval-index.bat
-Run setup-ocr-cpu.bat only if scanned documents require OCR
-Set DEEPSEEK_API_KEY locally before primary audit
-Set MOONSHOT_API_KEY locally before secondary review
+Law-Rag/
+  app / launcher
+  backend runtime
+  frontend production assets
+  public legal/retrieval assets or deterministic rebuild path
+  config template
+  diagnostics command
+  THIRD_PARTY_NOTICES / dependency inventory as required
+  README / first-run guide
+  runtime/   (created locally at first use; empty/not shipped with private data)
 ```
 
-The diagnostic path itself must not download models, rebuild databases, call providers, or mutate job artifacts.
+The exact layout depends on the verified packaging approach.
 
-## 11C-3 — Critical artifact integrity
-
-Audit and harden critical persisted artifacts:
+The bundle must not contain:
 
 ```text
-contract.json
-audit-rules.json
-ai-audit.json
-secondary-review.json
-review-report.json
-human-review.json
-legal.db
-retrieval.db
+API keys
+.env with real values
+private uploads/jobs
+private benchmark data
+logs
+model caches
+hidden reasoning
+user-specific human-review data
 ```
 
-For JSON artifacts, where practical verify:
+## 11D-4 — Frontend/runtime launch
 
-- parseability;
-- schema validation;
-- expected job identity;
-- required fingerprint/link relationships;
-- atomic write behavior;
-- previous-valid-result preservation on failed write/update.
+Remove unnecessary development-only startup requirements from the release path.
 
-For SQLite stores verify read/open/integrity behavior without destructive repair.
+In particular, determine whether the production frontend can be served as built static assets by the local application/runtime so end users do not need a separate Node/Vite dev server.
 
-Corruption must be surfaced as `CORRUPT`/`ACTION_REQUIRED`, not converted into an empty successful state.
+Development scripts may remain for contributors, but the release bundle should have one clear launch path and one diagnostics path.
 
-## 11C-4 — Runtime failure cases
+## 11D-5 — Optional OCR / semantic policy
 
-Add deterministic regressions for representative failures, including as many as practical without platform-specific guessing:
+Do not force the largest optional ML stacks into the first bundle without evidence.
 
-- missing runtime directory parent / first-run creation boundary;
-- unwritable configured runtime directory where safely testable;
-- corrupt JSON artifact;
-- corrupt `legal.db`;
-- corrupt/stale `retrieval.db`;
-- source file missing for an existing job;
-- malformed environment/config value;
-- missing optional OCR dependency;
-- missing optional semantic dependency;
-- no DeepSeek/Kimi key configured;
-- stale human-review decision after report change;
-- interrupted-write simulation or temp-file residue where applicable.
-
-Tests must verify that a previous valid artifact is not destroyed by the failure path.
-
-## 11C-5 — Windows-oriented startup behavior
-
-Review the current `.bat` scripts for clear failure behavior before Stage 11D bundling:
+Document one of these explicit policies for each optional stack:
 
 ```text
-setup-dev.bat
-start-dev.bat
-setup-ocr-cpu.bat
-setup-rag-semantic-cpu.bat
-rebuild-legal-seed.bat
-build-retrieval-index.bat
-build-retrieval-index-semantic.bat
+bundled and verified
+external optional install
+first-use local download after explicit user action
+deferred from first release
 ```
 
-In 11C, improve diagnostics only where needed. Do not choose a packaging technology yet.
+The base app must continue to explain the supported fallback when OCR or semantic retrieval is absent.
 
-Pay particular attention to:
+## 11D-6 — Windows validation
 
-- missing Python/Node;
-- virtualenv missing;
-- command failure propagation;
-- Chinese/space-containing paths;
-- repeated start attempts;
-- clear local URLs;
-- no secret echoing.
+Add a reproducible Windows CI/smoke path that validates the selected base bundle on a clean runner as far as practical without external paid providers.
 
-## 11C-6 — Logging/error hygiene
+At minimum validate:
 
-Ensure new diagnostics and existing startup/runtime errors prefer IDs/states over raw private contract text.
+- bundle/build command completes;
+- expected files exist;
+- no banned private/secret paths are present;
+- runtime diagnostics execute;
+- backend starts or imports from the bundled environment;
+- native PDF path has required binaries;
+- public legal/retrieval path can be built/read;
+- frontend production surface is present/reachable by the selected launch design;
+- no DeepSeek/Kimi key is required for base startup;
+- Stage 11B quality gate remains independent and green.
 
-Never include:
+Do not run paid model calls in ordinary bundle CI.
 
-- full API keys;
-- Authorization headers;
-- unrestricted contract contents;
-- hidden model reasoning;
-- private benchmark contents.
+## 11D-7 — Reproducibility metadata
 
-## Validation
+Generate release-build metadata containing safe values such as:
 
-Before marking 11C complete:
+- application/release version;
+- source commit SHA;
+- Python version;
+- frontend build version/toolchain;
+- selected packaging-tool version;
+- legal seed manifest/source fingerprint;
+- retrieval schema/index version;
+- dependency inventory fingerprint;
+- build timestamp if needed, while keeping reproducible-content semantics explicit.
 
-1. runtime diagnostic inspection is provider-free and mutation-free;
-2. optional OCR/semantic absence is distinguished from fatal base-runtime failure;
-3. corrupt/missing legal/retrieval stores receive explicit diagnostics;
-4. critical JSON corruption is not rendered as success;
-5. previous valid artifacts survive failed stage writes/updates;
-6. representative runtime failure regressions are green;
-7. Windows developer scripts have explicit failure propagation/next-action messages where practical;
-8. no secrets/private payloads appear in diagnostic output;
-9. Stage 1–10 backend regressions remain green;
-10. Stage 11B public deterministic quality gates remain green;
-11. frontend TypeScript/production build remains green;
-12. documentation reflects actual diagnostics and recovery boundaries.
+Never include secrets or private paths in release metadata.
+
+## Validation before 11D completion
+
+1. packaging approach is chosen from current official information rather than assumption;
+2. dependency/license inventory exists and distinguishes bundled vs optional/external components;
+3. reproducible base Windows bundle is generated by a committed build path;
+4. no secrets/private runtime artifacts are present in the bundle;
+5. production frontend no longer requires a Vite development server in the release path, unless a documented blocker is accepted;
+6. diagnostics work from the release layout;
+7. native PDF/base local workflow is validated on Windows;
+8. legal/retrieval public assets have a deterministic release strategy;
+9. optional OCR/semantic policy is explicit;
+10. provider keys remain user-supplied at runtime;
+11. Windows bundle smoke is green;
+12. backend regressions, Stage 11B quality gates, and frontend production build remain green;
+13. release instructions reflect the actual bundle rather than development setup.
 
 ## Out of scope
 
-Do not implement in 11C:
+Do not implement in 11D:
 
-- Windows installer;
-- monolithic `.exe`;
-- embedded Python distribution;
-- dependency redistribution/license bundle;
-- new OCR/model family;
-- new LLM provider;
-- third-model voting;
-- automatic legal-corpus crawling;
-- destructive automatic runtime repair;
-- cloud deployment/authentication.
+- MSI/Inno/NSIS installer;
+- automatic system-wide registration;
+- auto-updater;
+- code-signing purchase/setup;
+- single-file executable as a goal in itself;
+- bundled real API keys;
+- cloud deployment/authentication;
+- new LLM/OCR/embedding model families;
+- legal-corpus expansion/crawling;
+- destructive migration of existing user runtime data.
 
-Stage 11D may begin only after 11C runtime/data-integrity diagnostics are demonstrably green.
+Stage 11E may begin only after a clean Windows release-bundle smoke succeeds and the release contents/licensing boundaries are understood.
