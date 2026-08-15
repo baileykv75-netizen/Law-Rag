@@ -51,6 +51,15 @@ image document
 
 The concrete Stage 3 provider is local PaddleOCR behind the `OcrProvider` protocol. Paddle-specific imports and result normalization live in `app/ocr.py`; FastAPI and document-domain code do not depend on Paddle SDK objects.
 
+The default accuracy-first model pair is:
+
+```text
+PP-OCRv6_medium_det
+PP-OCRv6_medium_rec
+```
+
+The provider accepts alternative detection/recognition model names, so later legal-document benchmarks can switch to another PP-OCR tier without rewriting OCR orchestration.
+
 ### OCR evidence
 
 OCR results are persisted under:
