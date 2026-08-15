@@ -1,55 +1,75 @@
 # Backend
 
-The Stage 1 backend is a local FastAPI application. It currently provides only the application shell and document-ingestion boundary; OCR, legal retrieval, LLM calls, audit rules, and Agent behavior are intentionally absent.
+The backend is the local Python/FastAPI application for Law-Rag.
 
-## Endpoints
+Backend responsibilities include local HTTP endpoints, job creation, validation, document ingestion, local persistence access, and stable interfaces to later OCR/RAG/rule/LLM components.
 
-- `GET /api/health` — local service health check.
-- `POST /api/documents` — accepts one `.pdf`, `.jpg`, `.jpeg`, or `.png` file and stores it under the ignored local runtime directory.
+Provider-specific SDK details should remain behind adapters rather than leaking through endpoint/domain code.
 
-The ingestion endpoint returns a generated job/document ID, original filename, media type, byte size, status, and local-only storage scope.
+## Stage 2 document ingestion
 
-## Stage 1 validation
+The current `POST /api/documents` flow:
 
-The backend validates:
+```text
+validate upload
+  -> store source under ignored runtime/uploads/<job-id>/
+  -> classify PDF vs image
+  -> PDF: inspect each page with pypdf
+  -> image: mark OCR_REQUIRED
+  -> persist document summary + page evidence under runtime/jobs/<job-id>/
+  -> return route summary to the local UI
+```
 
-- supported file extension;
-- declared MIME/media type when present;
-- basic PDF/JPEG/PNG file signature;
-- non-empty content;
-- maximum file size of 50 MiB.
+Runtime outputs are intentionally outside Git tracking.
 
-The original filename is never used as the storage path. A generated UUID directory and fixed `source.<ext>` filename are used instead.
+### PDF routing heuristic
 
-## Local storage
+Stage 2 does not claim to prove extraction correctness. It only makes a conservative deterministic routing decision.
 
-Default runtime path from the repository root:
+A PDF page is currently marked `NATIVE_TEXT_USABLE` only when all of the following are true:
+
+- at least 32 non-whitespace characters were extracted;
+- suspicious/replacement characters are no more than 2% of non-whitespace characters;
+- at least 45% of non-whitespace characters are alphanumeric/meaningful text characters.
+
+Otherwise the page is marked `OCR_REQUIRED` for Stage 3.
+
+The thresholds are intentionally explicit and regression-testable. They can be tuned later against the private legal benchmark instead of being changed by intuition.
+
+### Evidence persistence
+
+For every page, Stage 2 preserves:
+
+- stable evidence ID scoped to the job;
+- 1-based page number;
+- extraction/source method;
+- page text when available;
+- character counts and routing metrics;
+- route and reason;
+- page source locator.
+
+The persisted files are:
 
 ```text
 runtime/uploads/<job-id>/source.<ext>
+runtime/jobs/<job-id>/document.json
+runtime/jobs/<job-id>/evidence.json
 ```
 
-`runtime/` is ignored by Git and must remain local. Tests override this location with `LAW_RAG_RUNTIME_DIR` so test uploads do not contaminate the development runtime.
+### PDF library
 
-## Run manually
+Stage 2 uses `pypdf>=6.14,<7` for page count and native text extraction. The rendering boundary is separate; no PDF-to-image renderer or OCR engine is introduced in this stage.
 
-From the repository root after creating `.venv` and installing `backend/requirements.txt`:
+## Local run
 
-```bat
-cd backend
-..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+From `backend/` with the root virtual environment active:
+
+```text
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-API docs are then available locally at `http://127.0.0.1:8000/docs`.
+Tests:
 
-## Tests
-
-```bat
-cd backend
-set PYTHONPATH=.
-..\.venv\Scripts\python.exe -m pytest -q
+```text
+pytest -q
 ```
-
-Stage 1 tests cover health, supported PDF upload, unsupported extension rejection, and fake-PDF signature rejection.
-
-Provider-specific SDK details must remain behind adapters in later stages rather than leaking through endpoint/domain code.
