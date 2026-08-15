@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { KeyboardEvent, useEffect, useMemo, useState } from 'react'
 import type {
+  AgentAction,
   FindingComparison,
   OmissionComparison,
   ReviewReport,
@@ -48,6 +49,14 @@ function severityClass(severity: Severity) {
   return `severity-${severity.toLowerCase()}`
 }
 
+function actionsForItem(actions: AgentAction[], itemId: string, evidenceIds: string[]) {
+  const evidence = new Set(evidenceIds)
+  return actions.filter((action) => {
+    if (action.reason.includes(itemId)) return true
+    return [...action.input_evidence_ids, ...action.output_evidence_ids].some((id) => evidence.has(id))
+  })
+}
+
 export default function AuditQueuePane({
   jobId,
   reportAvailable,
@@ -61,6 +70,7 @@ export default function AuditQueuePane({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [minimumSeverity, setMinimumSeverity] = useState<Severity>('INFO')
   const [showOnlyAttention, setShowOnlyAttention] = useState(false)
+  const [comparisonFilter, setComparisonFilter] = useState('ALL')
   const [query, setQuery] = useState('')
 
   useEffect(() => {
@@ -121,17 +131,20 @@ export default function AuditQueuePane({
         'REQUIRES_MORE_EVIDENCE',
         'AGREEMENT_WITH_REVIEW',
       ].includes(comparisonState) || primary.state === 'REVIEW_REQUIRED' || primary.state === 'INSUFFICIENT_EVIDENCE'
+      const allEvidence = [...contractEvidenceIds, ...legalEvidenceIds]
 
       return {
         itemType: 'finding',
         itemId: primary.finding_id,
         title: primary.title,
         riskCategory: primary.risk_category,
+        asOf: report.as_of,
         primary,
         secondary: reviewer,
         comparison,
         contractEvidenceIds,
         legalEvidenceIds,
+        agentActions: actionsForItem(report.action_trace, primary.finding_id, allEvidence),
         severity: primary.severity,
         state: comparisonState,
         needsHumanReview,
@@ -141,19 +154,24 @@ export default function AuditQueuePane({
     const omissionComparisons = new Map<string, OmissionComparison>(
       report.comparison.omission_comparisons.map((item) => [item.omission_id, item]),
     )
-    const omissions: QueueItem[] = report.possible_primary_omissions.map((omission) => ({
-      itemType: 'omission',
-      itemId: omission.omission_id,
-      title: omission.title,
-      riskCategory: omission.risk_category,
-      omission,
-      comparison: omissionComparisons.get(omission.omission_id),
-      contractEvidenceIds: omission.contract_evidence_ids,
-      legalEvidenceIds: omission.legal_evidence_ids,
-      severity: omission.severity,
-      state: omissionComparisons.get(omission.omission_id)?.overall_state ?? 'MATERIAL_DISAGREEMENT',
-      needsHumanReview: true,
-    }))
+    const omissions: QueueItem[] = report.possible_primary_omissions.map((omission) => {
+      const allEvidence = [...omission.contract_evidence_ids, ...omission.legal_evidence_ids]
+      return {
+        itemType: 'omission',
+        itemId: omission.omission_id,
+        title: omission.title,
+        riskCategory: omission.risk_category,
+        asOf: report.as_of,
+        omission,
+        comparison: omissionComparisons.get(omission.omission_id),
+        contractEvidenceIds: omission.contract_evidence_ids,
+        legalEvidenceIds: omission.legal_evidence_ids,
+        agentActions: actionsForItem(report.action_trace, omission.omission_id, allEvidence),
+        severity: omission.severity,
+        state: omissionComparisons.get(omission.omission_id)?.overall_state ?? 'MATERIAL_DISAGREEMENT',
+        needsHumanReview: true,
+      }
+    })
 
     return [...findings, ...omissions].sort((a, b) => {
       const severityDelta = severityRank[b.severity] - severityRank[a.severity]
@@ -168,10 +186,11 @@ export default function AuditQueuePane({
     return queueItems.filter((item) => {
       if (severityRank[item.severity] < severityRank[minimumSeverity]) return false
       if (showOnlyAttention && !item.needsHumanReview) return false
+      if (comparisonFilter !== 'ALL' && item.state !== comparisonFilter) return false
       if (normalizedQuery && !`${item.title} ${item.riskCategory} ${item.itemId}`.toLowerCase().includes(normalizedQuery)) return false
       return true
     })
-  }, [minimumSeverity, query, queueItems, showOnlyAttention])
+  }, [comparisonFilter, minimumSeverity, query, queueItems, showOnlyAttention])
 
   useEffect(() => {
     if (filtered.length === 0) {
@@ -192,6 +211,13 @@ export default function AuditQueuePane({
     onSelectionChange(item)
   }
 
+  const onCardKeyDown = (event: KeyboardEvent<HTMLElement>, item: QueueItem) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      selectItem(item)
+    }
+  }
+
   return (
     <div className="audit-queue">
       <div className="queue-toolbar">
@@ -201,12 +227,20 @@ export default function AuditQueuePane({
           placeholder="搜索风险标题 / 类型 / ID"
           aria-label="搜索审计项"
         />
-        <select value={minimumSeverity} onChange={(event) => setMinimumSeverity(event.target.value as Severity)}>
+        <select value={minimumSeverity} onChange={(event) => setMinimumSeverity(event.target.value as Severity)} aria-label="最低严重度">
           <option value="INFO">INFO+</option>
           <option value="LOW">LOW+</option>
           <option value="MEDIUM">MEDIUM+</option>
           <option value="HIGH">HIGH+</option>
           <option value="CRITICAL">CRITICAL</option>
+        </select>
+        <select value={comparisonFilter} onChange={(event) => setComparisonFilter(event.target.value)} aria-label="比较状态">
+          <option value="ALL">全部比较状态</option>
+          <option value="AGREEMENT">一致</option>
+          <option value="AGREEMENT_WITH_REVIEW">一致但需复核</option>
+          <option value="MINOR_DISAGREEMENT">轻度分歧</option>
+          <option value="REQUIRES_MORE_EVIDENCE">需要补证据</option>
+          <option value="MATERIAL_DISAGREEMENT">实质分歧</option>
         </select>
         <label>
           <input
@@ -218,7 +252,7 @@ export default function AuditQueuePane({
         </label>
       </div>
 
-      <div className="queue-status">{loading ? '读取中…' : message}</div>
+      <div className="queue-status" aria-live="polite">{loading ? '读取中…' : message}</div>
 
       {report && (
         <div className="queue-summary">
@@ -232,17 +266,22 @@ export default function AuditQueuePane({
         <div className="quiet-state">当前筛选条件下没有审计项。</div>
       )}
 
-      <div className="queue-list">
+      <div className="queue-list" aria-label="审计项列表">
         {filtered.map((item) => (
           <article
             key={`${item.itemType}-${item.itemId}`}
             className={`queue-card ${selectedId === item.itemId ? 'is-selected' : ''} ${item.needsHumanReview ? 'needs-review' : ''}`}
+            role="button"
+            tabIndex={0}
+            aria-pressed={selectedId === item.itemId}
             onClick={() => selectItem(item)}
+            onKeyDown={(event) => onCardKeyDown(event, item)}
           >
             <div className="queue-card-heading">
               <span className={`severity-pill ${severityClass(item.severity)}`}>{item.severity}</span>
               <span className="comparison-pill">{stateLabel(item.state)}</span>
               {item.itemType === 'omission' && <span className="omission-pill">Kimi 漏审提示</span>}
+              {item.agentActions.length > 0 && <span className="agent-pill">Agent {item.agentActions.length}</span>}
             </div>
             <h3>{item.title}</h3>
             <p>{item.riskCategory} · {item.itemId}</p>
