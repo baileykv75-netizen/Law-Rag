@@ -48,6 +48,12 @@ function comparisonReasons(comparison: FindingComparison | OmissionComparison | 
   return [comparison.reason]
 }
 
+function applicability(record: LegalEvidenceRecord, asOf: string) {
+  const begins = record.version.effective_date <= asOf
+  const beforeEnd = !record.version.end_date_exclusive || asOf < record.version.end_date_exclusive
+  return begins && beforeEnd ? '适用于当前 as_of' : '不适用于当前 as_of'
+}
+
 export default function ReviewContextPane({
   selectedItem,
   legalEvidenceId,
@@ -105,7 +111,7 @@ export default function ReviewContextPane({
       <section className="context-section">
         <span className="context-eyebrow">SELECTED AUDIT ITEM</span>
         <h3>{selectedItem.title}</h3>
-        <p className="context-subtitle">{selectedItem.riskCategory} · {selectedItem.itemId}</p>
+        <p className="context-subtitle">{selectedItem.riskCategory} · {selectedItem.itemId} · as_of {selectedItem.asOf}</p>
       </section>
 
       {selectedItem.primary && (
@@ -157,7 +163,7 @@ export default function ReviewContextPane({
             </div>
             {'contract_evidence' in selectedItem.comparison && (
               <div className="comparison-grid">
-                <div><span>严重度</span><strong>{selectedItem.comparison.severity.state}</strong></div>
+                <div><span>严重度</span><strong>{selectedItem.comparison.severity.state} · distance {selectedItem.comparison.severity.distance}</strong></div>
                 <div><span>合同证据</span><strong>{selectedItem.comparison.contract_evidence.state}</strong></div>
                 <div><span>法律依据</span><strong>{selectedItem.comparison.legal_basis.state}</strong></div>
               </div>
@@ -168,6 +174,24 @@ export default function ReviewContextPane({
           <p className="quiet-state">没有对应的程序 Comparison 记录。</p>
         )}
       </section>
+
+      {selectedItem.agentActions.length > 0 && (
+        <section className="agent-trace-detail">
+          <div className="context-eyebrow">AGENT TRACE</div>
+          {selectedItem.agentActions.map((action) => (
+            <article key={action.action_id}>
+              <div>
+                <strong>Cycle {action.cycle} · {action.tool_name}</strong>
+                <span>{action.state}</span>
+              </div>
+              <p>{action.reason}</p>
+              <small>Input {action.input_evidence_ids.length} · Output {action.output_evidence_ids.length}</small>
+              <small>Provider call: {action.provider_call_occurred ? 'YES' : 'NO'} · Contract left machine: {action.private_contract_evidence_left_machine ? 'YES' : 'NO'}</small>
+              {action.validation_or_error && <em>{action.validation_or_error}</em>}
+            </article>
+          ))}
+        </section>
+      )}
 
       <section className="context-evidence-links">
         <div>
@@ -203,8 +227,10 @@ export default function ReviewContextPane({
             <div className="legal-meta-grid">
               <div><span>版本</span><strong>{legalEvidence.version.version_id}</strong></div>
               <div><span>生效</span><strong>{legalEvidence.version.effective_date}</strong></div>
-              <div><span>状态</span><strong>{legalEvidence.version.status}</strong></div>
+              <div><span>终止（exclusive）</span><strong>{legalEvidence.version.end_date_exclusive ?? '—'}</strong></div>
               <div><span>Coverage</span><strong>{legalEvidence.version.coverage_type}</strong></div>
+              <div><span>as_of</span><strong>{selectedItem.asOf}</strong></div>
+              <div><span>适用性</span><strong>{applicability(legalEvidence, selectedItem.asOf)}</strong></div>
             </div>
             {legalEvidence.version.coverage_type === 'CURATED_EXCERPT' && (
               <p className="coverage-warning">当前法律库是节选覆盖；“库中没有”不能解释为“法律上不存在”。</p>
@@ -221,10 +247,10 @@ export default function ReviewContextPane({
         )}
       </section>
 
-      <section className="human-decision-placeholder">
-        <span className="context-eyebrow">HUMAN REVIEW · 10D</span>
+      <section className="stage9-boundary-card">
+        <span className="context-eyebrow">STAGE 9 BOUNDARY</span>
         <strong>{finalReviewState ?? '尚无最终 Stage 9 状态'}</strong>
-        <p>Agent 动作 {agentActionCount} 次。人工“确认 / 驳回 / 继续复核 + 备注”将在 10D 作为独立记录层接入，不改写模型报告和 Evidence。</p>
+        <p>关联 Agent 动作 {selectedItem.agentActions.length} / 全任务 {agentActionCount}。工作台不会把补证据动作自动改写成新的模型裁决。</p>
       </section>
     </div>
   )
