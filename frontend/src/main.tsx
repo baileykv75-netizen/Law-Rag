@@ -8,6 +8,7 @@ import SecondaryReviewPanel from './SecondaryReviewPanel'
 import WorkspaceApp from './WorkspaceApp'
 import './styles.css'
 import './workspace.css'
+import './source-viewer.css'
 
 const isWorkspaceRoute = window.location.pathname === '/workspace' || window.location.pathname.startsWith('/workspace/')
 
