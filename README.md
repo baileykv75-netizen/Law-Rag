@@ -6,8 +6,6 @@ The project goal is not to build a generic legal chatbot. The target product is 
 
 ## Product goal
 
-Target user flow:
-
 ```text
 Start Law-Rag locally
   -> open local web UI
@@ -26,22 +24,22 @@ The intended final form is a downloadable local application. The browser is only
 
 ## Current status
 
-**Stage 1 complete. Stage 2 active: document ingestion and native PDF text path.**
+**Stage 2 complete. Stage 3 active: OCR and layout evidence layer.**
 
-Stage 1 established the runnable local shell: React/Vite UI, FastAPI backend, validated local-only file ingestion, Windows development setup/start scripts, regression tests, and GitHub Actions CI. Backend tests and the frontend production build have passed in GitHub Actions.
+Stage 1 established the runnable React/Vite + FastAPI local shell. Stage 2 now adds page-aware document ingestion and PDF native-text routing. Backend tests and the frontend production build have passed in GitHub Actions for the Stage 2 implementation.
 
-The next implementation scope is strictly defined in [`CURRENT_TASK.md`](CURRENT_TASK.md). Stage 2 will decide when PDF native text is reliable enough to preserve directly and when a page/document must later be routed to OCR. PaddleOCR itself is still out of scope until Stage 3.
+The next implementation scope is strictly defined in [`CURRENT_TASK.md`](CURRENT_TASK.md). Stage 3 is the first stage allowed to introduce PaddleOCR, and it must do so behind a replaceable OCR provider boundary rather than embedding OCR logic into the API layer.
 
-## Stage 1 quick start on Windows
+## Quick start on Windows
 
 ### Prerequisites
 
 Install:
 
 - Python 3.11 or newer;
-- Node.js 22 LTS recommended. Vite 8 requires Node.js 20.19+ or 22.12+.
+- Node.js 22 LTS recommended.
 
-No DeepSeek/Kimi/Qwen API key is required for Stage 1.
+No DeepSeek/Kimi/Qwen API key is required yet.
 
 ### First setup
 
@@ -51,7 +49,7 @@ Download/clone the repository, then double-click:
 setup-dev.bat
 ```
 
-This creates a local Python virtual environment, installs FastAPI dependencies, and installs frontend npm dependencies.
+This creates a local Python virtual environment and installs the backend/frontend dependencies.
 
 ### Start Law-Rag
 
@@ -68,26 +66,64 @@ Backend:  http://127.0.0.1:8000
 Frontend: http://127.0.0.1:5173
 ```
 
-The frontend should open automatically in the browser. Two terminal windows remain open while Law-Rag is running; closing them stops the local application.
+The frontend should open automatically. Closing the backend/frontend terminal windows stops the local application.
 
-### Current Stage 1 behavior
+## Verified Stage 2 behavior
 
-You can select or drag one:
+The UI accepts one `.pdf`, `.jpg`, `.jpeg`, or `.png` file up to 50 MiB.
 
-- `.pdf`
-- `.jpg`
-- `.jpeg`
-- `.png`
-
-up to 50 MiB. The backend validates the basic type/signature, generates a UUID job ID, and stores the file only under:
+After upload, the source remains under ignored local runtime storage:
 
 ```text
 runtime/uploads/<job-id>/source.<ext>
 ```
 
-`runtime/` is ignored by Git.
+Document inspection outputs are persisted separately:
 
-At the Stage 1 boundary the application returns file metadata only. Stage 2 will add document inspection; legal conclusions remain much later in the roadmap.
+```text
+runtime/jobs/<job-id>/document.json
+runtime/jobs/<job-id>/evidence.json
+```
+
+### PDFs
+
+Each PDF is inspected page by page with `pypdf`.
+
+For every page, Law-Rag preserves a stable evidence ID, page number, native text (when extractable), routing metrics, route reason, and source locator.
+
+The deterministic Stage 2 heuristic routes a page as:
+
+- `NATIVE_TEXT_USABLE` when its native text is sufficiently substantial and not suspicious;
+- `OCR_REQUIRED` when native text is absent, too sparse, or suspicious.
+
+The document-level route is therefore one of:
+
+- `NATIVE_TEXT`;
+- `OCR_REQUIRED`;
+- `MIXED`.
+
+The routing heuristic is deliberately conservative. It decides whether to trust the native text path; it does not claim that the text is legally correct.
+
+### Images
+
+JPG/JPEG/PNG inputs are preserved and explicitly marked `OCR_REQUIRED`. Stage 2 does not pretend that image text was extracted.
+
+### Failures
+
+A file with the wrong signature is rejected. A PDF that has a PDF signature but cannot be parsed returns an explicit processing failure rather than an empty successful result.
+
+### UI
+
+The local interface now shows:
+
+- document kind;
+- total page count;
+- native-text page count;
+- OCR-required page count;
+- overall route;
+- per-page Evidence ID and route.
+
+OCR itself begins only in Stage 3.
 
 ## Developer validation
 
@@ -144,17 +180,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the detailed system boundaries.
 
 This repository is currently public. Treat every committed file as public information.
 
-Never commit:
-
-- real contracts;
-- merely pseudonymized contracts that remain re-identifiable;
-- private legal test sets;
-- API keys, tokens, passwords, cookies, or credentials;
-- `.env` files;
-- uploads or generated audit reports containing private content;
-- local vector databases or logs containing contract text.
-
-Use only fully fictional test fixtures in the public repository.
+Never commit real contracts, re-identifiable pseudonymized contracts, private legal test sets, API keys, `.env` files, private outputs/logs, local indexes, or model caches. Use only fully fictional public fixtures.
 
 See [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
 
@@ -164,12 +190,12 @@ Law-Rag is an audit-assistance and research tool. Model output may be incomplete
 
 ## Development documents
 
-- [`AGENTS.md`](AGENTS.md) - long-term development rules for AI coding agents and contributors.
+- [`AGENTS.md`](AGENTS.md) - long-term development rules.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - system boundaries and target architecture.
 - [`CURRENT_TASK.md`](CURRENT_TASK.md) - the only implementation scope for the current iteration.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) - staged delivery plan.
 - [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md) - public-repository and local-data rules.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) - architectural decisions that should not be silently reversed.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) - architecture decisions.
 
 ## Configuration
 
