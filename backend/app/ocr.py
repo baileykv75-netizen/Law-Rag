@@ -29,7 +29,8 @@ from .storage import (
 )
 
 LOW_CONFIDENCE_THRESHOLD = 0.85
-DEFAULT_PADDLE_MODEL = "PP-OCRv5_mobile_det+PP-OCRv5_mobile_rec"
+DEFAULT_PADDLE_DETECTION_MODEL = "PP-OCRv6_medium_det"
+DEFAULT_PADDLE_RECOGNITION_MODEL = "PP-OCRv6_medium_rec"
 
 
 class OcrProviderUnavailable(RuntimeError):
@@ -150,16 +151,20 @@ class PaddleOcrProvider:
     """
 
     provider_name = "paddleocr"
-    model_name = DEFAULT_PADDLE_MODEL
 
     def __init__(
         self,
         *,
         pipeline_factory: Callable[[], Any] | None = None,
         provider_version: str | None = None,
+        detection_model_name: str = DEFAULT_PADDLE_DETECTION_MODEL,
+        recognition_model_name: str = DEFAULT_PADDLE_RECOGNITION_MODEL,
     ) -> None:
         self._pipeline_factory = pipeline_factory
         self._pipeline: Any | None = None
+        self.detection_model_name = detection_model_name
+        self.recognition_model_name = recognition_model_name
+        self.model_name = f"{detection_model_name}+{recognition_model_name}"
         if provider_version is not None:
             self.provider_version = provider_version
         else:
@@ -181,8 +186,8 @@ class PaddleOcrProvider:
 
         try:
             return PaddleOCR(
-                text_detection_model_name="PP-OCRv5_mobile_det",
-                text_recognition_model_name="PP-OCRv5_mobile_rec",
+                text_detection_model_name=self.detection_model_name,
+                text_recognition_model_name=self.recognition_model_name,
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
@@ -330,8 +335,6 @@ def run_ocr_for_job(
     elif ocr_pages:
         active_provider = PaddleOcrProvider()
     else:
-        # No OCR work is required. Keep the response schema consistent without
-        # importing PaddleOCR or downloading models.
         class _NoopProvider:
             provider_name = "none"
             model_name = "not-required"
