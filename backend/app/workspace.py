@@ -9,6 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 from .ai_audit_models import AiAuditReport
 from .audit_rule_models import AuditRuleReport
 from .contract_models import CanonicalContract
+from .human_review_models import HumanReviewArtifact
 from .models import OcrRunResult, PageEvidence
 from .review_report import ReviewReport
 from .secondary_review_models import SecondaryReviewReport
@@ -107,6 +108,7 @@ def load_workspace_summary(job_id: UUID) -> WorkspaceSummary:
         "ai-audit.json",
         "secondary-review.json",
         "review-report.json",
+        "human-review.json",
     )
     any_artifact = any((job_dir / name).exists() for name in artifact_names)
     if not source_candidates and not any_artifact:
@@ -302,6 +304,41 @@ def load_workspace_summary(job_id: UUID) -> WorkspaceSummary:
         review.final_review_state = report_value.final_state.value
         review.agent_action_count = len(report_value.action_trace)
         warnings.extend(report_value.warnings)
+
+    human_path = job_dir / "human-review.json"
+    if not human_path.exists():
+        stages.append(
+            _stage(
+                "10D",
+                "Human review decisions",
+                WorkspaceArtifactState.NOT_REQUIRED,
+                "human-review.json",
+                "No human decision revision has been recorded yet.",
+            )
+        )
+    else:
+        try:
+            human_review = _model_from_file(human_path, HumanReviewArtifact)
+            stages.append(
+                _stage(
+                    "10D",
+                    "Human review decisions",
+                    WorkspaceArtifactState.READY,
+                    "human-review.json",
+                    f"Human review contains {len(human_review.revisions)} append-only decision revision(s).",
+                )
+            )
+        except WorkspaceLoadError as exc:
+            stages.append(
+                _stage(
+                    "10D",
+                    "Human review decisions",
+                    WorkspaceArtifactState.INVALID,
+                    "human-review.json",
+                    str(exc),
+                )
+            )
+            warnings.append("Stage 10 human-review artifact could not be validated.")
 
     if not source_available:
         if not source_candidates:
