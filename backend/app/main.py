@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .audit_rule_models import DEFAULT_PROFILE_ID, AuditRuleReport
+from .audit_rules import AuditRuleProcessingError, load_audit_rule_report, run_audit_rules
 from .contract_models import CanonicalContract, StructureSummary
 from .contract_structure import (
     StructureIncompleteError,
@@ -34,7 +36,7 @@ EXPECTED_MEDIA_TYPES = {
     ".png": {"image/png", "application/octet-stream"},
 }
 
-app = FastAPI(title=APP_NAME, version="0.4.0")
+app = FastAPI(title=APP_NAME, version="0.5.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -244,6 +246,39 @@ def get_structure(job_id: UUID) -> CanonicalContract:
             detail=str(exc),
         ) from exc
     except StructureProcessingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+
+@app.post("/api/documents/{job_id}/audit-rules", response_model=AuditRuleReport)
+def audit_rules_document(
+    job_id: UUID,
+    profile: str = Query(default=DEFAULT_PROFILE_ID, description="Explicit deterministic audit profile"),
+) -> AuditRuleReport:
+    """Run Stage 5 deterministic checks against persisted contract.json only."""
+
+    try:
+        return run_audit_rules(job_id, profile_id=profile)
+    except AuditRuleProcessingError as exc:
+        message = str(exc)
+        http_status = status.HTTP_404_NOT_FOUND if "does not exist" in message else status.HTTP_422_UNPROCESSABLE_CONTENT
+        raise HTTPException(status_code=http_status, detail=message) from exc
+
+
+@app.get("/api/documents/{job_id}/audit-rules", response_model=AuditRuleReport)
+def get_audit_rules(job_id: UUID) -> AuditRuleReport:
+    """Return the persisted deterministic audit report for a local job."""
+
+    try:
+        return load_audit_rule_report(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except AuditRuleProcessingError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
