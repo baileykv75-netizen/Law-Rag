@@ -1,4 +1,5 @@
-import { KeyboardEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import type {
   AgentAction,
   FindingComparison,
