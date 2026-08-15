@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import SourceViewerPane from './SourceViewerPane'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
@@ -205,17 +206,18 @@ export default function WorkspaceApp() {
                 <span>{summary.document?.page_count ?? '—'} 页</span>
               </div>
 
-              <div className="source-preview-placeholder">
-                <div className="document-sheet">
-                  <span>PAGE 01</span>
-                  <i />
-                  <i />
-                  <i />
-                  <i />
+              {summary.document ? (
+                <SourceViewerPane
+                  jobId={summary.job_id}
+                  pageCount={summary.document.page_count}
+                  sourceAvailable={summary.source_available}
+                />
+              ) : (
+                <div className="source-viewer-error">
+                  <strong>文档元数据不可用</strong>
+                  <p>没有可靠的页数/文档类型信息，工作台不会猜测源页。</p>
                 </div>
-                <strong>源页预览未在 10A 加载</strong>
-                <p>当前只读取安全摘要。PDF / 图片页与 Evidence 高亮将在 10B 接入。</p>
-              </div>
+              )}
 
               {summary.document && (
                 <div className="document-facts">
@@ -346,9 +348,9 @@ export default function WorkspaceApp() {
               </div>
 
               <div className="next-stage-placeholder compact">
-                <span className="eyebrow">10B / 10C / 10D</span>
-                <strong>证据、法条与人工决定</strong>
-                <p>后续在此处展示 Evidence、法律版本、双模型分歧以及人工确认/驳回/待复核记录。</p>
+                <span className="eyebrow">10C / 10D</span>
+                <strong>法条、双模型比较与人工决定</strong>
+                <p>源页和合同 Evidence 已在左侧接入；后续在此处加入 Legal Evidence、结构化分歧和人工确认/驳回/待复核记录。</p>
               </div>
             </aside>
           </section>
