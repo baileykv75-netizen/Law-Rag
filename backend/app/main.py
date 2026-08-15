@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .ai_audit_api import router as ai_audit_router
 from .audit_rule_models import DEFAULT_PROFILE_ID, AuditRuleReport
 from .audit_rules import AuditRuleProcessingError, load_audit_rule_report, run_audit_rules
 from .contract_models import CanonicalContract, StructureSummary
@@ -58,7 +59,7 @@ EXPECTED_MEDIA_TYPES = {
     ".png": {"image/png", "application/octet-stream"},
 }
 
-app = FastAPI(title=APP_NAME, version="0.7.0")
+app = FastAPI(title=APP_NAME, version="0.8.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -66,6 +67,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+app.include_router(ai_audit_router)
 
 
 class HealthResponse(BaseModel):
