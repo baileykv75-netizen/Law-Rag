@@ -14,7 +14,7 @@ from .ai_audit_models import (
 )
 
 SECONDARY_REVIEW_SCHEMA_VERSION = "1.0.0"
-SECONDARY_REVIEW_ENGINE_VERSION = "stage9a-1.0.0"
+SECONDARY_REVIEW_ENGINE_VERSION = "stage9b-1.0.0"
 SECONDARY_CONTEXT_SCHEMA_VERSION = "1.0.0"
 SECONDARY_CONTEXT_BUILDER_VERSION = "stage9a-context-1.0.0"
 
@@ -38,7 +38,7 @@ class DisagreementCategory(str, Enum):
 
 
 class SecondaryReviewRunRequest(BaseModel):
-    provider: str = Field(default="fake", min_length=1, max_length=64)
+    provider: str = Field(default="kimi", min_length=1, max_length=64)
     use_semantic: bool = False
 
 
