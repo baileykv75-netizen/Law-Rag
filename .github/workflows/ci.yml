@@ -47,7 +47,7 @@ jobs:
         run: npm run build
 
   windows-release-bundle-smoke:
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'verify Windows bundle')
+    if: github.event_name == 'push' && (contains(github.event.head_commit.message, 'verify Windows bundle') || contains(github.event.head_commit.message, 'verify Windows RC'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -64,16 +64,29 @@ jobs:
       - name: Show resolved isolated Python release environment
         shell: pwsh
         run: Get-Content release/.build/python-resolved.txt
-      - name: Smoke packaged launcher, API, and frontend
+      - name: Smoke Stage 11D onedir before archiving
         shell: pwsh
         run: ./release/smoke-windows.ps1
-      - name: Upload inspectable Windows bundle
+      - name: Build deterministic portable RC ZIP and manifest
+        shell: pwsh
+        run: ./release/package-rc.ps1
+      - name: Independently extract and smoke final RC artifact
+        shell: pwsh
+        run: ./release/smoke-rc-windows.ps1
+      - name: Upload inspectable Windows onedir bundle
         uses: actions/upload-artifact@v4
         with:
           name: law-rag-windows-onedir-stage11d
           path: release/dist/Law-Rag
           if-no-files-found: error
           retention-days: 3
+      - name: Upload portable Stage 11E RC files
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-0.8.0-rc1-windows-x64
+          path: release/rc
+          if-no-files-found: error
+          retention-days: 7
 
   windows-ocr-dependency-smoke:
     if: github.event_name == 'push' && contains(github.event.head_commit.message, 'verify OCR deps')
