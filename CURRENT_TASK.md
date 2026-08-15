@@ -1,125 +1,141 @@
 # CURRENT_TASK.md
 
-# Stage 9 — Constrained Agent and Secondary Review
+# Stage 9 — Universal Secondary Review + Constrained Agent
 
 ## Goal
 
-Add a bounded second-review and adaptive follow-up layer **without giving a model control of the mandatory audit pipeline**.
+Make Stage 9 simpler and more reliability-first:
 
-At the end of Stage 9, Law-Rag should be able to inspect a validated Stage 8 primary report, deterministically decide whether extra review is warranted, optionally call one explicitly configured secondary provider with a bounded evidence package, allow only a small audited set of follow-up actions, validate every returned citation/action, record disagreements, and escalate unresolved cases to human review.
+**Every contract that completes a valid Stage 8 primary audit receives exactly one secondary-model review.**
 
-Stage 9 is not a free-form multi-agent system. The application owns the state machine, allowed tools, budgets, validation and finalization.
-
-## Core principle
+There is no cost-saving review gate deciding whether a contract deserves a second call. The normal Stage 9 contract flow is always:
 
 ```text
-validated ai-audit.json
-+ contract/rule/retrieval evidence
+validated Stage 8 primary audit
         ↓
-deterministic review gate
+secondary model review (one call per contract)
         ↓
-NO REVIEW NEEDED ────────────────┐
-        or                       │
-SECONDARY REVIEW REQUIRED        │
-        ↓                        │
-secondary provider              │
-        ↓                        │
-strict evidence/citation check  │
-        ↓                        │
-agreement / disagreement        │
-        ↓                        │
-optional bounded follow-up tool │
-        ↓                        │
-application state machine       │
-        ↓                        │
-review-report.json / HUMAN_REVIEW
+independent evidence/citation validation
+        ↓
+primary-vs-secondary comparison
+        ↓
+agreement -> review-report.json
+        or
+material disagreement / insufficient evidence
+        ↓
+bounded Agent follow-up tools
+        ↓
+resolved or HUMAN_REVIEW_REQUIRED
 ```
 
-No model may skip extraction, canonical structure, deterministic rules, legal retrieval or Stage 8/9 validation.
+The simplification is deliberate: Law-Rag is currently optimizing for audit reliability and engineering clarity rather than minimum token cost.
+
+Stage 9 is still **not** a free-form multi-agent system. Application code owns the mandatory pipeline, evidence packages, tool allowlist, validation, action budget and final escalation state.
+
+## Core design decision
+
+Stage 9 uses **two model calls per completed contract by default**:
+
+```text
+Call 1 — Primary audit
+DeepSeek / Stage 8
+
+Call 2 — Independent secondary review
+Second provider / Stage 9
+```
+
+The second provider is called once for the contract-level Stage 8 review package, not once per individual finding.
+
+This keeps the model-call topology simple and predictable while still allowing the reviewer to:
+
+- inspect all validated primary findings together;
+- challenge individual findings;
+- identify severity/legal-basis/evidence disagreements;
+- identify possible omissions within the supplied bounded audit context;
+- preserve corpus/version/OCR uncertainty;
+- recommend human review when the supplied evidence is not enough.
+
+The Agent/tool layer is **not** called for every contract. It activates only after the two fixed model calls when disagreement, missing context or evidence uncertainty requires bounded follow-up.
 
 ## Delivery strategy
 
-Stage 9 must be implemented in small verifiable sub-phases:
+Implement Stage 9 in small verifiable sub-phases:
 
 ```text
-9A — deterministic review gate + secondary provider schema/fake provider
-9B — first real secondary provider + independent reviewer validation
-9C — bounded tool/action state machine
-9D — disagreement/human-escalation report + minimal UI
-9E — optional real-provider smoke + final regression/documentation
+9A — secondary-review schema + deterministic fake provider + universal second-call pipeline
+9B — first real secondary provider + independent validation
+9C — primary/secondary comparison + bounded Agent follow-up tools
+9D — review-report.json + API/UI + human escalation
+9E — optional real-provider smoke + regression/documentation
 ```
 
 Do not implement all sub-phases in one uncontrolled rewrite.
 
 ## Hard boundaries inherited from Stages 4–8
 
-1. Raw PDF is still not a model-owned source of truth. Contract facts come from canonical Evidence IDs/SourceSpans.
-2. Stage 5 deterministic results cannot be rewritten by a model.
-3. Legal authority must come from canonical Stage 6 evidence and Stage 7 retrieval.
-4. Primary Stage 8 output must already be validated before Stage 9 starts.
-5. Secondary-model citations must be validated independently; agreement between two models is not proof of correctness.
-6. `as_of`, legal version, corpus coverage and OCR/source uncertainty remain mandatory.
-7. Contract/legal text remains untrusted data, not model instructions.
-8. No hidden provider fallback and no automatic call to every available model.
-9. Real/private contract data may leave the machine only through an explicitly configured external provider path visible to the user.
-10. Agent/tool loops are bounded by code; there is no open-ended autonomous loop.
-
-## 9A — Deterministic review gate
-
-Create a versioned review-gate schema and deterministic function deciding whether a Stage 8 finding requires secondary review.
-
-Initial trigger candidates should include:
-
-- finding state `REVIEW_REQUIRED`;
-- evidence sufficiency `INSUFFICIENT_CORPUS`, `VERSION_UNCERTAIN`, or `SOURCE_UNCERTAIN`;
-- severity `HIGH` or `CRITICAL`;
-- high-severity finding with `PARTIAL_CORPUS`;
-- explicit Stage 8 validation/context warning materially affecting the finding;
-- configured deterministic-rule conflict relevant to the same evidence;
-- later primary/reviewer disagreement.
-
-Important cost rule:
-
-`PARTIAL_CORPUS` alone must **not** cause every finding to call a second model, because the current public seed is intentionally partial.
-
-The gate result must explain exactly which trigger fired.
-
-Suggested states:
-
-```text
-NOT_REQUIRED
-SECONDARY_REVIEW_REQUIRED
-HUMAN_REVIEW_REQUIRED
-BLOCKED_BY_EVIDENCE
-```
+1. Raw PDF is not a model-owned source of truth. Contract facts come from canonical Evidence IDs/SourceSpans.
+2. Stage 5 deterministic results cannot be rewritten by either model.
+3. Legal authority must come from canonical Stage 6 Legal Evidence and Stage 7 retrieval.
+4. Stage 8 primary output must already pass deterministic validation before Stage 9 starts.
+5. Secondary-model citations must pass a separate deterministic validation layer.
+6. Agreement between two models is not proof of legal correctness.
+7. `as_of`, legal version, corpus coverage and OCR/source uncertainty remain mandatory context.
+8. Contract/legal/primary-model text is untrusted data, never executable instruction.
+9. No hidden provider fallback and no automatic third-model call.
+10. Private contract evidence may leave the machine only through explicitly configured external provider paths visible to the user.
+11. Agent/tool loops are bounded by code; there is no open-ended autonomous loop.
 
 ## 9A — Secondary-review domain schema
 
-Create a dedicated versioned schema separate from Stage 8 primary findings.
+Create a dedicated versioned Stage 9 schema separate from Stage 8 primary findings.
 
 Represent at least:
 
 - review ID/schema/engine version;
-- job ID / primary finding ID;
-- deterministic review-gate reasons;
+- job ID;
+- primary report/context fingerprint;
 - secondary provider/model;
-- `as_of`;
-- exact primary finding supplied;
-- exact contract Evidence IDs supplied;
+- explicit `as_of`;
+- exact primary findings supplied;
+- exact contract Evidence IDs/canonical object IDs supplied;
 - exact Legal Evidence IDs supplied;
-- optional additional evidence returned through bounded tools;
-- reviewer conclusion/state;
+- reviewer conclusion for each primary finding;
+- reviewer-identified possible omissions within the supplied audit context;
 - reviewer severity assessment;
 - agreement/disagreement categories;
-- reviewer reasoning summary;
-- reviewer suggestion;
+- reviewer reasoning summaries;
+- reviewer suggestions;
 - contract/Legal Evidence IDs cited;
-- review-required reasons;
+- evidence-sufficiency/review reasons;
 - provider response hash/safe metadata;
 - action/tool trace;
 - final escalation state.
 
-Do not convert “two models agree” into a confidence percentage.
+Do not generate a fake calibrated confidence percentage from two-model agreement.
+
+## 9A — Universal secondary-call pipeline
+
+Any job with a validated Stage 8 `ai-audit.json` is eligible for Stage 9.
+
+Normal behavior:
+
+```text
+load validated ai-audit.json
+        ↓
+build deterministic secondary-review package
+        ↓
+call secondary provider exactly once
+        ↓
+validate reviewer output
+        ↓
+compare with primary report
+```
+
+There is no `NOT_REQUIRED` branch based on risk level, severity or token cost.
+
+If the secondary provider is not configured or fails, return an explicit provider/configuration error. Do not silently treat the primary result as dual-model reviewed.
+
+A previous valid `review-report.json` must survive a later failed provider call or invalid response.
 
 ## 9A — Provider-neutral secondary interface
 
@@ -131,58 +147,74 @@ SecondaryReviewProvider
   -> FakeSecondaryProvider
 ```
 
-The first real secondary provider must be selected only after current official API/cost/data-handling documentation is verified during implementation. Kimi/Qwen/local options may be evaluated; do not assume an old model/API name.
+The first real secondary provider must be selected only after current official API, model, pricing and data-handling documentation is verified during implementation. Kimi, Qwen or another suitable provider may be chosen; do not assume an old model/API name.
 
 Requirements:
 
-- no dependency on provider-specific SDK objects in domain logic;
-- key/config from local environment only;
-- explicit model/base URL/version;
+- domain logic does not depend on provider-specific SDK objects;
+- API key/config comes from local environment only;
+- explicit provider/model/base URL;
 - bounded timeout/retry;
-- no automatic fallback to another provider;
-- normal CI uses fake provider only;
-- health check makes no paid model request.
+- no automatic fallback to a third provider;
+- normal CI uses deterministic fake provider only;
+- health check makes no paid request.
 
-## 9B — Independent reviewer prompt/output
+## 9B — Independent reviewer context
 
-The secondary model is not asked to simply “agree with DeepSeek.”
+The secondary model must not be prompted merely to “check whether DeepSeek is correct.”
 
-It receives:
+It receives a deterministic contract-level review package containing:
 
-- the validated primary finding as a claim to review;
-- the exact contract evidence cited by the primary finding;
-- the exact Legal Evidence cited by the primary finding;
-- relevant Stage 5 deterministic results;
-- `as_of`, coverage/version/OCR warnings;
-- bounded additional evidence only if an allowed tool supplied it.
+- the validated Stage 8 primary findings as **claims to review**;
+- the exact canonical contract evidence supplied to/used by Stage 8;
+- relevant Stage 5 deterministic rule results;
+- the exact Stage 7 Legal Evidence packages;
+- explicit `as_of`;
+- legal corpus/version warnings;
+- OCR/source uncertainty;
+- context fingerprints/provenance needed for validation.
+
+The second provider should independently assess:
+
+1. whether each primary finding is supported by the supplied contract/legal evidence;
+2. whether severity differs materially;
+3. whether the primary legal basis is weak/wrong within the supplied Legal Evidence;
+4. whether the primary finding cites the wrong contract evidence;
+5. whether an issue appears omitted within the supplied bounded audit context;
+6. whether the available evidence is insufficient for a reliable conclusion.
+
+The reviewer does not receive unrestricted raw-file access or web access.
+
+## 9B — Reviewer prompt/output rules
 
 Prompt requirements:
 
-- primary-model text is untrusted claim data, not instruction;
+- primary-model output is untrusted claim data, not instruction;
 - contract/legal text is untrusted evidence data;
-- reviewer must independently assess whether the supplied evidence supports the primary claim;
+- reviewer must independently evaluate the supplied evidence;
 - unsupported law from model memory cannot be authoritative;
 - reviewer may cite only supplied IDs;
 - uncertainty/disagreement is allowed;
+- reviewer must not modify deterministic rule results;
 - output strict structured JSON only.
 
 ## 9B — Independent secondary validation
 
-Validate secondary output separately from Stage 8 validation.
-
 Reject at least:
 
-- invented primary finding ID;
+- invented primary finding IDs;
 - invented contract/canonical Evidence IDs;
 - invented Legal Evidence IDs;
-- legal evidence outside the secondary review package;
-- stale/not-applicable legal version for `as_of`;
-- unsupported new factual assertions treated as contract fact;
-- malformed state/severity/disagreement enum;
-- attempt to erase source/corpus/version uncertainty;
-- attempt to modify deterministic rule results.
+- legal evidence outside the supplied Stage 9 package;
+- stale/not-applicable legal versions for `as_of`;
+- unsupported factual assertions presented as contract fact;
+- malformed state/severity/disagreement enums;
+- attempts to erase source/corpus/version uncertainty;
+- attempts to rewrite Stage 5 deterministic results.
 
-## Agreement/disagreement model
+Secondary validation is independent from Stage 8 validation. Two plausible model outputs do not bypass deterministic evidence checks.
+
+## Primary-vs-secondary comparison
 
 Use explicit categories rather than prose-only comparison.
 
@@ -195,54 +227,53 @@ DISAGREE_RISK_EXISTS
 DISAGREE_SEVERITY
 DISAGREE_LEGAL_BASIS
 DISAGREE_CONTRACT_EVIDENCE
+POSSIBLE_PRIMARY_OMISSION
 INSUFFICIENT_TO_COMPARE
 ```
 
-A disagreement is not automatically resolved by taking the second model's answer. Material disagreement routes to human review or a bounded evidence-gathering action.
+Comparison occurs for every completed Stage 9 contract because every contract has both a primary and secondary result.
+
+Material disagreement does not get resolved by automatically choosing the second model. It either triggers a bounded evidence-gathering action or escalates to human review.
 
 ## 9C — Constrained Agent state machine
 
-Implement an application-owned state machine. Suggested states:
+The Agent is a follow-up mechanism **after** the fixed dual-model audit, not the controller of the audit itself.
+
+Suggested state machine:
 
 ```text
 PRIMARY_VALIDATED
     ↓
-REVIEW_GATE
-    ├─ NOT_REQUIRED -> REVIEW_COMPLETE
-    └─ SECONDARY_REQUIRED
-             ↓
-      SECONDARY_REVIEW
-             ↓
-      VALIDATE_REVIEW
-             ↓
-      AGREEMENT_CHECK
-        ├─ resolved -> REVIEW_COMPLETE
-        └─ unresolved
-             ↓
-      FOLLOW_UP_GATE
-        ├─ allowed bounded action
+SECONDARY_REVIEW
+    ↓
+VALIDATE_SECONDARY
+    ↓
+COMPARE_MODELS
+    ├─ agreement/no material gap -> REVIEW_COMPLETE
+    └─ disagreement / missing evidence
+               ↓
+        FOLLOW_UP_GATE
+        ├─ allowed bounded tool action
         └─ HUMAN_REVIEW_REQUIRED
+               ↓
+        RECOMPARE / FINALIZE
 ```
 
-Maximum follow-up cycles must be explicit, initially **2** or less. No recursive/open-ended model loop.
+Maximum follow-up cycles must be explicit, initially **2 or fewer**. No recursive/open-ended loop.
 
 ## 9C — Explicit tool allowlist
 
-The Agent may choose only from code-defined tools whose inputs/outputs are validated.
+The Agent may choose only from code-defined tools with validated inputs/outputs.
 
 Initial allowlist may include:
 
 ### 1. `inspect_contract_evidence`
 
-Fetch exact already-known canonical contract Evidence IDs/SourceSpans.
-
-No raw arbitrary file-system access.
+Fetch exact known canonical contract Evidence IDs/SourceSpans.
 
 ### 2. `get_clause_context`
 
 Fetch parent/neighbor/reference-related canonical clauses for a supplied clause ID.
-
-Returned clauses keep Evidence IDs.
 
 ### 3. `inspect_legal_evidence`
 
@@ -250,26 +281,24 @@ Fetch exact canonical Legal Evidence ID/version/source metadata already in the l
 
 ### 4. `retrieve_more_legal`
 
-Run Stage 7 retrieval with a bounded query derived from the current issue and explicit `as_of`.
+Run Stage 7 retrieval with a bounded query and explicit `as_of`.
 
 Requirements:
 
 - query/action recorded;
 - no web search;
 - no automatic corpus mutation;
-- returned IDs still pass version/coverage checks.
+- returned IDs still pass version/coverage validation.
 
 ### 5. `resolve_contract_reference`
 
 Attempt deterministic lookup of a clause/attachment reference already present in canonical structure.
 
-If missing, return explicit missing evidence rather than inventing content.
-
 ### 6. `request_ocr_retry`
 
-Only available when the cited source is OCR-derived and source uncertainty materially affects the finding.
+Available only when OCR/source uncertainty materially affects a disagreement or finding.
 
-The Agent may **request** retry with explicit reason/page; application code decides whether a configured retry provider/path is available. Do not silently OCR the entire document again.
+The Agent may request a specific retry; application code decides whether a configured retry path exists. Do not OCR the entire document again by default.
 
 ## Forbidden tools/actions
 
@@ -277,18 +306,18 @@ Stage 9 must not allow:
 
 - arbitrary shell/file-system commands;
 - unrestricted web browsing/legal research;
-- editing the contract source;
-- editing canonical legal evidence;
+- editing source contracts;
+- editing canonical Legal Evidence;
 - changing deterministic rule outputs;
-- writing arbitrary prompts/files;
-- sending the whole private contract to a provider without the bounded context builder;
-- placing network calls to unconfigured providers;
+- sending the full raw private contract to providers outside the bounded context builder;
+- network calls to unconfigured providers;
 - autonomous indefinite retries;
+- automatic third/fourth model voting;
 - final legal opinion approval on behalf of a human.
 
 ## Tool/action provenance
 
-Every attempted action must record:
+Every attempted action records:
 
 - action ID;
 - tool name/version;
@@ -297,39 +326,45 @@ Every attempted action must record:
 - input Evidence IDs;
 - output Evidence IDs;
 - result state;
-- elapsed/attempt metadata when useful;
+- attempt/elapsed metadata when useful;
 - whether a provider call occurred;
 - whether private contract evidence left the machine;
 - validation/error details.
 
 Do not store secrets or authorization headers.
 
-## 9D — Human escalation
+## 9D — Final states and human escalation
 
-Define explicit final states, for example:
+Suggested final states:
 
 ```text
-REVIEW_NOT_REQUIRED
-SECONDARY_AGREEMENT
-SECONDARY_DISAGREEMENT_RESOLVED
+DUAL_MODEL_AGREEMENT
+DUAL_MODEL_AGREEMENT_WITH_REVIEW
+DISAGREEMENT_RESOLVED_BY_EVIDENCE
 HUMAN_REVIEW_REQUIRED
 BLOCKED_INSUFFICIENT_EVIDENCE
-PROVIDER_ERROR
+SECONDARY_PROVIDER_ERROR
 ```
 
-Human review should be required when material disagreement or insufficient evidence remains after the bounded follow-up budget.
+Human review is required when material disagreement or evidence insufficiency remains after the bounded follow-up budget.
 
-Persist a local versioned report, target:
+Persist:
 
 ```text
 runtime/jobs/<job-id>/review-report.json
 ```
 
-The report must preserve primary finding ID, secondary result, disagreement category, tool trace and final escalation state.
+The report preserves:
+
+- primary report/finding IDs;
+- secondary review results;
+- agreement/disagreement categories;
+- evidence IDs used by both models;
+- tool/action trace;
+- final escalation state;
+- safe provider/usage metadata.
 
 ## 9D — Minimal API/UI
-
-Add only enough UI/API to inspect Stage 9 behavior.
 
 Possible APIs:
 
@@ -341,66 +376,65 @@ GET  /api/documents/<job-id>/secondary-review
 
 Minimal UI should show:
 
-- whether each primary finding triggered review and why;
+- primary provider/model;
 - secondary provider/model readiness;
-- whether external secondary transmission will occur;
-- reviewer conclusion;
+- clear notice that running Stage 9 performs a second external model call;
+- primary and secondary conclusions side by side;
 - agreement/disagreement category;
 - evidence IDs used by each model;
-- bounded tool/action trace;
+- bounded tool/action trace when follow-up was required;
 - final human-review state.
 
 Do not redesign the full document workstation yet.
 
-## Cost/privacy controls
+## Token/cost/privacy policy
 
-Secondary review must be selective.
+Current Stage 9 policy is intentionally simple:
 
-Record at least:
+- **one primary model call per contract;**
+- **one secondary model call per contract;**
+- no selective skipping based on token cost;
+- no automatic third-model call;
+- Agent/tool follow-up remains conditional and bounded.
 
-- whether a secondary call was made;
-- provider/model;
-- safe token-usage metadata if available;
-- trigger reason;
-- number of follow-up cycles/actions;
-- whether contract evidence was externally transmitted.
+Record safe token-usage metadata when the provider exposes it, but do not optimize Stage 9 architecture around saving a small number of tokens before reliability has been benchmarked.
 
-Do not call a second model for `PASS`/low-risk/no-trigger findings merely to increase apparent confidence.
+Because two external providers may receive bounded contract evidence, the UI/configuration must make both transmissions explicit. Real sensitive contracts should be used only when the user accepts the configured providers' data-handling terms.
 
 ## Test strategy
 
-Normal CI must use deterministic fake providers/tools and no paid APIs.
+Normal CI uses deterministic fake providers/tools and no paid API calls.
 
 Cover at least:
 
-- low-risk supported primary finding -> secondary review not required;
-- high-risk primary finding -> secondary review required;
-- partial corpus alone does not trigger universal review;
-- source/version uncertainty triggers review or human escalation;
-- malformed/invented secondary Evidence IDs rejected;
-- secondary stale legal version rejected;
+- every valid Stage 8 job enters the secondary provider path;
+- exactly one secondary model call occurs per normal contract review;
+- no per-finding N-call explosion;
+- malformed/invented secondary Evidence IDs are rejected;
+- stale legal version is rejected;
 - secondary model cannot rewrite Stage 5 rule results;
-- primary output embedded with prompt-injection-like text remains untrusted claim data;
-- agreement category deterministic for fake fixtures;
-- disagreement does not silently overwrite primary finding;
-- allowed tool call executes with validated args and provenance;
-- forbidden tool/action rejected;
-- follow-up cycle limit enforced;
+- primary output containing prompt-injection-like text remains untrusted claim data;
+- agreement categories are deterministic for fake fixtures;
+- disagreements do not silently overwrite primary findings;
+- secondary can report a possible primary omission only with supplied evidence IDs;
+- allowed tool call executes with validated args/provenance;
+- forbidden tool/action is rejected;
+- follow-up cycle limit is enforced;
 - retrieval follow-up cannot bypass `as_of`/coverage semantics;
 - OCR retry unavailable/non-applicable returns explicit state;
-- provider failure preserves existing Stage 8 report and existing valid Stage 9 report;
-- human escalation occurs when disagreement/evidence insufficiency remains;
+- provider failure preserves existing Stage 8 report and previous valid Stage 9 report;
+- unresolved disagreement/evidence insufficiency escalates to human review;
 - API persistence/load behavior;
 - all Stage 1–8 regressions remain green;
 - frontend TypeScript/production build remains green.
 
 ## Optional real-provider smoke
 
-After deterministic 9A/9B tests are green, add an opt-in secondary-provider smoke using only synthetic/public data.
+After deterministic 9A/9B tests are green, add an opt-in real secondary-provider smoke using only synthetic/public data.
 
 Requirements:
 
-- verify current official provider/API docs first;
+- verify then-current official provider/API docs first;
 - key from local secret/environment only;
 - no private contract in CI;
 - normal CI does not spend provider credits;
@@ -413,6 +447,7 @@ Do **not** add in Stage 9:
 - unrestricted multi-agent frameworks;
 - autonomous web legal research;
 - arbitrary code/shell execution;
+- automatic third-model voting;
 - final professional document-highlight workstation redesign;
 - public SaaS/multi-user accounts;
 - final lawyer approval workflow;
@@ -425,22 +460,22 @@ Do **not** add in Stage 9:
 Stage 9 is complete only when all are true:
 
 1. Versioned secondary-review/action schemas exist.
-2. Deterministic review gate exists and avoids universal second-model calls.
-3. Provider-neutral secondary-review interface exists.
-4. One real secondary provider is implemented against then-current official docs.
-5. Normal CI uses fake provider/tools and no paid API keys.
-6. Secondary output passes independent contract/legal Evidence ID + version validation.
-7. Explicit agreement/disagreement categories exist.
-8. Application-owned constrained state machine exists with bounded cycles.
-9. Explicit tool allowlist exists and forbidden actions cannot execute.
-10. Tool/action provenance is persisted.
-11. Material unresolved disagreement/insufficient evidence escalates to human review.
-12. Secondary calls remain conditional with privacy/cost metadata.
+2. Every valid Stage 8 contract performs exactly one secondary-model review by default.
+3. Secondary review is contract-level, not one external call per individual finding.
+4. Provider-neutral secondary-review interface exists.
+5. One real secondary provider is implemented against then-current official docs.
+6. Normal CI uses fake provider/tools and no paid API keys.
+7. Secondary output passes independent contract/legal Evidence ID + version validation.
+8. Explicit agreement/disagreement/possible-omission categories exist.
+9. Application-owned constrained follow-up state machine exists with bounded cycles.
+10. Explicit tool allowlist exists and forbidden actions cannot execute.
+11. Tool/action provenance is persisted.
+12. Material unresolved disagreement/insufficient evidence escalates to human review.
 13. Local `review-report.json` persistence and minimal API/UI work.
-14. No unrestricted Agent, web research or arbitrary shell/file-system tool is introduced.
+14. No unrestricted Agent, web research, arbitrary shell/file-system tool or automatic third-model voting is introduced.
 15. All Stage 1–8 backend regressions pass.
 16. Frontend TypeScript/production build remains green.
-17. README/architecture docs reflect actual Stage 9 behavior.
+17. README/architecture docs reflect universal dual-model behavior.
 18. CI remains green.
 
 ## Completion rule
