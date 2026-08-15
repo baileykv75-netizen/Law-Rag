@@ -264,3 +264,31 @@ Kimi K3 is used as an independent contract-level reviewer after a validated Stag
 The initial provider request uses JSON Mode (`response_format={"type":"json_object"}`), `reasoning_effort="max"`, non-streaming output and `max_completion_tokens`. Law-Rag deliberately keeps deterministic Pydantic/evidence/version validation as the authoritative output boundary rather than relying on provider-side formatting alone. Kimi `reasoning_content` is not persisted or exposed in the normalized review result.
 
 The provider remains behind `SecondaryReviewProvider`; no Kimi-specific SDK objects are allowed in domain logic, and there is no hidden fallback to another reviewer. Normal CI uses fake providers plus an intercepted HTTP contract test, while real Kimi calls remain explicit opt-in network/paid tests using synthetic/public data only.
+
+## D-033 — Stage 10 workstation navigation is provider-free and bounded to persisted artifacts
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+The professional workstation is a presentation/review layer over persisted Stage 2–9 artifacts. Opening a job, filtering findings, rendering a page, resolving a Contract Evidence ID, opening Legal Evidence, or reading human-review history must never implicitly execute OCR, legal retrieval, DeepSeek, Kimi or the constrained Agent.
+
+The read-only workspace API validates artifact presence/state without creating phantom job directories. Source viewing accepts only a job ID plus validated 1-based page number; PDF pages use the already-approved local PDFium renderer and ignored viewer cache. Contract Evidence lookup accepts an Evidence ID and resolves it through the job's validated local evidence artifacts. Arbitrary browser-supplied local filesystem paths are not accepted.
+
+Complete-job and partial-job regression tests deliberately fail if workspace loading attempts to resolve either external model provider.
+
+## D-034 — Human review is append-only, fingerprint-bound, and cannot mutate audit evidence/results
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 10 stores human decisions separately in:
+
+```text
+runtime/jobs/<job-id>/human-review.json
+```
+
+A human decision is an additional review record, not an edit to the audit result. Each POST appends a revision with target finding/omission ID, state, note, timestamp, server-derived Contract/Legal Evidence snapshot and the SHA-256 fingerprint of the current validated `review-report.json`.
+
+If `review-report.json` later changes, earlier human revisions remain in history and are returned as stale. They are never silently promoted to approval of the changed context.
+
+Human review writes are restricted to `human-review.json`. Regression coverage asserts that `review-report.json`, `contract.json`, `audit-rules.json`, `ai-audit.json`, `secondary-review.json`, `legal.db` and `retrieval.db` remain byte-for-byte unchanged after a human decision. No external provider call is allowed from human-review GET/POST actions.
