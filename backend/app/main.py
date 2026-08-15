@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -20,9 +21,24 @@ from .contract_structure import (
     structure_summary,
 )
 from .document_ingestion import DocumentProcessingError, inspect_document
+from .legal.models import (
+    ArticleVersionResolution,
+    AuthoritySummary,
+    LegalEvidenceRecord,
+    LegalStoreSummary,
+)
+from .legal.store import (
+    LegalStoreError,
+    get_article_for_version,
+    get_authority,
+    get_evidence,
+    get_summary,
+    list_authorities,
+    resolve_version,
+)
 from .models import IngestResponse, OcrRunResult, PageEvidenceSummary
 from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
-from .storage import job_upload_dir
+from .storage import job_upload_dir, legal_db_path
 
 APP_NAME = "Law-Rag Local API"
 CHUNK_SIZE = 1024 * 1024
@@ -36,7 +52,7 @@ EXPECTED_MEDIA_TYPES = {
     ".png": {"image/png", "application/octet-stream"},
 }
 
-app = FastAPI(title=APP_NAME, version="0.5.0")
+app = FastAPI(title=APP_NAME, version="0.6.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -90,6 +106,64 @@ def _signature_matches(extension: str, header: bytes) -> bool:
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service=APP_NAME)
+
+
+@app.get("/api/legal/summary", response_model=LegalStoreSummary)
+def legal_summary() -> LegalStoreSummary:
+    """Inspect whether the local versioned legal store has been built."""
+
+    try:
+        return get_summary(legal_db_path())
+    except LegalStoreError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.get("/api/legal/authorities", response_model=list[AuthoritySummary])
+def legal_authorities() -> list[AuthoritySummary]:
+    try:
+        return list_authorities(legal_db_path())
+    except LegalStoreError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.get("/api/legal/authorities/{authority_id}", response_model=AuthoritySummary)
+def legal_authority(authority_id: str) -> AuthoritySummary:
+    try:
+        return get_authority(legal_db_path(), authority_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LegalStoreError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.get("/api/legal/evidence/{legal_evidence_id}", response_model=LegalEvidenceRecord)
+def legal_evidence(legal_evidence_id: str) -> LegalEvidenceRecord:
+    try:
+        return get_evidence(legal_db_path(), legal_evidence_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LegalStoreError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.get("/api/legal/resolve/{authority_id}", response_model=ArticleVersionResolution)
+def legal_resolve(
+    authority_id: str,
+    as_of: date = Query(description="Date for deterministic legal-version resolution"),
+    article_token: str | None = Query(default=None, description="Optional exact article token, e.g. 第五百八十五条"),
+) -> ArticleVersionResolution:
+    try:
+        resolution = resolve_version(legal_db_path(), authority_id, as_of)
+        article = None
+        if resolution.version is not None and article_token:
+            article = get_article_for_version(
+                legal_db_path(), authority_id, resolution.version.version_id, article_token
+            )
+        return ArticleVersionResolution(resolution=resolution, article=article)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LegalStoreError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
 @app.post("/api/documents", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
