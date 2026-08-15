@@ -51,6 +51,12 @@ class AgentFollowUpDecision(str, Enum):
     FOLLOW_UP_REQUIRED = "FOLLOW_UP_REQUIRED"
 
 
+class AgentPlanState(str, Enum):
+    NOT_REQUIRED = "NOT_REQUIRED"
+    ACTIONS_PLANNED = "ACTIONS_PLANNED"
+    HUMAN_REVIEW_REQUIRED = "HUMAN_REVIEW_REQUIRED"
+
+
 class AgentToolName(str, Enum):
     INSPECT_CONTRACT_EVIDENCE = "inspect_contract_evidence"
     GET_CLAUSE_CONTEXT = "get_clause_context"
@@ -133,3 +139,13 @@ class AgentActionRecord(BaseModel):
     provider_call_occurred: bool = False
     private_contract_evidence_left_machine: bool = False
     validation_or_error: str | None = None
+
+
+class AgentFollowUpPlan(BaseModel):
+    policy_version: str = AGENT_POLICY_VERSION
+    job_id: str
+    comparison_engine_version: str
+    state: AgentPlanState
+    max_cycles: int = MAX_FOLLOW_UP_CYCLES
+    actions: list[AgentActionRecord] = Field(default_factory=list, max_length=MAX_FOLLOW_UP_CYCLES)
+    reasons: list[str] = Field(default_factory=list)
