@@ -80,30 +80,59 @@ Known limitations intentionally carried forward:
 
 ## Stage 6 — Versioned legal knowledge base
 
-Status: active.
+Status: complete.
 
-Goal: build a source-grounded legal-authority layer before any retrieval or LLM legal reasoning.
+Validated:
 
-Target authority classes initially include nationally applicable contract-relevant laws, administrative regulations and judicial interpretations from authoritative public sources.
+- dedicated legal-domain schema `1.0.0`, separate from contract/rule schemas;
+- explicit authority classes, version statuses and coverage types;
+- authority → version → article identity in local SQLite;
+- unique authority/version/article constraints and foreign-key integrity;
+- exact article text, source SHA-256 and article SHA-256 persistence;
+- deterministic Legal Evidence IDs such as `legal:<authority>:<version>:<article>`;
+- line-start Chinese article segmentation without falsely splitting inline article references;
+- structural chapter/section context retained for articles;
+- manifest-driven deterministic import rather than live scraping at application startup;
+- official-source host policy for real seed data, with explicit testing override for fictional fixtures;
+- source hash/article-count validation and same-version source-change rejection;
+- atomic rebuild through a temporary SQLite database and replacement only after successful validation;
+- normal import transaction rollback on critical conflicts;
+- historical versions retained and queryable;
+- half-open effective interval resolution `effective_date <= as_of < end_date_exclusive`;
+- explicit `RESOLVED`, `NO_APPLICABLE_VERSION`, and `AMBIGUOUS` version-resolution states;
+- machine-readable import reports and local `runtime/legal/legal.db` storage;
+- Windows `rebuild-legal-seed.bat` command;
+- legal summary/authority/evidence/version-resolution APIs;
+- minimal legal-knowledge health UI;
+- small verified contract-relevant seed with coverage explicitly marked `CURATED_EXCERPT`;
+- seed contains 8 selected Civil Code contract articles and 7 selected SPC contract-general interpretation articles;
+- regression coverage for parsing, inline references, stable IDs, rebuild idempotence, hash changes, duplicate identities, missing metadata, history, overlap ambiguity, rollback, malformed snapshots, curated seed import and APIs;
+- all earlier regressions and frontend production build green in GitHub Actions.
 
-Required metadata includes:
+Known limitation intentionally recorded before release hardening:
 
-- stable internal authority/version/article IDs;
-- title and authority type/level;
-- issuing body;
-- promulgation/publication date;
-- effective date;
-- amendment/repeal/validity status when available;
-- jurisdiction/scope;
-- article number and exact article text;
-- source URL/source identity and retrieval/import provenance;
-- relationships between historical versions.
+- on a failed multi-record non-rebuild transaction, SQLite rollback is correct, but an intermediate failure report may retain an `IMPORTED` state for a record that was subsequently rolled back. This report-state wording must be refined before release packaging; it does not alter the authoritative database state.
 
-Stage 6 must not build embeddings or RAG yet. The first goal is a trustworthy, version-aware legal corpus with deterministic import/validation.
+Key boundary: absence from a `CURATED_EXCERPT` seed is never evidence that the law contains no such rule. Coverage metadata must propagate into retrieval.
 
 ## Stage 7 — Hybrid legal RAG
 
-Goal: retrieve the right legal authority for a contract issue using exact citation lookup, lexical/BM25 retrieval, semantic/vector retrieval, and fusion/reranking. Retrieval recall must be measured before model audit quality is attributed to the LLM.
+Status: active.
+
+Goal: retrieve the right versioned Legal Evidence IDs for a contract issue while preserving `as_of`, source identity, version status and corpus coverage.
+
+Planned retrieval channels:
+
+- exact authority/article/citation lookup;
+- lexical/BM25 retrieval;
+- semantic/vector retrieval behind a replaceable embedding boundary;
+- deterministic candidate fusion/reranking;
+- version filtering/resolution before evidence can be returned;
+- coverage-aware `INSUFFICIENT_CORPUS` / ambiguity states rather than false negatives.
+
+Retrieval quality must be measured on labeled fictional/curated questions (for example Recall@K) before later LLM audit quality is attributed to the model.
+
+Stage 7 does not add DeepSeek/Kimi/Qwen audit reasoning.
 
 ## Stage 8 — Primary LLM audit reasoning
 
@@ -129,7 +158,7 @@ Every stage must preserve:
 - evidence traceability;
 - explicit uncertainty/failure states;
 - no secrets or private contracts in Git;
-- fictional public fixtures only;
+- fictional public fixtures only unless public legal data is explicitly verified/curated;
 - replaceable providers;
 - bounded stage scope;
 - automated regression coverage for deterministic behavior;
