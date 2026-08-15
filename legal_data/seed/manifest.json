@@ -1,0 +1,83 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-civil-code",
+        "title": "中华人民共和国民法典",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会",
+        "document_number": "中华人民共和国主席令第四十五号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-01-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2020-05-28",
+      "effective_date": "2021-01-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "CURATED_EXCERPT",
+      "coverage_note": "Stage 6 contract-core excerpt only; this record is not the complete Civil Code and must never be treated as complete-authority coverage.",
+      "source_refs": [
+        {
+          "name": "国家法律法规数据库：中华人民共和国民法典",
+          "url": "https://flk.npc.gov.cn/detail?id=ff808081729d1efe01729d50b5c500bf&title=中华人民共和国民法典",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中央网信办转载新华社：中华人民共和国民法典（第三编合同）",
+          "url": "https://www.cac.gov.cn/2020-06/01/c_15925617772683192.htm",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "civil-code-contract-core.txt",
+      "expected_source_sha256": "f5a5cdac62a06cfdb51c404c10d9bd2393b2eab5eb182e82a2f63955a47aa642",
+      "expected_article_count": 8,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "Core contract formation, standard terms, effectiveness, performance, breach, liquidated damages, and deposit rules needed for later contract auditing.",
+      "verified_on": "2026-08-15",
+      "verification_note": "National Laws and Regulations Database identifies the Civil Code as effective, promulgated 2020-05-28 and effective 2021-01-01; selected article text was cross-checked against the official CAC/Xinhua publication."
+    },
+    {
+      "authority": {
+        "authority_id": "spc-civil-code-contract-general-interpretation",
+        "title": "最高人民法院关于适用《中华人民共和国民法典》合同编通则若干问题的解释",
+        "authority_type": "JUDICIAL_INTERPRETATION",
+        "issuing_body": "最高人民法院",
+        "document_number": "法释〔2023〕13号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2023-12-05",
+      "status": "EFFECTIVE",
+      "publication_date": "2023-12-04",
+      "effective_date": "2023-12-05",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "CURATED_EXCERPT",
+      "coverage_note": "Stage 6 contract-core excerpt only; seven selected articles are stored, not the complete 69-article interpretation.",
+      "source_refs": [
+        {
+          "name": "最高人民法院：合同编通则司法解释",
+          "url": "https://www.court.gov.cn/zixun/xiangqing/419382.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "最高人民法院公报：合同编通则司法解释",
+          "url": "https://gongbao.court.gov.cn/Details/f4722cf61c92a585f04b2ecd334f5b.html",
+          "role": "CROSS_CHECK"
+        }
+      ],
+      "snapshot_path": "spc-contract-general-interpretation-core.txt",
+      "expected_source_sha256": "686ea8aa877b4c72f5aad302687019f5bd8396f1b48cd98aa90154236f34aaa2",
+      "expected_article_count": 7,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "Selected interpretation provisions address contract interpretation, formation, standard terms, mandatory rules, liquidated damages, and temporal application.",
+      "verified_on": "2026-08-15",
+      "verification_note": "Supreme People's Court publication states the interpretation was adopted 2023-05-23, promulgated under 法释〔2023〕13号 and effective 2023-12-05; official court sources continue to publish it as current law."
+    }
+  ]
+}
