@@ -30,20 +30,7 @@ Validated: provider-neutral OCR boundary, PaddleOCR 3.7.0 local CPU adapter, PP-
 
 Status: complete.
 
-Validated:
-
-- canonical schema `1.0.0`;
-- unified native/OCR evidence stream;
-- reusable source spans with native offsets or OCR coordinates/confidence;
-- Chinese/Arabic clause hierarchy and cross-page continuation;
-- party/date/money/percentage/identifier mentions;
-- attachment/clause references;
-- conservative unresolved/table-candidate states;
-- `contract.json` persistence and source fingerprint;
-- incomplete OCR refusal;
-- POST/GET structure APIs;
-- minimal structure UI;
-- deterministic/idempotent tests and CI.
+Validated: canonical schema `1.0.0`, unified native/OCR evidence stream, reusable source spans, clause hierarchy/cross-page continuation, party/date/money/percentage/identifier mentions, references, conservative unresolved/table-candidate states, `contract.json`, incomplete-OCR refusal, APIs/UI and deterministic regressions.
 
 Key boundary: downstream rules, RAG, LLMs and Agents consume the canonical contract instead of independently reinterpreting raw PDFs.
 
@@ -51,21 +38,7 @@ Key boundary: downstream rules, RAG, LLMs and Agents consume the canonical contr
 
 Status: complete.
 
-Validated:
-
-- versioned rule-result schema and explicit rule registry;
-- `PASS`, `FAIL`, `REVIEW`, `NOT_APPLICABLE`, plus preserved `deterministic_state`;
-- explicit audit profile `basic-bilateral-v1`;
-- conservative payment-percentage grouping;
-- repeated labelled amount/party/identifier/date consistency checks;
-- signing/effective chronology review without claiming retroactive effect is legally invalid;
-- OCR uncertainty propagation into final `REVIEW` state;
-- Chinese uppercase RMB detection routed to review rather than weak conversion;
-- rule exception isolation;
-- canonical object IDs, SourceSpans, Evidence IDs and observed values retained;
-- `runtime/jobs/<job-id>/audit-rules.json` persistence;
-- POST/GET deterministic-audit APIs and minimal UI;
-- regressions/CI green.
+Validated: versioned rule results, explicit audit profile, `PASS`/`FAIL`/`REVIEW`/`NOT_APPLICABLE`, conservative arithmetic/grouping checks, repeated field consistency, chronology review, OCR uncertainty propagation, explicit parser limitations, local `audit-rules.json`, APIs/UI and regressions.
 
 Key boundary: rule `FAIL` is a configured machine-condition failure, not a legal conclusion.
 
@@ -73,24 +46,7 @@ Key boundary: rule `FAIL` is a configured machine-condition failure, not a legal
 
 Status: complete.
 
-Validated:
-
-- dedicated legal-domain schema `1.0.0`;
-- authority -> version -> article identity in local SQLite;
-- authority/version/article constraints and foreign-key integrity;
-- exact article text, source SHA-256 and article SHA-256 persistence;
-- deterministic Legal Evidence IDs;
-- Chinese article segmentation without false inline-reference splitting;
-- manifest-driven import and official-source provenance policy;
-- source hash/article-count validation and same-version change rejection;
-- atomic rebuild and transactional imports;
-- historical versions retained/queryable;
-- half-open `effective_date <= as_of < end_date_exclusive` resolution;
-- explicit `RESOLVED`, `NO_APPLICABLE_VERSION`, `AMBIGUOUS` states;
-- Windows legal-seed rebuild command;
-- legal inspection APIs and health UI;
-- verified public `CURATED_EXCERPT` seed: 2 authorities / 2 versions / 15 articles;
-- regressions/CI green.
+Validated: dedicated legal schema, authority -> version -> article identity in SQLite, deterministic Legal Evidence IDs, hashes/provenance, deterministic Chinese article parsing, manifest import/rebuild, historical versions, explicit `as_of` resolution, legal APIs/UI and verified public `CURATED_EXCERPT` seed with 2 authorities / 2 versions / 15 articles.
 
 Known hardening item: a failed multi-record normal-import report may contain an intermediate `IMPORTED` label for a row subsequently rolled back; authoritative SQLite rollback remains correct. Refine report wording before release packaging.
 
@@ -102,59 +58,71 @@ Status: complete.
 
 Validated:
 
-- retrieval schema/engine `1.0.0` / `stage7-1.0.0`;
-- explicit `query`, `as_of`, top-K, authority/article/Legal-Evidence hints and channel provenance;
-- deterministic exact authority/article lookup before probabilistic ranking;
-- normalized Chinese article-reference handling and exact-hit priority;
-- exact lookup still works when derivative retrieval index is absent;
-- SQLite FTS5 trigram lexical index with `bm25()` ranking;
-- lexical index rebuilt only from canonical Stage 6 Legal Evidence;
-- canonical legal-source fingerprint and stale-index detection;
-- provider-neutral embedding interface;
-- deterministic fake embedding provider for CI;
-- optional local `BAAI/bge-small-zh-v1.5` semantic provider;
-- vector metadata records provider/model/dimension and Legal Evidence identity;
-- real Windows semantic stack/model/index/query smoke verified through opt-in GitHub Actions;
-- weighted reciprocal-rank fusion with duplicate merge and exact-hit pinning;
-- final evidence filtered by Stage 6 `as_of` version applicability;
-- explicit `PARTIAL_COVERAGE`, `INSUFFICIENT_CORPUS`, `NO_APPLICABLE_VERSION`, `VERSION_AMBIGUOUS`, and `INDEX_NOT_READY` semantics;
-- explicit requested article missing from partial corpus cannot be hidden by nearby BM25/vector candidates;
-- retrieval candidates retain per-channel rank/raw score/contribution, fused score, version and coverage metadata;
-- `GET /api/legal/retrieval/summary` and `POST /api/legal/retrieve`;
-- local Stage 7 retrieval inspection UI;
-- Windows `build-retrieval-index.bat`, `setup-rag-semantic-cpu.bat`, and `build-retrieval-index-semantic.bat` flows;
-- public 10-case retrieval benchmark over the checked-in seed;
-- CI gate `Recall@5 >= 0.90` and `MRR >= 0.80`;
-- all Stage 1–6 regressions and frontend production build green.
+- deterministic exact citation/article retrieval;
+- SQLite FTS5 trigram + `bm25()` lexical retrieval;
+- provider-neutral embeddings and optional local `BAAI/bge-small-zh-v1.5`;
+- real Windows BGE semantic smoke;
+- weighted reciprocal-rank fusion with exact-hit priority;
+- legal-source fingerprint/stale index detection;
+- `as_of` applicability filtering;
+- explicit partial/insufficient/version-ambiguous/index-unavailable states;
+- retrieval API/UI;
+- public retrieval benchmark and CI gates `Recall@5 >= 0.90`, `MRR >= 0.80`;
+- all prior regressions/builds green.
 
-Key boundary: a retrieval score is not a legal conclusion or calibrated correctness probability. No-hit in a partial corpus remains insufficient evidence, not proof of legal absence.
+Key boundary: retrieval score is not a legal conclusion. No-hit in a partial corpus remains insufficient evidence.
 
 ## Stage 8 — Primary LLM audit reasoning
 
-Status: active.
+Status: complete.
 
-Goal: add one provider-neutral primary generative audit layer, with DeepSeek planned first after current official API verification.
+Validated:
 
-The model may reason only over a deterministic package containing canonical contract evidence, deterministic rule results, version-aware Stage 7 Legal Evidence, explicit `as_of`, and source/corpus uncertainty.
+- dedicated AI-audit/context schemas `1.0.0` and engine `stage8-1.0.0`;
+- provider-neutral `PrimaryAuditProvider` boundary;
+- DeepSeek V4-Pro adapter re-verified against current official API documentation on 2026-08-15;
+- OpenAI-compatible HTTP integration with JSON Output, thinking enabled, high reasoning effort and bounded retry/timeout;
+- deterministic fake/static providers for normal CI with no external-model credits;
+- deterministic bounded legal-topic/context builder over canonical clauses, non-PASS rules and Stage 7 retrieval;
+- raw PDF is not independently reread by the model and the whole contract is not dumped by default;
+- contract/legal text is marked untrusted data and prompt-injection-like clauses are regression-tested;
+- strict JSON/Pydantic output validation;
+- invented issue IDs, canonical object IDs, contract Evidence IDs and Legal Evidence IDs are rejected;
+- a Legal Evidence ID must belong to the cited issue package;
+- `SUPPORTED_FINDING` must cite both contract and legal evidence;
+- legal-version applicability is rechecked after model output against `as_of`;
+- an intentionally injected stale historical legal version is rejected by regression test;
+- corpus/version/OCR uncertainty propagates into evidence-sufficiency/review state;
+- `NO_FINDING` cannot become a confident negative conclusion when evidence coverage is incomplete;
+- atomic local `runtime/jobs/<job-id>/ai-audit.json` persistence only after validation;
+- provider/model failures and invalid responses cannot overwrite a previous valid report;
+- DeepSeek `reasoning_content` is not persisted;
+- provider configuration health plus POST/GET AI-audit APIs;
+- minimal primary-audit UI with explicit external-transmission warning;
+- mocked DeepSeek HTTP request-contract regression test;
+- opt-in paid/network DeepSeek smoke using synthetic empty context only, skipped by default;
+- normal backend CI requires no model key and frontend `build` includes TypeScript `tsc --noEmit`;
+- all Stage 1–7 regressions and frontend production build green.
 
-Stage 8 must add:
-
-- versioned AI-audit schema;
-- provider-neutral primary-audit interface;
-- real DeepSeek adapter plus deterministic fake provider for normal CI;
-- strict structured model output;
-- deterministic validation that rejects invented contract/Legal Evidence IDs;
-- explicit insufficient-evidence/review states;
-- prompt-injection regression cases where contract text remains untrusted data;
-- local `ai-audit.json` provenance/persistence;
-- minimal primary-audit API/UI;
-- optional real-provider smoke using only fictional/public data.
-
-Stage 8 does not add a second reviewer model or Agent orchestration.
+Key boundary: prompt wording is not the trust mechanism. Deterministic post-model evidence/version validation is authoritative. Stage 8 uses one primary model only.
 
 ## Stage 9 — Constrained Agent and secondary review
 
-Goal: permit bounded adaptive actions such as OCR retry, extra retrieval, referenced-clause/attachment lookup, secondary review, disagreement detection and human escalation. Mandatory audit stages remain application-controlled.
+Status: active.
+
+Goal: add bounded adaptive actions and one secondary-review provider without surrendering control of the mandatory audit pipeline.
+
+Planned scope includes:
+
+- explicit secondary-review provider boundary (Kimi/Qwen/local provider may be evaluated; no implicit provider choice);
+- selective review triggers for high-risk, low-evidence, source uncertainty, retrieval ambiguity or primary/reviewer disagreement;
+- bounded tool allowlist for extra retrieval, referenced clause/attachment lookup, source-evidence inspection and explicit OCR retry requests;
+- application-controlled state machine; the Agent may choose among allowed follow-up actions but may not skip mandatory extraction/rule/retrieval/validation stages;
+- primary/reviewer disagreement representation and human escalation;
+- strict evidence/citation validation applied independently to reviewer output;
+- cost/privacy controls so second-model calls are conditional rather than universal;
+- deterministic fake-agent/provider tests and opt-in real-provider smoke paths;
+- no final professional workstation redesign yet.
 
 ## Stage 10 — Professional audit workstation UI
 
@@ -169,6 +137,7 @@ Goal: measure OCR, structure extraction, retrieval recall, audit precision/recal
 Every stage must preserve:
 
 - local-first private-data handling;
+- explicit disclosure before external model transmission;
 - evidence traceability;
 - explicit uncertainty/failure states;
 - no secrets or private contracts in Git;
@@ -176,4 +145,6 @@ Every stage must preserve:
 - replaceable providers;
 - bounded stage scope;
 - automated regression coverage for deterministic behavior;
-- no legal conclusion without traceable legal authority once legal reasoning begins.
+- no legal conclusion without traceable legal authority once legal reasoning begins;
+- post-model evidence/version validation before persistence;
+- mandatory pipeline stages remain application-controlled.
