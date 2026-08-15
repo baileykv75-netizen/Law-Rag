@@ -52,12 +52,14 @@ def build_release_metadata(
     dependency_inventory_path: Path = DEFAULT_DEPENDENCY_INVENTORY,
     python_lock_path: Path = DEFAULT_PYTHON_LOCK,
     frontend_lock_path: Path = DEFAULT_FRONTEND_LOCK,
+    pyinstaller_version: str | None = None,
 ) -> dict[str, object]:
     source_commit_sha = source_commit_sha.strip().lower()
     if len(source_commit_sha) != 40 or any(ch not in "0123456789abcdef" for ch in source_commit_sha):
-        raise ValueError("source_commit_sha must be a full 40-character lowercase/uppercase Git SHA-1 hex value.")
+        raise ValueError("source_commit_sha must be a full 40-character Git SHA-1 hex value.")
 
     public_assets = json.loads(public_assets_metadata_path.read_text(encoding="utf-8"))
+    resolved_pyinstaller = pyinstaller_version or importlib_metadata.version("pyinstaller")
     metadata: dict[str, object] = {
         "schema_version": "1.0.0",
         "release_profile": "stage11d-windows-base-onedir",
@@ -69,7 +71,7 @@ def build_release_metadata(
             "python_implementation": platform.python_implementation(),
             "node": node_version,
             "npm": npm_version,
-            "pyinstaller": importlib_metadata.version("pyinstaller"),
+            "pyinstaller": resolved_pyinstaller,
         },
         "frontend": {
             "package_lock_sha256": _sha256(frontend_lock_path),
