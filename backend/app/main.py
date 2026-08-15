@@ -3,12 +3,14 @@ from __future__ import annotations
 import mimetypes
 from pathlib import Path
 from typing import Annotated
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .document_ingestion import DocumentProcessingError, inspect_document
+from .models import IngestResponse, PageEvidenceSummary
 from .storage import job_upload_dir
 
 APP_NAME = "Law-Rag Local API"
@@ -23,7 +25,7 @@ EXPECTED_MEDIA_TYPES = {
     ".png": {"image/png", "application/octet-stream"},
 }
 
-app = FastAPI(title=APP_NAME, version="0.1.0")
+app = FastAPI(title=APP_NAME, version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -36,15 +38,6 @@ app.add_middleware(
 class HealthResponse(BaseModel):
     status: str
     service: str
-
-
-class IngestResponse(BaseModel):
-    job_id: UUID
-    filename: str
-    media_type: str
-    size_bytes: int
-    status: str
-    storage_scope: str
 
 
 def _extension(filename: str | None) -> str:
@@ -92,7 +85,8 @@ def health() -> HealthResponse:
 async def ingest_document(
     file: Annotated[UploadFile, File(description="One PDF/JPG/JPEG/PNG test document")],
 ) -> IngestResponse:
-    extension = _extension(file.filename)
+    original_filename = file.filename or ""
+    extension = _extension(original_filename)
     _validate_declared_media_type(extension, file.content_type)
 
     job_id = uuid4()
@@ -110,7 +104,7 @@ async def ingest_document(
                 if size_bytes > MAX_UPLOAD_BYTES:
                     raise HTTPException(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail="File exceeds the Stage 1 limit of 50 MiB.",
+                        detail="File exceeds the current 50 MiB limit.",
                     )
                 destination.write(chunk)
     except Exception:
@@ -143,12 +137,45 @@ async def ingest_document(
             detail="File contents do not match the selected file type.",
         )
 
-    media_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+    media_type = (
+        file.content_type
+        or mimetypes.guess_type(original_filename)[0]
+        or "application/octet-stream"
+    )
+
+    try:
+        inspection = inspect_document(
+            job_id=job_id,
+            filename=original_filename,
+            media_type=media_type,
+            source_path=stored_path,
+        )
+    except DocumentProcessingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
     return IngestResponse(
         job_id=job_id,
-        filename=file.filename or f"source{extension}",
+        filename=original_filename,
         media_type=media_type,
         size_bytes=size_bytes,
-        status="stored",
+        status=inspection.status,
         storage_scope="local-runtime-only",
+        document_kind=inspection.document_kind,
+        page_count=inspection.page_count,
+        route=inspection.route,
+        native_text_pages=inspection.native_text_pages,
+        ocr_required_pages=inspection.ocr_required_pages,
+        pages=[
+            PageEvidenceSummary(
+                evidence_id=page.evidence_id,
+                page_number=page.page_number,
+                route=page.route,
+                character_count=page.character_count,
+                route_reason=page.route_reason,
+            )
+            for page in inspection.pages
+        ],
     )
