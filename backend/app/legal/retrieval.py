@@ -15,7 +15,7 @@ from .embeddings import (
     EmbeddingProviderUnavailable,
     cosine_similarity,
 )
-from .models import CoverageType, LegalEvidenceRecord, VersionResolutionState
+from .models import LegalEvidenceRecord, VersionResolutionState
 from .parser import chinese_integer
 from .retrieval_models import (
     AuthorityResolutionNote,
@@ -381,6 +381,7 @@ def retrieve_legal_evidence(
     rankings: dict[RetrievalChannel, list[tuple[str, float | None]]] = {}
     warnings: list[str] = []
     resolution_cache: dict[str, AuthorityResolutionNote] = {}
+    explicit_target_missing = False
 
     exact_ids: list[str] = []
     if request.legal_evidence_id_hint:
@@ -389,6 +390,7 @@ def retrieve_legal_evidence(
             if _applicable(legal_db_path, evidence, request.as_of, resolution_cache):
                 exact_ids.append(evidence.article.legal_evidence_id)
         except FileNotFoundError:
+            explicit_target_missing = True
             warnings.append("The supplied Legal Evidence ID does not exist in the local corpus.")
 
     authority_id = _recognize_authority_id(legal_db_path, request)
@@ -401,6 +403,7 @@ def retrieve_legal_evidence(
             if exact_id:
                 exact_ids.append(exact_id)
             else:
+                explicit_target_missing = True
                 warnings.append(
                     "The requested article is not present in the locally stored version; partial corpus coverage may be the cause."
                 )
@@ -489,6 +492,8 @@ def retrieve_legal_evidence(
             state = RetrievalState.VERSION_AMBIGUOUS
         elif hinted and hinted.state == VersionResolutionState.NO_APPLICABLE_VERSION.value:
             state = RetrievalState.NO_APPLICABLE_VERSION
+        elif explicit_target_missing:
+            state = RetrievalState.INSUFFICIENT_CORPUS
         elif not candidates and legal_summary.excerpt_version_count > 0:
             state = RetrievalState.INSUFFICIENT_CORPUS
         elif candidates and legal_summary.excerpt_version_count > 0:
@@ -497,6 +502,8 @@ def retrieve_legal_evidence(
             state = RetrievalState.OK
         else:
             state = RetrievalState.INSUFFICIENT_CORPUS
+    elif explicit_target_missing:
+        state = RetrievalState.INSUFFICIENT_CORPUS
     elif not candidates and not index_summary.ready:
         state = RetrievalState.INDEX_NOT_READY
     elif not candidates and legal_summary.excerpt_version_count > 0:
