@@ -6,17 +6,17 @@ from fastapi import APIRouter, HTTPException, status
 
 from .artifact_integrity import inspect_job_artifact_integrity
 from .artifact_integrity_models import JobArtifactIntegrityReport
-from .runtime_health import inspect_runtime_health
 from .runtime_health_models import RuntimeHealthReport
+from .startup_diagnostics import inspect_startup_health
 
 router = APIRouter(prefix="/api/runtime", tags=["runtime-health"])
 
 
 @router.get("/health", response_model=RuntimeHealthReport)
 def runtime_health() -> RuntimeHealthReport:
-    """Return local, non-mutating runtime diagnostics without provider/network calls."""
+    """Return local, non-mutating startup/runtime diagnostics without provider/network calls."""
 
-    return inspect_runtime_health()
+    return inspect_startup_health()
 
 
 @router.get("/jobs/{job_id}/integrity", response_model=JobArtifactIntegrityReport)
