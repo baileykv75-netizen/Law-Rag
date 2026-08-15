@@ -133,11 +133,83 @@ Passing it must never be reported as:
 - professional benchmark performance;
 - release readiness.
 
-The existing Stage 7 `legal_data/fixtures/retrieval_benchmark.json` remains the current retrieval-specific regression benchmark. Stage 11A does not silently redefine or replace its existing Recall@5/MRR gate. Later Stage 11B work may adapt or extend those measurements through the common schema only after metric semantics and thresholds are documented.
+The existing Stage 7 `legal_data/fixtures/retrieval_benchmark.json` remains the current retrieval-specific regression benchmark. Stage 11A does not silently redefine or replace its existing Recall@5/MRR gate.
 
-## 8. Running the evaluator
+## 8. Stage 11B metric layer
 
-From `backend/`:
+Stage 11B adds a separate typed quality layer with evaluator version `stage11b-1.0.0`.
+
+Reusable deterministic metric helpers currently support:
+
+```text
+binary classification
+  -> TP / FP / FN / TN
+  -> precision / recall / F1
+
+set extraction / Evidence-ID recovery
+  -> micro TP / FP / FN
+  -> precision / recall / F1
+
+ranked retrieval
+  -> Recall@K
+  -> MRR
+  -> explicit-citation exact-hit rate
+```
+
+These functions are infrastructure. Merely having a precision/recall function does not create a valid audit-accuracy claim. A metric is reportable only when its named dataset/version contains appropriate labels.
+
+This distinction matters for future expert evaluation. A private professionally labeled contract set can use the same metric functions from an ignored local path, while the public repository continues to expose only repository-safe results.
+
+## 9. Public deterministic CI profile
+
+The checked-in gate profile is:
+
+```text
+benchmarks/public/stage11b_quality_gates.json
+```
+
+Normal backend CI now has a dedicated step:
+
+```text
+Run public deterministic quality gates
+```
+
+It is separate from pytest. The quality runner rebuilds the checked-in legal seed and lexical retrieval index in a temporary directory and executes the current code against the named public retrieval benchmark. No DeepSeek/Kimi call or secret is required.
+
+Current public gates are:
+
+```text
+schema-smoke case pass rate        = 1.00
+schema-smoke assertion pass rate   = 1.00
+schema task-family coverage        = 9
+retrieval Recall@5                 >= 0.90
+retrieval MRR                      >= 0.80
+explicit citation exact-hit rate   = 1.00
+```
+
+The retrieval thresholds intentionally preserve the Stage 7 regression contract. The exact-citation gate covers only explicit-article cases actually present in that named benchmark.
+
+A quality gate fails closed if its metric is missing. Thresholds must not be silently lowered or labels changed merely to restore green CI.
+
+## 10. Stage 11B diagnostics
+
+`QualityRunReport` contains:
+
+- metric key/value;
+- dataset ID/version;
+- numerator/denominator where meaningful;
+- explicit scope text;
+- gate threshold/operator/observed value;
+- per-case diagnostics for retrieval misses or exact-citation failures;
+- warnings that public metrics are scoped regression evidence rather than general legal accuracy.
+
+For a retrieval miss, diagnostics preserve the case ID, expected Legal Evidence IDs and observed ranked IDs. For benchmark assertion failures, Stage 11A continues to preserve expected/observed values and reason codes.
+
+The quality layer never stores hidden model reasoning.
+
+## 11. Running the evaluators
+
+From `backend/`, Stage 11A evaluator:
 
 ```text
 python -m app.benchmark_cli \
@@ -154,12 +226,20 @@ python -m app.benchmark_cli \
   --output <report.json>
 ```
 
-Exit codes:
+Stage 11B public quality profile:
 
 ```text
-0 = every benchmark case passed
-1 = at least one case failed
-2 = dataset/observation input could not be loaded or validated
+python -m app.quality_cli \
+  --repo-root .. \
+  --profile ../benchmarks/public/stage11b_quality_gates.json
 ```
 
-Private expert benchmarks can use an external local path such as ignored `benchmark_private/`; they do not need to be copied into the repository.
+Private expert benchmarks can use external ignored paths. Their results must identify their own dataset/version and must not be copied into the public repository unless independently safe for public release.
+
+## 12. Interpretation rule
+
+A metric must always be read together with its scope.
+
+For example, a perfect result on the current 10-case public retrieval benchmark means only that the current code retrieved the expected evidence on those 10 checked-in cases. It does **not** establish full Chinese-law retrieval recall, legal correctness, model risk precision, or production readiness.
+
+Stage 11C runtime hardening begins only after these measurement boundaries are explicit and the deterministic public gate is reproducible.
