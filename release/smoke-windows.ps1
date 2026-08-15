@@ -38,7 +38,7 @@ try {
     }
 
     $Root = Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/" -TimeoutSec 5
-    if ($Root.StatusCode -ne 200 -or $Root.Content -notmatch "<div id=\"root\"></div>") {
+    if ($Root.StatusCode -ne 200 -or $Root.Content -notmatch '<div id="root"></div>') {
         throw "Packaged frontend root did not return the Vite/React shell."
     }
 
