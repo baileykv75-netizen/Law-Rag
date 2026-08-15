@@ -222,8 +222,32 @@ No automatic fallback to another provider is allowed.
 ## D-030 — Secondary review is conditional Stage 9 work, not a universal second call
 
 **Date:** 2026-08-15  
+**Status:** superseded by D-031
+
+Stage 8 uses exactly one primary generative provider. The initial Stage 9 plan proposed conditional Kimi/Qwen/local secondary review triggered by high risk, insufficient evidence, source uncertainty, version/retrieval ambiguity or disagreement.
+
+This selective-call policy is no longer the active Stage 9 design.
+
+## D-031 — Stage 9 uses one universal secondary-model call per contract
+
+**Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 8 uses exactly one primary generative provider. Kimi/Qwen/local secondary review belongs to Stage 9 and must be invoked through explicit triggers such as high risk, insufficient evidence, source uncertainty, version/retrieval ambiguity or primary/reviewer disagreement.
+Stage 9 prioritizes audit reliability and implementation clarity over token minimization. Every contract that has a valid Stage 8 primary report receives exactly one secondary-model review by default.
 
-The second model must receive bounded evidence, pass the same independent citation/version validation, and remain subordinate to an application-controlled state machine. Law-Rag will not call every model on every contract merely because multiple providers are available.
+The topology is deliberately fixed:
+
+```text
+contract
+  -> one Stage 8 primary-model call
+  -> one Stage 9 secondary-model call
+  -> deterministic comparison/validation
+```
+
+The secondary call is **contract-level**, not one external call per finding. It receives the bounded validated Stage 8 audit/evidence package and reviews all primary findings together. This avoids a per-finding N-call explosion while guaranteeing two-model coverage for every audited contract.
+
+The second model remains independent: it must validate/cite only supplied canonical contract and Legal Evidence IDs, may disagree with the primary model, and cannot rewrite deterministic Stage 5 results. Two-model agreement is not treated as proof or converted into a fake correctness probability.
+
+Only the later Agent/tool follow-up remains conditional. Bounded tools are invoked after the two fixed model calls when disagreement, missing context, OCR uncertainty or evidence insufficiency requires additional evidence. No automatic third-model voting is introduced.
+
+Both external transmissions must remain explicit to the user, and provider-specific privacy/data-handling terms must be considered before real sensitive contracts are sent.
