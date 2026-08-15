@@ -2,13 +2,13 @@
 
 The backend is the local Python/FastAPI application for Law-Rag.
 
-Backend responsibilities include local HTTP endpoints, job creation, validation, document ingestion, local persistence access, and stable interfaces to later OCR/RAG/rule/LLM components.
+Backend responsibilities include local HTTP endpoints, job creation, validation, document ingestion, OCR evidence processing, local persistence access, and stable interfaces to later RAG/rule/LLM components.
 
-Provider-specific SDK details should remain behind adapters rather than leaking through endpoint/domain code.
+Provider-specific SDK details remain behind adapters rather than leaking through endpoint/domain code.
 
 ## Stage 2 document ingestion
 
-The current `POST /api/documents` flow:
+`POST /api/documents`:
 
 ```text
 validate upload
@@ -20,45 +20,102 @@ validate upload
   -> return route summary to the local UI
 ```
 
-Runtime outputs are intentionally outside Git tracking.
-
 ### PDF routing heuristic
 
-Stage 2 does not claim to prove extraction correctness. It only makes a conservative deterministic routing decision.
+A PDF page is marked `NATIVE_TEXT_USABLE` only when the deterministic Stage 2 heuristic considers its native text sufficiently usable. Otherwise it is marked `OCR_REQUIRED`.
 
-A PDF page is currently marked `NATIVE_TEXT_USABLE` only when all of the following are true:
+The current thresholds are:
 
-- at least 32 non-whitespace characters were extracted;
-- suspicious/replacement characters are no more than 2% of non-whitespace characters;
-- at least 45% of non-whitespace characters are alphanumeric/meaningful text characters.
+- at least 32 non-whitespace characters;
+- suspicious/replacement characters no more than 2% of non-whitespace characters;
+- at least 45% alphanumeric/meaningful characters.
 
-Otherwise the page is marked `OCR_REQUIRED` for Stage 3.
+These thresholds are routing heuristics, not accuracy guarantees.
 
-The thresholds are intentionally explicit and regression-testable. They can be tuned later against the private legal benchmark instead of being changed by intuition.
+## Stage 3 OCR evidence layer
 
-### Evidence persistence
-
-For every page, Stage 2 preserves:
-
-- stable evidence ID scoped to the job;
-- 1-based page number;
-- extraction/source method;
-- page text when available;
-- character counts and routing metrics;
-- route and reason;
-- page source locator.
-
-The persisted files are:
+`POST /api/documents/{job_id}/ocr` runs OCR only for pages already marked `OCR_REQUIRED`.
 
 ```text
-runtime/uploads/<job-id>/source.<ext>
-runtime/jobs/<job-id>/document.json
-runtime/jobs/<job-id>/evidence.json
+NATIVE_TEXT_USABLE page
+  -> retain existing native evidence
+
+OCR_REQUIRED PDF page
+  -> render only that page with pypdfium2/PDFium
+  -> run OCR provider
+  -> preserve text + confidence + bbox/polygon + provider provenance
+
+image document
+  -> OCR original image
 ```
 
-### PDF library
+The concrete Stage 3 provider is local PaddleOCR behind the `OcrProvider` protocol. Paddle-specific imports and result normalization live in `app/ocr.py`; FastAPI and document-domain code do not depend on Paddle SDK objects.
 
-Stage 2 uses `pypdf>=6.14,<7` for page count and native text extraction. The rendering boundary is separate; no PDF-to-image renderer or OCR engine is introduced in this stage.
+### OCR evidence
+
+OCR results are persisted under:
+
+```text
+runtime/jobs/<job-id>/ocr.json
+runtime/rendered/<job-id>/page-0001.png   # only PDF pages that require OCR
+```
+
+Each OCR block retains:
+
+- stable block evidence ID;
+- 1-based page number;
+- recognized text;
+- recognition confidence when supplied;
+- rectangle and polygon coordinates when supplied;
+- provider/model/version provenance;
+- low-confidence flag/reason;
+- pixel source locator.
+
+The current review threshold is `0.85`. A block below this threshold, or a block without a provider confidence, is explicitly marked low-confidence. This threshold is only a review-routing rule and must not be interpreted as a calibrated probability that the text is correct.
+
+### PDF renderer
+
+Stage 3 uses `pypdfium2==5.12.1` with a default render scale of `2.0` (roughly 144 DPI for standard PDF points). Native-text pages are not rendered by default.
+
+### Optional OCR installation on Windows
+
+Base Law-Rag setup does not install PaddleOCR because electronic/native-text PDFs should remain usable without heavyweight OCR dependencies.
+
+First run:
+
+```text
+setup-dev.bat
+```
+
+Then install the local CPU OCR runtime from the repository root:
+
+```text
+setup-ocr-cpu.bat
+```
+
+That script installs:
+
+- PaddlePaddle CPU 3.3.0 from the official PaddlePaddle CPU index;
+- PaddleOCR 3.7.0.
+
+PaddleOCR models are downloaded on first OCR use. If the default model source is inaccessible, set the environment variable below before starting Law-Rag:
+
+```text
+PADDLE_PDX_MODEL_SOURCE=BOS
+```
+
+### Real PaddleOCR smoke test
+
+Normal CI intentionally does not download OCR models. After the OCR runtime is installed, an opt-in real-provider smoke test can be run against a local test image:
+
+```bat
+cd backend
+set PYTHONPATH=.
+set LAW_RAG_OCR_SMOKE_IMAGE=C:\path\to\fictional-test-image.png
+..\.venv\Scripts\python.exe -m pytest -q -m ocr_smoke
+```
+
+Use only fictional or appropriately private/local test material. The test image is never committed automatically.
 
 ## Local run
 
@@ -68,7 +125,7 @@ From `backend/` with the root virtual environment active:
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Tests:
+Deterministic tests:
 
 ```text
 pytest -q
