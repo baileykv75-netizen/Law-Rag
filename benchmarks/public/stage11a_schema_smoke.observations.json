@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "dataset_id": "law-rag-stage11a-schema-smoke",
+  "dataset_version": "1.0.0",
+  "observations": [
+    {"case_id":"smoke-ocr-001","case_version":"1.0.0","observed":{"recognized_text":"甲方应于验收后十日内支付价款。","page_number":1},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}},
+    {"case_id":"smoke-structure-001","case_version":"1.0.0","observed":{"clause_ids":["clause-002","clause-001"],"party_roles":["甲方","乙方","丙方"]},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}},
+    {"case_id":"smoke-rule-001","case_version":"1.0.0","observed":{"state":"FAIL","observed_total":90.0},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}},
+    {"case_id":"smoke-retrieval-001","case_version":"1.0.0","observed":{"returned_legal_evidence_ids":["legal:prc-civil-code:effective-2021-01-01:article-585","legal:spc-civil-code-contract-general-interpretation:effective-2023-12-05:article-65"]},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}},
+    {"case_id":"smoke-citation-001","case_version":"1.0.0","observed":{"valid":true,"version_id":"effective-2021-01-01"},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}},
+    {"case_id":"smoke-evidence-localization-001","case_version":"1.0.0","observed":{"page_number":2,"bbox":[100,120,420,168]},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}},
+    {"case_id":"smoke-primary-audit-001","case_version":"1.0.0","observed":{"state":"REVIEW_REQUIRED","contract_evidence_ids":["EV-SYN-001","EV-SYN-002"]},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}},
+    {"case_id":"smoke-secondary-001","case_version":"1.0.0","observed":{"comparison_state":"MATERIAL_DISAGREEMENT","possible_omission_ids":["OM-SYN-001"]},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}},
+    {"case_id":"smoke-human-review-001","case_version":"1.0.0","observed":{"revision_count":2,"latest_state":"NEEDS_MORE_REVIEW","latest_is_stale":false},"producer":{"producer_id":"public-smoke","producer_version":"1.0.0"}}
+  ]
+}
