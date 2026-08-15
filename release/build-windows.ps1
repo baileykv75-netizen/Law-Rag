@@ -7,8 +7,10 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Backend = Join-Path $RepoRoot "backend"
 $Frontend = Join-Path $RepoRoot "frontend"
 $BuildRoot = Join-Path $PSScriptRoot ".build"
+$BuildVenv = Join-Path $PSScriptRoot ".build-venv"
 $DistRoot = Join-Path $PSScriptRoot "dist"
 $WorkRoot = Join-Path $PSScriptRoot "work"
+$LockFile = Join-Path $Backend "requirements-release-lock-windows.txt"
 
 function Invoke-Checked {
     param([scriptblock]$Command, [string]$Label)
@@ -19,22 +21,34 @@ function Invoke-Checked {
 }
 
 $PythonVersion = (& python -c "import sys; print('.'.join(map(str, sys.version_info[:3])))").Trim()
-if (-not $PythonVersion.StartsWith("3.12.")) {
-    throw "Stage 11D requires CPython 3.12.x; found $PythonVersion"
+if ($PythonVersion -ne "3.12.10") {
+    throw "Stage 11D release build requires CPython 3.12.10 exactly; found $PythonVersion"
 }
 
-Invoke-Checked { node --version } "Node.js check"
-Invoke-Checked { npm --version } "npm check"
-
-if (-not $SkipDependencyInstall) {
-    Invoke-Checked { python -m pip install -r (Join-Path $Backend "requirements-release-base.txt") } "Base release dependency install"
-    Invoke-Checked { python -m pip install -r (Join-Path $Backend "requirements-release-build.txt") } "PyInstaller build dependency install"
+$NodeVersion = (& node --version).Trim()
+if ($NodeVersion -ne "v22.23.2") {
+    throw "Stage 11D release build requires Node.js v22.23.2 exactly; found $NodeVersion"
+}
+$NpmVersion = (& npm --version).Trim()
+if ($NpmVersion -ne "10.9.8") {
+    throw "Stage 11D release build requires npm 10.9.8 exactly; found $NpmVersion"
 }
 
 if (Test-Path $BuildRoot) { Remove-Item $BuildRoot -Recurse -Force }
+if (Test-Path $BuildVenv) { Remove-Item $BuildVenv -Recurse -Force }
 if (Test-Path $DistRoot) { Remove-Item $DistRoot -Recurse -Force }
 if (Test-Path $WorkRoot) { Remove-Item $WorkRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $BuildRoot | Out-Null
+
+if ($SkipDependencyInstall) {
+    throw "-SkipDependencyInstall is not supported for the reproducible Stage 11D build; use the exact isolated build environment."
+}
+
+Invoke-Checked { python -m venv $BuildVenv } "Isolated release virtualenv creation"
+$ReleasePython = Join-Path $BuildVenv "Scripts\python.exe"
+Invoke-Checked { & $ReleasePython -m pip install --upgrade pip==26.2.1 } "Release pip pin"
+Invoke-Checked { & $ReleasePython -m pip install --no-deps -r $LockFile } "Exact Windows release lock install"
+Invoke-Checked { & $ReleasePython -m pip check } "Exact Windows release dependency consistency check"
 
 Push-Location $Frontend
 try {
@@ -52,19 +66,19 @@ finally {
 Push-Location $Backend
 try {
     $env:PYTHONPATH = "."
-    Invoke-Checked { python -m app.release_assets_cli --output-dir $BuildRoot } "Public legal/retrieval release asset build"
+    Invoke-Checked { & $ReleasePython -m app.release_assets_cli --output-dir $BuildRoot } "Public legal/retrieval release asset build"
 }
 finally {
     Pop-Location
 }
 
-python -m pip freeze --all | Sort-Object | Set-Content -Encoding UTF8 (Join-Path $BuildRoot "python-resolved.txt")
-python -c "import json,platform,sys; print(json.dumps({'python':sys.version,'implementation':platform.python_implementation(),'platform':platform.platform()}, sort_keys=True))" | Set-Content -Encoding UTF8 (Join-Path $BuildRoot "python-runtime.json")
+& $ReleasePython -m pip freeze --all | Sort-Object | Set-Content -Encoding UTF8 (Join-Path $BuildRoot "python-resolved.txt")
+& $ReleasePython -c "import json,platform,sys; print(json.dumps({'python':sys.version,'implementation':platform.python_implementation(),'platform':platform.platform()}, sort_keys=True))" | Set-Content -Encoding UTF8 (Join-Path $BuildRoot "python-runtime.json")
 
 Push-Location $RepoRoot
 try {
     Invoke-Checked {
-        pyinstaller --noconfirm --clean --distpath $DistRoot --workpath $WorkRoot (Join-Path $PSScriptRoot "law_rag.spec")
+        & $ReleasePython -m PyInstaller --noconfirm --clean --distpath $DistRoot --workpath $WorkRoot (Join-Path $PSScriptRoot "law_rag.spec")
     } "PyInstaller onedir build"
 }
 finally {
@@ -83,4 +97,5 @@ Copy-Item (Join-Path $BuildRoot "python-runtime.json") (Join-Path $Bundle "pytho
 
 Write-Host ""
 Write-Host "[Law-Rag] Windows onedir bundle created at: $Bundle"
+Write-Host "[Law-Rag] Build runtime: CPython $PythonVersion / Node $NodeVersion / npm $NpmVersion"
 Write-Host "[Law-Rag] No API keys, user runtime data, OCR weights, or BGE weights were bundled."
