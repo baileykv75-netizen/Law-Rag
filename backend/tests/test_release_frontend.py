@@ -5,8 +5,12 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
+from fastapi.testclient import TestClient
 
+from app.main import app
 from app.release_frontend import _frontend_response, _safe_asset, frontend_dist_path
+
+client = TestClient(app)
 
 
 def _dist(tmp_path: Path) -> Path:
@@ -65,3 +69,25 @@ def test_missing_release_index_is_explicit(tmp_path: Path, monkeypatch) -> None:
         _frontend_response("workspace")
 
     assert exc_info.value.status_code == 503
+
+
+def test_main_app_serves_release_shell_without_masking_api(tmp_path: Path, monkeypatch) -> None:
+    dist = _dist(tmp_path)
+    monkeypatch.setenv("LAW_RAG_FRONTEND_DIST", str(dist))
+
+    root = client.get("/")
+    workspace = client.get("/workspace?job=fixture")
+    asset = client.get("/assets/app.js")
+    health = client.get("/api/health")
+    missing_api = client.get("/api/not-a-real-route")
+
+    assert root.status_code == 200
+    assert "Law-Rag release shell" in root.text
+    assert workspace.status_code == 200
+    assert "Law-Rag release shell" in workspace.text
+    assert asset.status_code == 200
+    assert "console.log" in asset.text
+    assert health.status_code == 200
+    assert health.json()["status"] == "ok"
+    assert missing_api.status_code == 404
+    assert missing_api.headers["content-type"].startswith("application/json")
