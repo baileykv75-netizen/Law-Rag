@@ -130,13 +130,36 @@ See [`SECONDARY_REVIEW.md`](SECONDARY_REVIEW.md).
 
 ## Stage 10 — Professional audit workstation UI
 
-Status: active.
+Status: complete.
 
-Goal: turn the validated Stage 1–9 pipeline into a professional review workspace: document/page viewer, exact evidence highlighting, risk filters, linked legal-authority panel, source/version display, provenance/uncertainty, human confirm/reject/review actions, processing history and review ergonomics. Chat remains secondary to the audit workstation.
+Validated:
+
+- dedicated job-centric `/workspace?job=<job-id>` route instead of expanding the legacy development page;
+- read-only workspace aggregation over persisted Stage 2–9 artifacts with explicit `READY` / `MISSING` / `NOT_REQUIRED` / `INVALID` states;
+- complete-job and partial-job regressions proving workspace load does not resolve/call DeepSeek or Kimi;
+- bounded PDF/image source-page API with existing local PDFium rendering and ignored viewer cache;
+- Evidence ID resolution to exact page, source method, quote, native char offsets, OCR bbox/polygon/confidence and canonical references;
+- no fabricated bbox for native-text Evidence without visual coordinates;
+- unified review queue joining DeepSeek finding, Kimi assessment, deterministic comparison, possible omissions and relevant Agent action trace without modifying persisted audit artifacts;
+- practical severity/comparison/attention/text filters and keyboard-selectable finding cards;
+- cross-pane Contract Evidence navigation to source page/highlight;
+- Legal Evidence panel with exact article text, authority/version/effective interval, `as_of`, coverage type and public-source provenance;
+- `CURATED_EXCERPT` warning remains visible and retrieval ranking is not shown as legal confidence;
+- versioned append-only local `human-review.json` with `UNREVIEWED`, `CONFIRMED`, `REJECTED`, `NEEDS_MORE_REVIEW`;
+- human revision history, note, server-derived Evidence snapshot and current `review-report.json` SHA-256 fingerprint;
+- stale human revisions preserved and marked when `review-report.json` changes;
+- regression proving human decision writes leave review report, canonical contract, rules, DeepSeek/Kimi artifacts, legal store and retrieval index byte-for-byte unchanged;
+- processing/history metadata includes human-review revisions without exposing secrets or arbitrary local paths;
+- focus states, responsive layouts and explicit loading/error/empty states;
+- all Stage 1–10 backend regressions and frontend TypeScript/production build green.
+
+Key boundary: the workstation is a review/presentation layer. Navigation never silently reruns extraction/OCR/retrieval/models, and human decisions are separate review data rather than mutations of audit evidence/results.
 
 ## Stage 11 — Benchmark, hardening, and Windows release
 
-Goal: measure OCR, structure extraction, retrieval recall, audit precision/recall, high-risk recall, legal-citation accuracy, evidence-location accuracy, false-positive categories and model disagreement before producing a robust Windows-oriented release bundle/installer.
+Status: active.
+
+Goal: measure OCR, structure extraction, retrieval recall, audit precision/recall, high-risk recall, legal-citation accuracy, evidence-location accuracy, false-positive categories and model disagreement; harden runtime/startup/failure handling; then produce a reproducible Windows-oriented release bundle before considering an installer.
 
 ## Cross-stage quality gates
 
@@ -155,4 +178,5 @@ Every stage must preserve:
 - post-model evidence/version validation before persistence;
 - mandatory pipeline stages remain application-controlled;
 - two-model agreement must not be presented as a correctness probability;
-- unresolved material disagreement must remain visible to a human reviewer.
+- unresolved material disagreement must remain visible to a human reviewer;
+- human review must remain append-only and separate from source/model/rule/legal artifacts.
