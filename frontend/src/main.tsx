@@ -8,6 +8,7 @@ import './styles.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <style>{'.hero .notice { display: none; }'}</style>
     <App />
     <LegalKnowledgePanel />
     <LegalRetrievalPanel />
