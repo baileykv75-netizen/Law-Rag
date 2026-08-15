@@ -3,10 +3,12 @@ import { ChangeEvent, DragEvent, useRef, useState } from 'react'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 const MAX_BYTES = 50 * 1024 * 1024
+const DEFAULT_AUDIT_PROFILE = 'basic-bilateral-v1'
 
 type PageRoute = 'NATIVE_TEXT_USABLE' | 'OCR_REQUIRED' | 'EMPTY_OR_UNSUPPORTED'
 type DocumentRoute = 'NATIVE_TEXT' | 'OCR_REQUIRED' | 'MIXED'
 type OcrPageState = 'NATIVE_RETAINED' | 'OCR_COMPLETE' | 'OCR_LOW_CONFIDENCE' | 'OCR_NO_TEXT' | 'OCR_FAILED'
+type RuleState = 'PASS' | 'FAIL' | 'REVIEW' | 'NOT_APPLICABLE'
 
 type PageSummary = {
   evidence_id: string
@@ -123,9 +125,57 @@ type StructureSummary = {
   identifiers: IdentifierSummary[]
 }
 
+type ObservedValue = {
+  label: string
+  value: string
+  canonical_object_id: string | null
+}
+
+type AuditRuleResult = {
+  result_id: string
+  rule_id: string
+  rule_version: string
+  family: string
+  title: string
+  state: RuleState
+  deterministic_state: RuleState
+  severity: 'INFO' | 'WARNING' | 'ERROR' | null
+  reason_code: string
+  explanation: string
+  canonical_object_ids: string[]
+  evidence_ids: string[]
+  observed_values: ObservedValue[]
+  review_reasons: string[]
+}
+
+type AuditRuleReport = {
+  schema_version: string
+  engine_version: string
+  job_id: string
+  status: string
+  contract_schema_version: string
+  contract_source_fingerprint: string
+  contract_content_fingerprint: string
+  profile: {
+    profile_id: string
+    version: string
+    title: string
+  }
+  counts: {
+    total: number
+    passed: number
+    failed: number
+    review: number
+    not_applicable: number
+  }
+  results: AuditRuleResult[]
+  engine_errors: Array<{ rule_id: string; error_type: string; message: string }>
+}
+
 type ViewState = 'idle' | 'ready' | 'uploading' | 'success' | 'error'
 type OcrViewState = 'idle' | 'running' | 'success' | 'error'
 type StructureViewState = 'idle' | 'running' | 'success' | 'error'
+type AuditViewState = 'idle' | 'running' | 'success' | 'error'
 
 function getExtension(name: string) {
   const dot = name.lastIndexOf('.')
@@ -160,6 +210,13 @@ function ocrStateLabel(state: OcrPageState) {
   return 'OCR 失败'
 }
 
+function ruleStateLabel(state: RuleState) {
+  if (state === 'PASS') return '通过'
+  if (state === 'FAIL') return '规则不通过'
+  if (state === 'REVIEW') return '需复核'
+  return '不适用'
+}
+
 function App() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
@@ -173,11 +230,21 @@ function App() {
   const [structureState, setStructureState] = useState<StructureViewState>('idle')
   const [structureMessage, setStructureMessage] = useState('')
   const [structureResult, setStructureResult] = useState<StructureSummary | null>(null)
+  const [auditState, setAuditState] = useState<AuditViewState>('idle')
+  const [auditMessage, setAuditMessage] = useState('')
+  const [auditResult, setAuditResult] = useState<AuditRuleReport | null>(null)
+
+  const resetAudit = () => {
+    setAuditState('idle')
+    setAuditMessage('')
+    setAuditResult(null)
+  }
 
   const resetStructure = () => {
     setStructureState('idle')
     setStructureMessage('')
     setStructureResult(null)
+    resetAudit()
   }
 
   const resetOcr = () => {
@@ -270,7 +337,7 @@ function App() {
       if (next.failed_pages || next.no_text_pages) {
         setOcrMessage('OCR 已完成，但存在失败或无文本页面；系统不会在缺页状态下生成合同结构。')
       } else if (next.low_confidence_pages) {
-        setOcrMessage('OCR 已完成，存在低置信度页；这些不确定性会继续保留到结构化证据中。')
+        setOcrMessage('OCR 已完成，存在低置信度页；这些不确定性会继续传播到结构化和规则结果。')
       } else {
         setOcrMessage('OCR 已完成并保存页级证据，可以继续生成合同结构。')
       }
@@ -292,6 +359,7 @@ function App() {
     setStructureState('running')
     setStructureMessage('正在基于现有证据生成确定性合同结构…')
     setStructureResult(null)
+    resetAudit()
     try {
       const response = await fetch(`${API_BASE_URL}/api/documents/${result.job_id}/structure`, { method: 'POST' })
       const body = await response.json().catch(() => null)
@@ -302,11 +370,37 @@ function App() {
       const next = body as StructureSummary
       setStructureResult(next)
       setStructureState('success')
-      setStructureMessage('合同结构已生成并保存在本机 contract.json。当前结果只是事实结构，不包含法律风险判断。')
+      setStructureMessage('合同结构已生成并保存在本机 contract.json。可以继续运行确定性审计规则。')
     } catch (error) {
       const detail = error instanceof Error ? error.message : '未知错误'
       setStructureState('error')
       setStructureMessage(`合同结构无法生成：${detail}`)
+    }
+  }
+
+  const runAuditRules = async () => {
+    if (!result || !structureResult || auditState === 'running') return
+    setAuditState('running')
+    setAuditMessage('正在对 contract.json 执行确定性规则；不会调用大模型…')
+    setAuditResult(null)
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/documents/${result.job_id}/audit-rules?profile=${encodeURIComponent(DEFAULT_AUDIT_PROFILE)}`,
+        { method: 'POST' },
+      )
+      const body = await response.json().catch(() => null)
+      if (!response.ok) {
+        const detail = body && typeof body.detail === 'string' ? body.detail : `规则检查失败（HTTP ${response.status}）`
+        throw new Error(detail)
+      }
+      const next = body as AuditRuleReport
+      setAuditResult(next)
+      setAuditState('success')
+      setAuditMessage('确定性检查已保存到本机 audit-rules.json。FAIL 仅表示规则不通过，不等同于违法或最终法律结论。')
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '未知错误'
+      setAuditState('error')
+      setAuditMessage(`确定性规则无法运行：${detail}`)
     }
   }
 
@@ -317,7 +411,7 @@ function App() {
         <h1>Law-Rag</h1>
         <p className="subtitle">智能合同审计辅助系统 · 本地开发版</p>
         <p className="notice">
-          当前阶段支持文档证据提取与确定性合同结构化；不提供法律意见，也不会调用 DeepSeek、Kimi、Qwen 等大模型 API。
+          当前阶段支持文档证据、合同结构与确定性规则检查；尚未接入法律知识库或大模型，规则 FAIL 不代表违法。
         </p>
       </section>
 
@@ -487,7 +581,74 @@ function App() {
             <p>金额：{structureResult.money_mentions.map((item) => item.raw_text).join(' · ') || '无'}</p>
             <p>百分比：{structureResult.percentages.map((item) => item.raw_text).join(' · ') || '无'}</p>
           </div>
-          <p className="stage-boundary">Stage 4 仅重建合同事实结构。这里没有法律风险等级、法条判断或大模型结论。</p>
+
+          <div className="audit-actions">
+            <button className="primary-action" onClick={runAuditRules} disabled={auditState === 'running'}>
+              {auditState === 'running' ? '正在运行确定性检查…' : '运行确定性审计规则'}
+            </button>
+            <p>当前使用显式审计配置 <span className="mono">{DEFAULT_AUDIT_PROFILE}</span>。规则只读取 contract.json，不重新解释原始 PDF。</p>
+            {auditMessage && <div className={`status status-${auditState === 'error' ? 'error' : 'ready'}`}>{auditMessage}</div>}
+          </div>
+          <p className="stage-boundary">Stage 5 只做可解释的机器规则检查。FAIL 表示规则条件不满足，不等于违法、无效或最终法律风险结论。</p>
+        </section>
+      )}
+
+      {auditResult && (
+        <section className="result-card audit-card" aria-label="确定性审计规则结果">
+          <div className="result-heading">
+            <div>
+              <span className="meta-label">Deterministic Rules · {auditResult.engine_version}</span>
+              <h2>确定性规则检查</h2>
+            </div>
+            <span className="success-pill">{auditResult.profile.profile_id}</span>
+          </div>
+
+          <div className="audit-metrics">
+            <div><span>规则结果</span><strong>{auditResult.counts.total}</strong></div>
+            <div><span>通过</span><strong>{auditResult.counts.passed}</strong></div>
+            <div><span>规则不通过</span><strong>{auditResult.counts.failed}</strong></div>
+            <div><span>需复核</span><strong>{auditResult.counts.review}</strong></div>
+            <div><span>不适用</span><strong>{auditResult.counts.not_applicable}</strong></div>
+          </div>
+
+          {auditResult.engine_errors.length > 0 && (
+            <div className="status status-error">
+              有 {auditResult.engine_errors.length} 条规则发生执行异常；其他规则仍已继续运行，请查看开发日志/结果。
+            </div>
+          )}
+
+          <div className="rule-results">
+            {auditResult.results.map((rule) => (
+              <article className={`rule-result rule-state-${rule.state.toLowerCase()}`} key={rule.result_id}>
+                <div className="rule-result-heading">
+                  <div>
+                    <span className="mono">{rule.rule_id} · v{rule.rule_version}</span>
+                    <h3>{rule.title}</h3>
+                  </div>
+                  <span className={`rule-state-pill state-${rule.state.toLowerCase()}`}>{ruleStateLabel(rule.state)}</span>
+                </div>
+                <p>{rule.explanation}</p>
+                <div className="rule-meta">
+                  <span>原因码：<span className="mono">{rule.reason_code}</span></span>
+                  {rule.deterministic_state !== rule.state && <span>原始机器判定：{ruleStateLabel(rule.deterministic_state)}</span>}
+                  {rule.evidence_ids.length > 0 && <span>Evidence：{rule.evidence_ids.join(' · ')}</span>}
+                </div>
+                {rule.observed_values.length > 0 && (
+                  <div className="observed-values">
+                    {rule.observed_values.map((item, index) => (
+                      <span key={`${rule.result_id}-${item.label}-${index}`}><strong>{item.label}</strong> {item.value}</span>
+                    ))}
+                  </div>
+                )}
+                {rule.review_reasons.length > 0 && (
+                  <ul className="review-reasons">
+                    {rule.review_reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                  </ul>
+                )}
+              </article>
+            ))}
+          </div>
+          <p className="stage-boundary">这里没有法条检索或大模型法律结论。法律知识库将在 Stage 6 建立，RAG 从 Stage 7 才开始。</p>
         </section>
       )}
 
