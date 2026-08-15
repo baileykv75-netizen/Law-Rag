@@ -1,0 +1,256 @@
+{
+  "schema_version": "1.0.0",
+  "dataset_id": "law-rag-stage11a-schema-smoke",
+  "dataset_version": "1.0.0",
+  "title": "Law-Rag Stage 11A public benchmark schema smoke",
+  "description": "Repository-safe synthetic/public-legal cases that exercise the Stage 11A benchmark schema and evaluator. This dataset validates benchmark mechanics only; it is not a claim about contract-audit or legal accuracy.",
+  "cases": [
+    {
+      "case_id": "smoke-ocr-001",
+      "case_version": "1.0.0",
+      "fixture_id": "synthetic-ocr-page-001",
+      "task_type": "OCR",
+      "title": "Synthetic OCR normalized text",
+      "provenance": {
+        "data_class": "PUBLIC_SYNTHETIC",
+        "source_name": "Law-Rag authored synthetic OCR fixture",
+        "scope": "Synthetic Chinese contract sentence; no real contract source text.",
+        "notes": "Schema/evaluator smoke only."
+      },
+      "expectations": [
+        {
+          "assertion_id": "ocr-text",
+          "pointer": "/recognized_text",
+          "comparison": "NORMALIZED_TEXT_EQUALS",
+          "expected": "甲方应于验收后十日内支付价款。"
+        },
+        {
+          "assertion_id": "ocr-page",
+          "pointer": "/page_number",
+          "comparison": "EXACT",
+          "expected": 1
+        }
+      ],
+      "tags": ["schema-smoke", "synthetic", "ocr"]
+    },
+    {
+      "case_id": "smoke-structure-001",
+      "case_version": "1.0.0",
+      "fixture_id": "synthetic-contract-structure-001",
+      "task_type": "CANONICAL_STRUCTURE",
+      "title": "Synthetic canonical clause structure",
+      "provenance": {
+        "data_class": "PUBLIC_SYNTHETIC",
+        "source_name": "Law-Rag authored fictional contract structure",
+        "scope": "Invented clause IDs and party roles only."
+      },
+      "expectations": [
+        {
+          "assertion_id": "clause-ids",
+          "pointer": "/clause_ids",
+          "comparison": "SET_EQUALS",
+          "expected": ["clause-001", "clause-002"]
+        },
+        {
+          "assertion_id": "party-roles",
+          "pointer": "/party_roles",
+          "comparison": "SET_CONTAINS",
+          "expected": ["甲方", "乙方"]
+        }
+      ],
+      "tags": ["schema-smoke", "synthetic", "structure"]
+    },
+    {
+      "case_id": "smoke-rule-001",
+      "case_version": "1.0.0",
+      "fixture_id": "synthetic-rule-result-001",
+      "task_type": "DETERMINISTIC_RULE",
+      "title": "Synthetic deterministic rule result",
+      "provenance": {
+        "data_class": "PUBLIC_SYNTHETIC",
+        "source_name": "Law-Rag authored deterministic rule fixture",
+        "scope": "Invented payment-percentage result."
+      },
+      "expectations": [
+        {
+          "assertion_id": "rule-state",
+          "pointer": "/state",
+          "comparison": "EXACT",
+          "expected": "FAIL"
+        },
+        {
+          "assertion_id": "percentage-total",
+          "pointer": "/observed_total",
+          "comparison": "NUMERIC_WITHIN",
+          "expected": 90,
+          "tolerance": 0.001
+        }
+      ],
+      "tags": ["schema-smoke", "synthetic", "rules"]
+    },
+    {
+      "case_id": "smoke-retrieval-001",
+      "case_version": "1.0.0",
+      "fixture_id": "legal-seed-article-585",
+      "task_type": "LEGAL_RETRIEVAL",
+      "title": "Public legal evidence retrieval identity",
+      "provenance": {
+        "data_class": "PUBLIC_LEGAL",
+        "source_name": "Checked-in verified CURATED_EXCERPT legal seed",
+        "source_uri": "legal_data/seed/manifest.json",
+        "scope": "Retrieval identity smoke for Civil Code article 585; not full-corpus recall."
+      },
+      "expectations": [
+        {
+          "assertion_id": "retrieval-contains-target",
+          "pointer": "/returned_legal_evidence_ids",
+          "comparison": "SET_CONTAINS",
+          "expected": ["legal:prc-civil-code:effective-2021-01-01:article-585"]
+        }
+      ],
+      "tags": ["schema-smoke", "public-legal", "retrieval", "curated-excerpt"]
+    },
+    {
+      "case_id": "smoke-citation-001",
+      "case_version": "1.0.0",
+      "fixture_id": "legal-seed-article-585",
+      "task_type": "LEGAL_CITATION_VALIDITY",
+      "title": "Public legal citation/version identity",
+      "provenance": {
+        "data_class": "PUBLIC_LEGAL",
+        "source_name": "Checked-in verified CURATED_EXCERPT legal seed",
+        "source_uri": "legal_data/seed/manifest.json",
+        "scope": "Citation identity and version metadata smoke only."
+      },
+      "expectations": [
+        {
+          "assertion_id": "citation-valid",
+          "pointer": "/valid",
+          "comparison": "EXACT",
+          "expected": true
+        },
+        {
+          "assertion_id": "citation-version",
+          "pointer": "/version_id",
+          "comparison": "EXACT",
+          "expected": "effective-2021-01-01"
+        }
+      ],
+      "tags": ["schema-smoke", "public-legal", "citation"]
+    },
+    {
+      "case_id": "smoke-evidence-localization-001",
+      "case_version": "1.0.0",
+      "fixture_id": "synthetic-evidence-001",
+      "task_type": "CONTRACT_EVIDENCE_LOCALIZATION",
+      "title": "Synthetic contract Evidence page localization",
+      "provenance": {
+        "data_class": "PUBLIC_SYNTHETIC",
+        "source_name": "Law-Rag authored Evidence localization fixture",
+        "scope": "Invented page/Evidence coordinates."
+      },
+      "expectations": [
+        {
+          "assertion_id": "evidence-page",
+          "pointer": "/page_number",
+          "comparison": "EXACT",
+          "expected": 2
+        },
+        {
+          "assertion_id": "evidence-bbox",
+          "pointer": "/bbox",
+          "comparison": "EXACT",
+          "expected": [100, 120, 420, 168]
+        }
+      ],
+      "tags": ["schema-smoke", "synthetic", "evidence"]
+    },
+    {
+      "case_id": "smoke-primary-audit-001",
+      "case_version": "1.0.0",
+      "fixture_id": "synthetic-primary-finding-001",
+      "task_type": "PRIMARY_AUDIT_FINDING",
+      "title": "Synthetic primary finding structure",
+      "provenance": {
+        "data_class": "PUBLIC_SYNTHETIC",
+        "source_name": "Law-Rag authored fictional primary finding",
+        "scope": "Synthetic model-normalized output; no real provider call."
+      },
+      "expectations": [
+        {
+          "assertion_id": "finding-state",
+          "pointer": "/state",
+          "comparison": "ONE_OF",
+          "expected": ["SUPPORTED_FINDING", "REVIEW_REQUIRED"]
+        },
+        {
+          "assertion_id": "finding-contract-evidence",
+          "pointer": "/contract_evidence_ids",
+          "comparison": "SET_CONTAINS",
+          "expected": ["EV-SYN-001"]
+        }
+      ],
+      "tags": ["schema-smoke", "synthetic", "primary-audit"]
+    },
+    {
+      "case_id": "smoke-secondary-001",
+      "case_version": "1.0.0",
+      "fixture_id": "synthetic-secondary-review-001",
+      "task_type": "SECONDARY_REVIEW",
+      "title": "Synthetic dual-model disagreement/omission representation",
+      "provenance": {
+        "data_class": "PUBLIC_SYNTHETIC",
+        "source_name": "Law-Rag authored fictional secondary-review result",
+        "scope": "Synthetic comparison and omission identifiers; no real provider call."
+      },
+      "expectations": [
+        {
+          "assertion_id": "comparison-state",
+          "pointer": "/comparison_state",
+          "comparison": "EXACT",
+          "expected": "MATERIAL_DISAGREEMENT"
+        },
+        {
+          "assertion_id": "possible-omissions",
+          "pointer": "/possible_omission_ids",
+          "comparison": "SET_CONTAINS",
+          "expected": ["OM-SYN-001"]
+        }
+      ],
+      "tags": ["schema-smoke", "synthetic", "secondary-review"]
+    },
+    {
+      "case_id": "smoke-human-review-001",
+      "case_version": "1.0.0",
+      "fixture_id": "synthetic-human-review-001",
+      "task_type": "HUMAN_REVIEW_INTEGRITY",
+      "title": "Synthetic append-only human review state",
+      "provenance": {
+        "data_class": "PUBLIC_SYNTHETIC",
+        "source_name": "Law-Rag authored human-review fixture",
+        "scope": "Synthetic revision/stale-state metadata only."
+      },
+      "expectations": [
+        {
+          "assertion_id": "revision-count",
+          "pointer": "/revision_count",
+          "comparison": "EXACT",
+          "expected": 2
+        },
+        {
+          "assertion_id": "latest-state",
+          "pointer": "/latest_state",
+          "comparison": "EXACT",
+          "expected": "NEEDS_MORE_REVIEW"
+        },
+        {
+          "assertion_id": "stale-state",
+          "pointer": "/latest_is_stale",
+          "comparison": "EXACT",
+          "expected": false
+        }
+      ],
+      "tags": ["schema-smoke", "synthetic", "human-review"]
+    }
+  ]
+}
