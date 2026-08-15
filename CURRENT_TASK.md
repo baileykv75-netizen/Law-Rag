@@ -1,211 +1,109 @@
 # CURRENT_TASK.md
 
-# Stage 11 — Benchmark, Hardening, and Windows Release
+# Stage 11C — Runtime, Startup, and Data-Integrity Hardening
+
+## Status
+
+```text
+Stage 11A  COMPLETE — versioned benchmark schema + public synthetic evaluator
+Stage 11B  COMPLETE — layered metric helpers + failure diagnostics + deterministic CI quality gates
+Stage 11C  ACTIVE   — runtime/startup/data-integrity hardening
+Stage 11D  PENDING  — Windows dependency and release-bundle reproducibility
+Stage 11E  PENDING  — release-candidate validation / installer decision
+```
+
+Stage 11B public CI now independently rebuilds the checked-in legal seed/retrieval index and enforces the named repository-safe quality profile. Its scores remain scoped regression evidence, not a general legal-accuracy claim.
 
 ## Goal
 
-Turn the Stage 1–10 feature-complete local contract-audit pipeline into something that can be measured, stress-tested, reproduced, and distributed on Windows without weakening the evidence/privacy boundaries already established.
+Make the existing Stage 1–10 local application fail safely and diagnostically under realistic local-runtime problems before attempting a Windows release bundle.
 
-Stage 11 is **not** a new reasoning/model stage. The priority order is:
+This phase is **not** a new reasoning/model feature and is **not** packaging work.
 
-```text
-measure first
-  -> identify real failure modes
-  -> harden runtime/data integrity
-  -> validate Windows setup/bundle behavior
-  -> produce a reproducible release bundle
-  -> consider installer only after the bundle is proven
-```
-
-Do not use packaging as a substitute for quality validation.
-
-## Hard boundaries inherited from Stages 1–10
-
-1. No private contracts, private expert labels, private benchmark data, API keys, runtime databases, model caches or private logs may be committed to the public repository.
-2. Public CI must remain deterministic and must not require paid DeepSeek/Kimi calls.
-3. Real-provider smokes remain explicit opt-in tests using synthetic/public content only.
-4. Benchmark scores must name the dataset/scope/version; never present a tiny public fixture score as a general legal-accuracy claim.
-5. `CURATED_EXCERPT` legal coverage remains explicit; missing corpus content cannot be counted as proof of legal absence.
-6. OCR, canonical extraction, deterministic rules, legal retrieval, DeepSeek, Kimi, comparison, Agent and human-review artifacts remain independently inspectable.
-7. Release packaging must not embed secrets or private runtime artifacts.
-8. Model/OCR weights and caches must stay outside Git and have a documented first-run/offline policy.
-9. Existing dependency licenses and binary redistribution obligations must be rechecked before shipping a Windows bundle.
-10. Do not add a repository open-source license without the project owner's explicit decision.
-11. No automatic final legal approval is introduced in Stage 11.
-12. All Stage 1–10 regressions must remain green throughout hardening.
-
-## Delivery strategy
-
-Implement Stage 11 in small verifiable sub-phases:
+Priority:
 
 ```text
-11A — benchmark schema + public synthetic evaluation harness
-11B — quality/failure diagnostics + regression gates
-11C — runtime/startup/data-integrity hardening
-11D — Windows dependency/bundle reproducibility
-11E — release candidate checklist + optional installer decision
+detect runtime problem
+  -> preserve prior valid data
+  -> return explicit diagnostic
+  -> avoid destructive auto-repair
+  -> provide a clear operator action
 ```
 
-Do not implement all sub-phases in one uncontrolled rewrite.
+## Hard boundaries
 
-## 11A — Benchmark schema
+1. Do not weaken evidence, legal-version, privacy, provider, Agent, or human-review boundaries from Stages 1–10.
+2. Startup/workspace navigation must not call DeepSeek or Kimi.
+3. No private contracts, benchmark labels, runtime databases, model caches, logs, or secrets may enter Git.
+4. Never print API keys or full secret values in diagnostics.
+5. Do not silently delete/rebuild a user's runtime directory to recover from corruption.
+6. Do not overwrite a previously valid artifact with a failed/incomplete new result.
+7. `legal.db` and `retrieval.db` remain local generated stores; recovery must be explicit.
+8. OCR/semantic model downloads remain optional and outside Git.
+9. No installer, embedded Python, or executable bundle work in 11C.
+10. Existing backend tests, frontend build, and Stage 11B public quality gates must remain green.
 
-Create a versioned benchmark/evaluation schema that can represent multiple layers without conflating them.
+## 11C-1 — Runtime health model
 
-At minimum support separately scored tasks for:
+Create a typed, local runtime-diagnostics model and service that can inspect without mutating:
 
 ```text
-OCR
-canonical structure extraction
-deterministic rule behavior
-legal retrieval
-legal citation validity
-contract Evidence localization
-primary audit findings
-secondary disagreement/omission detection
-human-review workflow integrity
+Python/runtime basics
+configured runtime directory
+job storage writability
+legal.db presence/readability
+retrieval.db presence/readiness/staleness
+OCR optional dependency readiness
+semantic retrieval optional dependency readiness
+DeepSeek/Kimi configuration presence (never secret values)
+frontend/backend expected local ports or startup prerequisites where safely testable
 ```
 
-A benchmark case should record enough metadata to reproduce the expected comparison, such as:
-
-- case ID/version;
-- fixture/document ID;
-- task type;
-- expected page/Evidence/Legal Evidence IDs where applicable;
-- expected structured values/labels;
-- allowed alternatives/tolerances where genuinely necessary;
-- dataset scope/source/provenance;
-- whether the case is public synthetic/public legal/private external evaluation;
-- evaluator version.
-
-Do not create one vague aggregate “legal accuracy” number.
-
-## 11A — Public vs private evaluation data
-
-Repository-safe public benchmark data may contain only:
-
-- fictional/synthetic contracts;
-- verified public legal text/provenance already permitted by the legal-data policy;
-- synthetic OCR/page-layout fixtures;
-- non-sensitive expected labels.
-
-Private real-contract benchmarks and expert labels must remain outside Git. If a private benchmark runner is supported, it should accept an external local path/config without assuming the data is checked in.
-
-## 11B — Metrics
-
-Report metrics by layer.
-
-Candidate metrics include:
-
-### OCR
-
-- character error rate / normalized text accuracy where reference text exists;
-- block detection/coverage;
-- low-confidence/failure rate;
-- page-level success rate.
-
-### Canonical structure
-
-- clause boundary precision/recall;
-- party/date/money/percentage/identifier extraction precision/recall;
-- source-span/Evidence linkage accuracy;
-- cross-page continuation accuracy.
-
-### Retrieval
-
-Preserve existing retrieval metrics and extend only when justified:
+Diagnostic states should be explicit, for example:
 
 ```text
-Recall@K
-MRR
-exact citation hit rate
-version/applicability correctness
-coverage-state correctness
+OK
+OPTIONAL_NOT_CONFIGURED
+MISSING
+STALE
+CORRUPT
+MISCONFIGURED
+UNAVAILABLE
+ACTION_REQUIRED
 ```
 
-### Audit findings
+Do not label an optional component failure as fatal when the supported fallback path remains valid.
 
-For a labeled benchmark, report separately:
+## 11C-2 — Startup diagnostics
+
+Add a developer/user-facing local diagnostic command or endpoint that answers:
 
 ```text
-precision
-recall
-F1
-high-risk recall
-false-positive count/category
-unsupported-citation rate
-Evidence-link validity
-Legal Evidence/version validity
-review-required calibration by category
+Can base Law-Rag start?
+Can native PDF processing run?
+Is OCR installed/configured?
+Is legal seed built?
+Is lexical retrieval ready?
+Is semantic retrieval available?
+Are DeepSeek/Kimi keys configured?
+What exact safe action should the user take next?
 ```
 
-Do not convert model agreement into a correctness probability.
+Examples of safe remediation messages:
 
-### Dual-model/Agent
+```text
+Run rebuild-legal-seed.bat
+Run build-retrieval-index.bat
+Run setup-ocr-cpu.bat only if scanned documents require OCR
+Set DEEPSEEK_API_KEY locally before primary audit
+Set MOONSHOT_API_KEY locally before secondary review
+```
 
-Track at least:
+The diagnostic path itself must not download models, rebuild databases, call providers, or mutate job artifacts.
 
-- agreement/minor/material disagreement distribution;
-- possible-omission yield on labeled cases;
-- Agent follow-up activation rate;
-- Agent action count/tool distribution;
-- unresolved `HUMAN_REVIEW_REQUIRED` rate;
-- invalid/forbidden action rate (expected zero).
+## 11C-3 — Critical artifact integrity
 
-## 11B — Regression gates
-
-Only introduce a CI quality gate when:
-
-1. the benchmark is deterministic enough for CI;
-2. its dataset is public/repository-safe;
-3. the metric meaning is documented;
-4. the threshold is justified by the current fixture scope.
-
-Keep opt-in heavy/real-provider benchmarks separate from normal CI.
-
-A regression gate must fail loudly on degraded results; do not silently update expected labels/thresholds just to restore green CI.
-
-## 11B — Failure diagnostics
-
-Benchmark output should help locate failures rather than emit only a score.
-
-For every failed case, retain safe diagnostics such as:
-
-- case/task ID;
-- expected vs observed structured result;
-- page/Evidence IDs;
-- Legal Evidence/version IDs;
-- provider/model/version when relevant;
-- deterministic stage responsible when known;
-- explicit reason/category.
-
-Do not persist hidden model reasoning or secrets.
-
-## 11C — Runtime hardening
-
-Audit the local runtime for real release blockers, including:
-
-- startup when Python/Node/runtime dependency is missing;
-- model/OCR dependency unavailable;
-- corrupted/incomplete runtime artifact;
-- stale retrieval/legal index;
-- source file missing/duplicated;
-- interrupted/partial writes;
-- port conflicts;
-- malformed local configuration;
-- very long/Chinese Windows paths where practical;
-- repeated start/stop behavior;
-- clear offline/first-run behavior for OCR/embedding models;
-- disk-space/cache location visibility;
-- no secrets in logs/errors.
-
-Prefer explicit diagnostics over automatic destructive repair.
-
-## 11C — Data integrity/recovery
-
-Review atomic-write behavior for critical artifacts and add recovery/diagnostic behavior where needed.
-
-At minimum protect:
+Audit and harden critical persisted artifacts:
 
 ```text
 contract.json
@@ -218,135 +116,106 @@ legal.db
 retrieval.db
 ```
 
-Do not overwrite a previously valid artifact with a failed/incomplete stage result.
+For JSON artifacts, where practical verify:
 
-## 11D — Windows dependency audit
+- parseability;
+- schema validation;
+- expected job identity;
+- required fingerprint/link relationships;
+- atomic write behavior;
+- previous-valid-result preservation on failed write/update.
 
-Before bundling, re-verify current official license/redistribution information for shipped dependencies and binary components, especially:
+For SQLite stores verify read/open/integrity behavior without destructive repair.
 
-- Python/runtime choice;
-- pypdf;
-- pypdfium2/PDFium;
-- Pillow;
-- PaddlePaddle/PaddleOCR and model redistribution assumptions;
-- SQLite/FTS behavior;
-- Node/Vite frontend build output;
-- any semantic embedding runtime/models that are bundled or downloaded separately.
+Corruption must be surfaced as `CORRUPT`/`ACTION_REQUIRED`, not converted into an empty successful state.
 
-Record shipping implications in `docs/DECISIONS.md` or a dedicated release/dependency document.
+## 11C-4 — Runtime failure cases
 
-Do not bundle a component whose redistribution requirements are unclear.
+Add deterministic regressions for representative failures, including as many as practical without platform-specific guessing:
 
-## 11D — Release bundle target
+- missing runtime directory parent / first-run creation boundary;
+- unwritable configured runtime directory where safely testable;
+- corrupt JSON artifact;
+- corrupt `legal.db`;
+- corrupt/stale `retrieval.db`;
+- source file missing for an existing job;
+- malformed environment/config value;
+- missing optional OCR dependency;
+- missing optional semantic dependency;
+- no DeepSeek/Kimi key configured;
+- stale human-review decision after report change;
+- interrupted-write simulation or temp-file residue where applicable.
 
-First target a reproducible Windows-oriented folder/bundle rather than an installer.
+Tests must verify that a previous valid artifact is not destroyed by the failure path.
 
-A candidate release should provide a documented path similar to:
+## 11C-5 — Windows-oriented startup behavior
 
-```text
-Law-Rag/
-  start-law-rag.bat
-  backend/runtime or embedded Python strategy
-  frontend built assets
-  configuration template
-  legal seed/build assets or verified local database bootstrap
-  license notices required by redistributed dependencies
-  README / first-run diagnostics
-```
-
-Exact packaging technology must be chosen only after testing size, startup reliability, subprocess behavior, model-cache strategy and license implications.
-
-## 11D — Release privacy checks
-
-A release artifact must be inspected to ensure it contains no:
-
-- API key;
-- `.env` secret;
-- real/private contract;
-- local `runtime/jobs` output;
-- private benchmark;
-- private log;
-- user-specific absolute path;
-- unintended model/cache copy.
-
-## 11E — Release candidate validation
-
-Before calling anything a release candidate, verify at least:
-
-- clean-machine/clean-directory setup path is documented;
-- startup diagnostics are understandable;
-- core local workflow can open the professional workstation;
-- optional OCR path is documented/tested;
-- legal seed/retrieval bootstrap is reproducible;
-- external model configuration is explicit and secret-safe;
-- no external model call happens just by startup/workspace navigation;
-- benchmark report can be reproduced from the named public fixture version;
-- Stage 1–10 regressions remain green;
-- frontend production build remains green;
-- Windows-specific smoke is green;
-- release contents pass privacy/secret scan;
-- required third-party notices are included.
-
-Only after a release bundle is reliable should an installer format be evaluated.
-
-## Test strategy
-
-Normal CI remains local and secret-free.
-
-Expected Stage 11 test layers:
+Review the current `.bat` scripts for clear failure behavior before Stage 11D bundling:
 
 ```text
-fast deterministic unit/regression suite
-public synthetic benchmark gate(s)
-frontend TypeScript/production build
-opt-in Windows OCR dependency smoke
-opt-in/local semantic retrieval smoke
-opt-in paid DeepSeek/Kimi synthetic smoke
-Windows release-bundle smoke when implemented
+setup-dev.bat
+start-dev.bat
+setup-ocr-cpu.bat
+setup-rag-semantic-cpu.bat
+rebuild-legal-seed.bat
+build-retrieval-index.bat
+build-retrieval-index-semantic.bat
 ```
 
-Do not make normal CI depend on downloaded private models, private benchmarks or paid API availability.
+In 11C, improve diagnostics only where needed. Do not choose a packaging technology yet.
+
+Pay particular attention to:
+
+- missing Python/Node;
+- virtualenv missing;
+- command failure propagation;
+- Chinese/space-containing paths;
+- repeated start attempts;
+- clear local URLs;
+- no secret echoing.
+
+## 11C-6 — Logging/error hygiene
+
+Ensure new diagnostics and existing startup/runtime errors prefer IDs/states over raw private contract text.
+
+Never include:
+
+- full API keys;
+- Authorization headers;
+- unrestricted contract contents;
+- hidden model reasoning;
+- private benchmark contents.
+
+## Validation
+
+Before marking 11C complete:
+
+1. runtime diagnostic inspection is provider-free and mutation-free;
+2. optional OCR/semantic absence is distinguished from fatal base-runtime failure;
+3. corrupt/missing legal/retrieval stores receive explicit diagnostics;
+4. critical JSON corruption is not rendered as success;
+5. previous valid artifacts survive failed stage writes/updates;
+6. representative runtime failure regressions are green;
+7. Windows developer scripts have explicit failure propagation/next-action messages where practical;
+8. no secrets/private payloads appear in diagnostic output;
+9. Stage 1–10 backend regressions remain green;
+10. Stage 11B public deterministic quality gates remain green;
+11. frontend TypeScript/production build remains green;
+12. documentation reflects actual diagnostics and recovery boundaries.
 
 ## Out of scope
 
-Do not add in Stage 11 unless a concrete release blocker requires it:
+Do not implement in 11C:
 
-- new reasoning models;
+- Windows installer;
+- monolithic `.exe`;
+- embedded Python distribution;
+- dependency redistribution/license bundle;
+- new OCR/model family;
+- new LLM provider;
 - third-model voting;
-- public SaaS/auth/multi-tenancy;
-- cloud document storage;
 - automatic legal-corpus crawling;
-- fine-tuning on private contracts;
-- auto-filing/submission;
-- automatic final legal approval;
-- mobile app;
-- an installer before the release bundle itself is proven.
+- destructive automatic runtime repair;
+- cloud deployment/authentication.
 
-## Acceptance criteria
-
-Stage 11 is complete only when all are true:
-
-1. A versioned evaluation schema/harness exists.
-2. Repository-safe public synthetic benchmark cases cover multiple pipeline layers.
-3. Metrics are reported by layer rather than as one unsupported legal-accuracy number.
-4. Benchmark failures provide case-level diagnostics.
-5. Existing Stage 7 retrieval benchmark remains intact or is deliberately versioned with documented rationale.
-6. At least one meaningful deterministic quality regression gate is enforced in CI beyond existing unit tests.
-7. Runtime startup/dependency/configuration failure states have explicit diagnostics.
-8. Critical artifact write/recovery behavior is hardened or explicitly documented.
-9. Windows dependency/license redistribution review is documented from current primary sources before bundling.
-10. A reproducible Windows-oriented release bundle path exists.
-11. Release bundle contains no secrets/private runtime/private benchmark data.
-12. First-run/offline/model-cache behavior is documented.
-13. A Windows release smoke validates startup and core local UI/workstation access.
-14. No hidden model call occurs on startup/workspace navigation.
-15. Stage 1–10 backend regressions remain green.
-16. Frontend TypeScript/production build remains green.
-17. README/architecture/release docs reflect the shipped behavior.
-18. Final CI/release checks are green.
-
-## Completion rule
-
-Do not claim a production-quality legal accuracy level or Windows release until the named benchmark scope and release checks actually support that claim.
-
-Begin with **11A — benchmark schema + public synthetic evaluation harness**. Do not start installer work first.
+Stage 11D may begin only after 11C runtime/data-integrity diagnostics are demonstrably green.
