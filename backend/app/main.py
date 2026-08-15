@@ -45,6 +45,7 @@ from .legal.store import (
 )
 from .models import IngestResponse, OcrRunResult, PageEvidenceSummary
 from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
+from .release_frontend import router as release_frontend_router
 from .runtime_health_api import router as runtime_health_router
 from .storage import job_upload_dir, legal_db_path, legal_retrieval_index_path
 
@@ -389,3 +390,10 @@ def get_audit_rules(job_id: UUID) -> AuditRuleReport:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
+
+
+# Keep the production frontend catch-all after every API route. In development,
+# LAW_RAG_FRONTEND_DIST is unset and these routes return an explicit 404, so the
+# existing Vite workflow remains unchanged. In a release bundle they serve the
+# compiled SPA from the same localhost origin as the API.
+app.include_router(release_frontend_router)
