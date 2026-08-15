@@ -4,7 +4,30 @@ import os
 from pathlib import Path
 from uuid import UUID
 
+from .safe_persistence import atomic_write_text
+
 DEFAULT_RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
+_CONCRETE_PATH = type(Path())
+
+
+class _AtomicArtifactPath(_CONCRETE_PATH):
+    """Path variant used only for legacy critical writers that still call Path.write_text directly."""
+
+    def write_text(
+        self,
+        data: str,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        atomic_write_text(
+            Path(self),
+            data,
+            encoding=encoding or "utf-8",
+            errors=errors,
+            newline=newline,
+        )
+        return len(data)
 
 
 def runtime_dir() -> Path:
@@ -75,11 +98,11 @@ def job_ocr_path(job_id: UUID) -> Path:
 
 
 def job_contract_path(job_id: UUID) -> Path:
-    return job_output_dir(job_id) / "contract.json"
+    return _AtomicArtifactPath(job_output_dir(job_id) / "contract.json")
 
 
 def job_audit_rules_path(job_id: UUID) -> Path:
-    return job_output_dir(job_id) / "audit-rules.json"
+    return _AtomicArtifactPath(job_output_dir(job_id) / "audit-rules.json")
 
 
 def job_ai_audit_path(job_id: UUID) -> Path:
