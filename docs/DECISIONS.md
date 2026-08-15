@@ -53,7 +53,7 @@ Legal retrieval will not be vector-only. Target retrieval combines exact citatio
 
 **Status:** accepted
 
-DeepSeek is the planned first primary model integration, but domain code must use a provider abstraction so Kimi, Qwen, local endpoints or future providers can be swapped without rewriting audit logic.
+DeepSeek is the first primary model integration, but domain code uses a provider abstraction so Kimi, Qwen, local endpoints or future providers can be swapped without rewriting audit logic.
 
 ## D-009 — Constrained Agent
 
@@ -90,150 +90,140 @@ Do not begin with a monolithic Windows `.exe`. Progression: reliable developer s
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 2 uses `pypdf` behind the ingestion layer for PDF page count and native text extraction. It is practical on Windows, pure Python, BSD-3-Clause, and keeps text extraction separate from OCR/rendering. Dependency remains constrained to major version 6 (`pypdf>=6.14,<7`).
+Stage 2 uses `pypdf` behind the ingestion layer for PDF page count and native text extraction. Dependency remains constrained to major version 6 (`pypdf>=6.14,<7`).
 
 ## D-015 — pypdfium2/PDFium for OCR page rendering
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 3 uses `pypdfium2==5.12.1` for PDF rasterization, rendering only pages already classified `OCR_REQUIRED`, with default scale `2.0` (roughly 144 DPI). Future binary distribution must preserve the applicable PDFium/dependency license files and re-check them when the pinned version changes.
+Stage 3 uses `pypdfium2==5.12.1` for PDF rasterization, rendering only pages already classified `OCR_REQUIRED`, with default scale `2.0`. Future binary distribution must preserve applicable dependency license files.
 
 ## D-016 — PaddleOCR local CPU provider is optional and lazy-loaded
 
 **Date:** 2026-08-15  
 **Status:** accepted, model choice superseded by D-017
 
-The real OCR provider is local PaddleOCR using PaddlePaddle CPU `3.3.0` and PaddleOCR `3.7.0`. OCR is installed separately via `setup-ocr-cpu.bat` and imported lazily so native-text-only workflows do not require model dependencies. Automatic document rotation/unwarping/text-line-orientation remain disabled until transformed coordinates can be mapped back safely. Model caches remain local and outside Git.
+The real OCR provider is local PaddleOCR using PaddlePaddle CPU `3.3.0` and PaddleOCR `3.7.0`. OCR is installed separately and imported lazily. Model caches remain local and outside Git.
 
 ## D-017 — Accuracy-first default: PP-OCRv6 medium
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-The initial lightweight model proposal was superseded before Stage 3 completion. Default provider uses `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec`. This remains a hypothesis to validate against the private legal-document benchmark; final model selection must be driven by measured accuracy on amounts, dates, percentages, names, article numbers, tables and difficult scans.
+Default provider uses `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec`. Final model selection remains benchmark-driven on legal-document OCR accuracy.
 
 ## D-018 — Canonical contract structure is deterministic and evidence-grounded
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 4 introduces a dedicated versioned canonical contract boundary before audit rules, legal RAG, LLM reasoning or Agent behavior. Schema `1.0.0` is persisted as `runtime/jobs/<job-id>/contract.json`.
-
-Key rules:
-
-- native PDF lines and OCR blocks are consumed through one ordered evidence abstraction;
-- every derived object retains reusable SourceSpans and Evidence IDs;
-- native character offsets and OCR bbox/polygon/confidence are retained when available;
-- canonical structure never silently replaces source evidence;
-- missing/failed/no-text OCR pages block complete structure generation;
-- ambiguous facts/references remain explicit;
-- extraction is deterministic and unchanged evidence produces idempotent output/source fingerprint.
-
-Downstream deterministic rules, legal retrieval and future models consume this canonical representation instead of independently reinterpreting raw PDFs.
+Stage 4 introduces a versioned canonical contract boundary persisted as `runtime/jobs/<job-id>/contract.json`. Every derived object retains source spans/Evidence IDs; missing OCR pages block complete structure; downstream systems consume the canonical representation rather than independently rereading raw PDFs.
 
 ## D-019 — Deterministic rule failure is not a legal conclusion
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 5 introduces a versioned deterministic rule engine with an explicit registry and four visible states: `PASS`, `FAIL`, `REVIEW`, `NOT_APPLICABLE`.
-
-Interpretation is intentionally narrow:
-
-- `FAIL` means a configured machine-checkable condition did not hold; it does **not** mean the contract is illegal, invalid or unenforceable;
-- `REVIEW` is used when grouping/inputs are ambiguous, legal intent may justify the observed chronology, a parser limitation exists, or source OCR is uncertain;
-- `NOT_APPLICABLE` is preferred over forcing a check when the required explicit context is absent;
-- rules only consume `contract.json` and canonical SourceSpans rather than independently rereading raw PDFs;
-- rules retain stable rule IDs/versions, observed values, canonical object IDs and source Evidence IDs;
-- low/unknown OCR confidence can downgrade an otherwise deterministic PASS/FAIL to `REVIEW` while preserving `deterministic_state`;
-- one rule exception is isolated and surfaced; it must not erase unrelated rule results;
-- required-field assumptions are attached to an explicit audit profile (`basic-bilateral-v1`) rather than claimed to be universal contract requirements;
-- percentage arithmetic groups only conservatively identified payment percentages instead of summing all percentages in the document.
-
-The report is persisted as `runtime/jobs/<job-id>/audit-rules.json`. Nuanced legal conclusions remain out of scope until versioned legal evidence and later grounded reasoning layers exist.
+Stage 5 rule states are `PASS`, `FAIL`, `REVIEW`, `NOT_APPLICABLE`. `FAIL` means a configured machine condition failed; it does not mean illegal/invalid/unenforceable. OCR uncertainty may downgrade a machine decision to review while preserving deterministic state.
 
 ## D-020 — Canonical legal evidence is authority/version/article identity, not anonymous chunks
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 6 introduces legal schema `1.0.0` with three durable identity layers:
+Stage 6 uses durable identity:
 
 ```text
 authority -> authority version -> article / Legal Evidence ID
 ```
 
-Legal Evidence IDs are deterministic (`legal:<authority>:<version>:<article>`). Source snapshot and exact article text receive SHA-256 hashes. Source URLs, issuing body/type, effective metadata, coverage type, schema/importer version and verification notes remain attached to the legal version.
-
-Later retrieval/indexes/embeddings are derivative indexes only. They may not replace the canonical legal evidence record or invent a citation absent from it.
+Legal Evidence IDs, source/article hashes, source URLs, effective metadata and coverage remain canonical. Retrieval indexes/embeddings are derivative only.
 
 ## D-021 — SQLite legal store and half-open effective intervals
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 6 uses local SQLite at `runtime/legal/legal.db`; no database server is required. Historical versions are retained. Applicability uses the deterministic half-open interval:
+Stage 6 uses local SQLite. Applicability is:
 
 ```text
 effective_date <= as_of < end_date_exclusive
 ```
 
-When no interval matches, resolver returns `NO_APPLICABLE_VERSION`. When multiple intervals overlap, it returns `AMBIGUOUS` rather than selecting the latest/promulgated record by guess.
-
-Rebuilds are constructed in a temporary SQLite file and replace the valid store only after full validation succeeds. Normal imports are transactional and roll back on critical identity errors.
+No match returns `NO_APPLICABLE_VERSION`; overlapping matches return `AMBIGUOUS` rather than choosing by guess.
 
 ## D-022 — Legal corpus coverage is first-class evidence
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-A stored authority version declares `FULL_TEXT` or `CURATED_EXCERPT`. Stage 6 seed is intentionally partial: 8 selected Civil Code contract articles and 7 selected SPC contract-general interpretation articles.
-
-Absence from a `CURATED_EXCERPT` corpus can never support a conclusion that a legal rule does not exist. Stage 7 retrieval and later LLM prompts must propagate this coverage state and use an insufficient-corpus/review result when completeness matters.
+Authority versions declare `FULL_TEXT` or `CURATED_EXCERPT`. Absence from a partial corpus can never support a conclusion that a rule does not exist. Retrieval and LLM layers must propagate coverage state.
 
 ## D-023 — Real legal seed requires authoritative public source provenance
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Real checked-in seed records require curated authoritative public sources, expected source hashes, expected article counts, effective/version metadata and an explicit verification date/note. Stage 6 seed uses official National Laws and Regulations Database / official government publication sources for the Civil Code and official Supreme People's Court sources for the contract-general judicial interpretation.
-
-Commercial legal databases, blogs, search snippets, copied law sites and model memory are not sources of record. Tests may use fictional source hosts only through an explicit test override.
+Real checked-in seed records require curated authoritative public sources, expected source hashes/article counts, effective/version metadata and verification notes. Commercial databases/blogs/search snippets/model memory are not sources of record.
 
 ## D-024 — Stage 7 Chinese lexical retrieval uses SQLite FTS5 trigram + BM25
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 7 builds a derivative local `runtime/legal/retrieval.db` from canonical Stage 6 articles. The lexical channel uses SQLite FTS5 with the `trigram` tokenizer and `bm25()` ranking rather than assuming whitespace/Unicode word tokenization works well for continuous Chinese legal text.
-
-The FTS index stores/references canonical Legal Evidence IDs. Authority title, article token, structural heading context and article text are indexed with deterministic field weights. Exact citation lookup remains a separate deterministic channel and does not depend on the FTS index.
+The lexical channel uses SQLite FTS5 `trigram` tokenization and `bm25()` over canonical Legal Evidence. Exact citation lookup remains a separate deterministic channel.
 
 ## D-025 — Semantic retrieval is optional, local and provider-neutral
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 7 defines a replaceable `EmbeddingProvider`. The initial real local CPU provider is `BAAI/bge-small-zh-v1.5` through Sentence Transformers. It is installed separately and lazily; exact + BM25 retrieval remain usable without the semantic stack.
-
-The derivative index records embedding provider/model/dimension. Vectors are never accepted under mismatched metadata. A deterministic fake embedding provider is used by normal CI, while an opt-in Windows integration job has verified the real BGE path end-to-end on the public seed.
-
-Model/provider choice remains benchmarkable and replaceable; BGE is not part of canonical legal identity.
+Stage 7 defines a replaceable `EmbeddingProvider`. Initial real local provider is `BAAI/bge-small-zh-v1.5`; exact + BM25 work without it. Provider/model/dimension are recorded and mismatches are rejected.
 
 ## D-026 — Retrieval fusion cannot hide explicit evidence absence or version uncertainty
 
 **Date:** 2026-08-15  
 **Status:** accepted
 
-Stage 7 uses deterministic weighted reciprocal-rank fusion across exact, lexical and semantic candidates, while pinning applicable exact citation hits ahead of probabilistic matches.
+Weighted reciprocal-rank fusion is subordinate to evidence-state semantics. Final candidates must be applicable on `as_of`; ambiguity/no-applicable states cannot be hidden; an explicitly requested missing article in `CURATED_EXCERPT` remains `INSUFFICIENT_CORPUS` even if similar candidates exist. Fused score is ranking, not legal correctness probability.
 
-Ranking is subordinate to evidence-state semantics:
+## D-027 — Stage 8 primary model receives a deterministic evidence package, not the raw contract
 
-- final candidates must pass Stage 6 `as_of` version applicability;
-- `VERSION_AMBIGUOUS` and `NO_APPLICABLE_VERSION` cannot be hidden by similar text from another version;
-- when a caller explicitly requests an article/Legal Evidence ID that is absent from a `CURATED_EXCERPT`, the overall state is `INSUFFICIENT_CORPUS` even if BM25/vector search can suggest nearby similar articles;
-- per-channel rank/raw score/contribution remains visible;
-- fused score is a ranking signal, not a calibrated legal-correctness probability.
+**Date:** 2026-08-15  
+**Status:** accepted
 
-This prevents a superficially relevant result from being mistaken for proof that the requested legal authority exists in the stored corpus.
+The Stage 8 primary model does not independently reread the raw PDF and does not receive an unconditional whole-contract dump. Application code builds `AuditContextPackage` from canonical clauses, non-PASS deterministic rule context, explicit `as_of`, and Stage 7 Legal Evidence.
+
+The initial issue discovery is deliberately bounded to deterministic topic rules that overlap the verified public legal seed. A generative model may reason about supplied issues; it may not invent a new authoritative legal corpus or silently reinterpret omitted raw pages.
+
+## D-028 — Prompt instructions are defense-in-depth; post-model validation is authoritative
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Contract/legal text is serialized as untrusted data and the system prompt explicitly forbids following embedded instructions. This does not make prompt wording a trust boundary.
+
+Before persistence, application code independently validates schema, issue IDs, canonical object IDs, contract Evidence IDs, Legal Evidence IDs, issue-to-law membership and legal-version applicability on `as_of`. Unsupported IDs/versions fail closed. `SUPPORTED_FINDING` requires both contract and legal evidence.
+
+A provider response that looks plausible but fails validation must not replace a previously valid `ai-audit.json`.
+
+## D-029 — DeepSeek V4-Pro is the first primary provider; hidden reasoning is not persisted
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+The DeepSeek API contract was re-verified against official documentation on 2026-08-15. Stage 8 defaults to `deepseek-v4-pro` via the provider's OpenAI-compatible HTTP endpoint, with JSON Output, thinking enabled and high reasoning effort. Legacy `deepseek-chat` / `deepseek-reasoner` aliases are not used.
+
+Domain code depends on `PrimaryAuditProvider`, not DeepSeek SDK objects. API keys live only in local environment/private secret management. `reasoning_content` is not persisted or exposed by the Stage 8 provider result; only final structured content, safe usage/request metadata and a raw-response hash are retained.
+
+No automatic fallback to another provider is allowed.
+
+## D-030 — Secondary review is conditional Stage 9 work, not a universal second call
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 8 uses exactly one primary generative provider. Kimi/Qwen/local secondary review belongs to Stage 9 and must be invoked through explicit triggers such as high risk, insufficient evidence, source uncertainty, version/retrieval ambiguity or primary/reviewer disagreement.
+
+The second model must receive bounded evidence, pass the same independent citation/version validation, and remain subordinate to an application-controlled state machine. Law-Rag will not call every model on every contract merely because multiple providers are available.
