@@ -56,9 +56,7 @@ def job_rendered_dir(job_id: UUID) -> Path:
 
 
 def legal_runtime_dir() -> Path:
-    path = runtime_dir() / "legal"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return runtime_dir() / "legal"
 
 
 def legal_db_path() -> Path:
