@@ -123,7 +123,7 @@ def _complete_stage9_artifacts(tmp_path: Path, job_id: str) -> None:
     )
     report = ReviewReport(
         job_id=job_uuid,
-        as_of=date(2026, 8, 15),
+        as_of="2026-08-15",
         final_state=Stage9cWorkflowState.DUAL_MODEL_AGREEMENT,
         primary_provider=primary.provider,
         primary_model=primary.model,
