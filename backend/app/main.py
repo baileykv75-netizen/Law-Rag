@@ -50,6 +50,7 @@ from .runtime_health_api import router as runtime_health_router
 from .storage import job_upload_dir, legal_db_path, legal_retrieval_index_path
 
 APP_NAME = "Law-Rag Local API"
+APP_VERSION = "0.8.0"
 CHUNK_SIZE = 1024 * 1024
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
@@ -61,7 +62,7 @@ EXPECTED_MEDIA_TYPES = {
     ".png": {"image/png", "application/octet-stream"},
 }
 
-app = FastAPI(title=APP_NAME, version="0.8.0")
+app = FastAPI(title=APP_NAME, version=APP_VERSION)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
