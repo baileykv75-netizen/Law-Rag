@@ -152,3 +152,51 @@ Interpretation is intentionally narrow:
 - percentage arithmetic groups only conservatively identified payment percentages instead of summing all percentages in the document.
 
 The report is persisted as `runtime/jobs/<job-id>/audit-rules.json`. Nuanced legal conclusions remain out of scope until versioned legal evidence and later grounded reasoning layers exist.
+
+## D-020 — Canonical legal evidence is authority/version/article identity, not anonymous chunks
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 6 introduces legal schema `1.0.0` with three durable identity layers:
+
+```text
+authority -> authority version -> article / Legal Evidence ID
+```
+
+Legal Evidence IDs are deterministic (`legal:<authority>:<version>:<article>`). Source snapshot and exact article text receive SHA-256 hashes. Source URLs, issuing body/type, effective metadata, coverage type, schema/importer version and verification notes remain attached to the legal version.
+
+Later retrieval/indexes/embeddings are derivative indexes only. They may not replace the canonical legal evidence record or invent a citation absent from it.
+
+## D-021 — SQLite legal store and half-open effective intervals
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 6 uses local SQLite at `runtime/legal/legal.db`; no database server is required. Historical versions are retained. Applicability uses the deterministic half-open interval:
+
+```text
+effective_date <= as_of < end_date_exclusive
+```
+
+When no interval matches, resolver returns `NO_APPLICABLE_VERSION`. When multiple intervals overlap, it returns `AMBIGUOUS` rather than selecting the latest/promulgated record by guess.
+
+Rebuilds are constructed in a temporary SQLite file and replace the valid store only after full validation succeeds. Normal imports are transactional and roll back on critical identity errors.
+
+## D-022 — Legal corpus coverage is first-class evidence
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+A stored authority version declares `FULL_TEXT` or `CURATED_EXCERPT`. Stage 6 seed is intentionally partial: 8 selected Civil Code contract articles and 7 selected SPC contract-general interpretation articles.
+
+Absence from a `CURATED_EXCERPT` corpus can never support a conclusion that a legal rule does not exist. Stage 7 retrieval and later LLM prompts must propagate this coverage state and use an insufficient-corpus/review result when completeness matters.
+
+## D-023 — Real legal seed requires authoritative public source provenance
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Real checked-in seed records require curated authoritative public sources, expected source hashes, expected article counts, effective/version metadata and an explicit verification date/note. Stage 6 seed uses official National Laws and Regulations Database / official government publication sources for the Civil Code and official Supreme People's Court sources for the contract-general judicial interpretation.
+
+Commercial legal databases, blogs, search snippets, copied law sites and model memory are not sources of record. Tests may use fictional source hosts only through an explicit test override.
