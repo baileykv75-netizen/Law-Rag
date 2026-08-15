@@ -1,0 +1,78 @@
+{
+  "benchmark_version": "1.0.0",
+  "description": "Small public Stage 7 retrieval benchmark over the checked-in CURATED_EXCERPT seed. It measures retrieval mechanics only, not legal correctness or full-corpus recall.",
+  "cases": [
+    {
+      "case_id": "exact-civil-585",
+      "query": "民法典第五百八十五条违约金",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:prc-civil-code:effective-2021-01-01:article-585"],
+      "top_k": 5,
+      "authority_id_hint": "prc-civil-code",
+      "article_token_hint": "第五百八十五条"
+    },
+    {
+      "case_id": "lexical-liquidated-damages",
+      "query": "约定的违约金过分高于造成的损失可以适当减少",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:prc-civil-code:effective-2021-01-01:article-585"],
+      "top_k": 5
+    },
+    {
+      "case_id": "lexical-deposit-cap",
+      "query": "定金不得超过主合同标的额的百分之二十",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:prc-civil-code:effective-2021-01-01:article-586"],
+      "top_k": 5
+    },
+    {
+      "case_id": "lexical-standard-terms-notice",
+      "query": "格式条款提供方未履行提示或者说明义务",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:prc-civil-code:effective-2021-01-01:article-496"],
+      "top_k": 5
+    },
+    {
+      "case_id": "lexical-standard-terms-invalid",
+      "query": "格式条款不合理免除提供方责任限制对方主要权利",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:prc-civil-code:effective-2021-01-01:article-497"],
+      "top_k": 5
+    },
+    {
+      "case_id": "lexical-contract-effectiveness",
+      "query": "依法成立的合同自成立时生效",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:prc-civil-code:effective-2021-01-01:article-502"],
+      "top_k": 5
+    },
+    {
+      "case_id": "lexical-breach-remedies",
+      "query": "不履行合同义务应承担继续履行补救或者赔偿损失",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:prc-civil-code:effective-2021-01-01:article-577"],
+      "top_k": 5
+    },
+    {
+      "case_id": "lexical-contract-interpretation",
+      "query": "解释合同条款应结合通常含义相关条款合同目的交易习惯诚信原则",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:spc-civil-code-contract-general-interpretation:effective-2023-12-05:article-1"],
+      "top_k": 5
+    },
+    {
+      "case_id": "lexical-format-clause-evidence",
+      "query": "提供格式条款的一方对已经尽到提示义务或者说明义务承担举证责任",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:spc-civil-code-contract-general-interpretation:effective-2023-12-05:article-10"],
+      "top_k": 5
+    },
+    {
+      "case_id": "lexical-thirty-percent-liquidated-damages",
+      "query": "违约金超过造成损失的百分之三十一般认定过分高于损失",
+      "as_of": "2026-08-15",
+      "expected_evidence_ids": ["legal:spc-civil-code-contract-general-interpretation:effective-2023-12-05:article-65"],
+      "top_k": 5
+    }
+  ]
+}
