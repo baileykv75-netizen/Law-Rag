@@ -1,130 +1,150 @@
-# Backend
+# Law-Rag Backend
 
-The backend is the local Python/FastAPI application for Law-Rag.
+The backend is the local Python/FastAPI application for Law-Rag. Provider-specific OCR/LLM SDK details must remain behind adapters instead of leaking into API or domain code.
 
-Backend responsibilities include local HTTP endpoints, job creation, validation, document ingestion, OCR evidence processing, local persistence access, and stable interfaces to later RAG/rule/LLM components.
-
-Provider-specific SDK details remain behind adapters rather than leaking through endpoint/domain code.
-
-## Stage 2 document ingestion
-
-`POST /api/documents`:
+## Current pipeline
 
 ```text
-validate upload
-  -> store source under ignored runtime/uploads/<job-id>/
-  -> classify PDF vs image
-  -> PDF: inspect each page with pypdf
-  -> image: mark OCR_REQUIRED
-  -> persist document summary + page evidence under runtime/jobs/<job-id>/
-  -> return route summary to the local UI
+POST /api/documents
+  -> validate/store local source
+  -> inspect native PDF text or mark image/OCR pages
+
+POST /api/documents/{job_id}/ocr
+  -> OCR only OCR_REQUIRED pages
+  -> persist OCR blocks/provenance
+
+POST /api/documents/{job_id}/structure
+  -> consume native + OCR evidence
+  -> build versioned canonical contract
+  -> persist contract.json
+
+GET /api/documents/{job_id}/structure
+  -> return persisted canonical contract
 ```
 
-### PDF routing heuristic
+No external LLM API is required through the current Stage 5 work.
 
-A PDF page is marked `NATIVE_TEXT_USABLE` only when the deterministic Stage 2 heuristic considers its native text sufficiently usable. Otherwise it is marked `OCR_REQUIRED`.
+## Runtime files
 
-The current thresholds are:
+```text
+runtime/uploads/<job-id>/source.<ext>
+runtime/jobs/<job-id>/document.json
+runtime/jobs/<job-id>/evidence.json
+runtime/jobs/<job-id>/ocr.json
+runtime/jobs/<job-id>/contract.json
+runtime/rendered/<job-id>/page-0001.png
+```
+
+All runtime artifacts are local/ignored and must not be committed.
+
+## Stage 2 — document ingestion
+
+PDF pages are inspected with `pypdf`. A page becomes `NATIVE_TEXT_USABLE` only when the deterministic routing heuristic considers the extracted text substantial enough and not suspicious. Otherwise it is `OCR_REQUIRED`.
+
+Current routing thresholds are explicit/testable rather than claimed accuracy guarantees:
 
 - at least 32 non-whitespace characters;
-- suspicious/replacement characters no more than 2% of non-whitespace characters;
-- at least 45% alphanumeric/meaningful characters.
+- suspicious/replacement characters no more than 2%;
+- at least 45% meaningful/alphanumeric characters.
 
-These thresholds are routing heuristics, not accuracy guarantees.
+## Stage 3 — OCR evidence
 
-## Stage 3 OCR evidence layer
+`POST /api/documents/{job_id}/ocr` preserves native pages and OCRs only required pages.
 
-`POST /api/documents/{job_id}/ocr` runs OCR only for pages already marked `OCR_REQUIRED`.
+The local provider boundary is `OcrProvider`; the concrete first adapter is PaddleOCR. PDF rasterization uses `pypdfium2/PDFium` only for pages requiring OCR.
 
-```text
-NATIVE_TEXT_USABLE page
-  -> retain existing native evidence
-
-OCR_REQUIRED PDF page
-  -> render only that page with pypdfium2/PDFium
-  -> run OCR provider
-  -> preserve text + confidence + bbox/polygon + provider provenance
-
-image document
-  -> OCR original image
-```
-
-The concrete Stage 3 provider is local PaddleOCR behind the `OcrProvider` protocol. Paddle-specific imports and result normalization live in `app/ocr.py`; FastAPI and document-domain code do not depend on Paddle SDK objects.
-
-The default accuracy-first model pair is:
+Default accuracy-oriented OCR pair:
 
 ```text
 PP-OCRv6_medium_det
 PP-OCRv6_medium_rec
 ```
 
-The provider accepts alternative detection/recognition model names, so later legal-document benchmarks can switch to another PP-OCR tier without rewriting OCR orchestration.
+Each OCR block retains stable Evidence ID, page, text, confidence, bbox/polygon and provider/model/version. The `0.85` threshold is a review-routing threshold only.
 
-### OCR evidence
-
-OCR results are persisted under:
-
-```text
-runtime/jobs/<job-id>/ocr.json
-runtime/rendered/<job-id>/page-0001.png   # only PDF pages that require OCR
-```
-
-Each OCR block retains:
-
-- stable block evidence ID;
-- 1-based page number;
-- recognized text;
-- recognition confidence when supplied;
-- rectangle and polygon coordinates when supplied;
-- provider/model/version provenance;
-- low-confidence flag/reason;
-- pixel source locator.
-
-The current review threshold is `0.85`. A block below this threshold, or a block without a provider confidence, is explicitly marked low-confidence. This threshold is only a review-routing rule and must not be interpreted as a calibrated probability that the text is correct.
-
-### PDF renderer
-
-Stage 3 uses `pypdfium2==5.12.1` with a default render scale of `2.0` (roughly 144 DPI for standard PDF points). Native-text pages are not rendered by default.
-
-### Optional OCR installation on Windows
-
-Base Law-Rag setup does not install PaddleOCR because electronic/native-text PDFs should remain usable without heavyweight OCR dependencies.
-
-First run:
-
-```text
-setup-dev.bat
-```
-
-Then install the local CPU OCR runtime from the repository root:
+Optional Windows OCR runtime:
 
 ```text
 setup-ocr-cpu.bat
 ```
 
-That script installs:
+Pinned path:
 
-- PaddlePaddle CPU 3.3.0 from the official PaddlePaddle CPU index;
+- PaddlePaddle CPU 3.3.0;
 - PaddleOCR 3.7.0.
 
-PaddleOCR models are downloaded on first OCR use. If the default model source is inaccessible, set the environment variable below before starting Law-Rag:
+## Stage 4 — canonical contract structure
+
+Stage 4 is implemented in dedicated modules:
 
 ```text
-PADDLE_PDX_MODEL_SOURCE=BOS
+app/contract_models.py
+app/contract_structure.py
 ```
 
-### Real PaddleOCR smoke test
+The canonical schema version is `1.0.0`.
 
-Normal CI intentionally does not download OCR models. After the OCR runtime is installed, an opt-in real-provider smoke test can be run against a local test image:
+### Unified evidence
 
-```bat
-cd backend
-set PYTHONPATH=.
-set LAW_RAG_OCR_SMOKE_IMAGE=C:\path\to\fictional-test-image.png
-..\.venv\Scripts\python.exe -m pytest -q -m ocr_smoke
+Native PDF text and OCR blocks are transformed into one ordered `EvidenceUnit` stream:
+
+- native units keep page Evidence IDs and page-text character offsets;
+- OCR units keep OCR block IDs, bbox/polygon and recognition confidence;
+- OCR is never substituted for a page already trusted as native text.
+
+Reusable `SourceSpan` objects carry derived items back to exact evidence.
+
+### Deterministic structure
+
+The current parser conservatively reconstructs:
+
+- title candidates;
+- clause/section hierarchy;
+- cross-page clause continuation;
+- party-role/name mentions;
+- explicit dates and safe ISO normalization;
+- explicit money amounts using `Decimal`;
+- explicit percentages;
+- labelled contract/project/agreement identifiers;
+- attachment/clause references;
+- conservative table candidates;
+- warnings and unresolved/ambiguous states.
+
+Common clause forms include:
+
+```text
+第一条
+一、
+（一）
+1.
+1、
+1.1
+1.1.1
+(1) / （1）
 ```
 
-Use only fictional or appropriately private/local test material. The test image is never committed automatically.
+The original numbering token is retained.
+
+### Incomplete OCR gate
+
+If a required OCR page is missing, `OCR_FAILED`, or `OCR_NO_TEXT`, structure generation returns an explicit incomplete error. It never creates a complete-looking `contract.json` with silently omitted pages.
+
+### Determinism
+
+The canonical structure stores a fingerprint of the exact persisted source evidence. Re-running the structure stage against unchanged inputs produces idempotent output.
+
+### Current limitations
+
+Stage 4 intentionally does not:
+
+- fuzzy-merge entity/company names;
+- make legal-risk judgments;
+- call an LLM;
+- infer missing dates/amounts;
+- fabricate table cells;
+- globally compare money/percentages without context.
+
+These boundaries protect later deterministic rule and legal-RAG stages from hidden assumptions.
 
 ## Local run
 
@@ -138,4 +158,12 @@ Deterministic tests:
 
 ```text
 pytest -q
+```
+
+Optional real PaddleOCR smoke test:
+
+```bat
+set PYTHONPATH=.
+set LAW_RAG_OCR_SMOKE_IMAGE=C:\path\to\fictional-test-image.png
+..\.venv\Scripts\python.exe -m pytest -q -m ocr_smoke
 ```
