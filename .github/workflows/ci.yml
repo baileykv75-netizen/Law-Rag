@@ -46,6 +46,35 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+  windows-release-bundle-smoke:
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'verify Windows bundle')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.2'
+          package-manager-cache: false
+      - name: Build Windows onedir bundle
+        shell: pwsh
+        run: ./release/build-windows.ps1
+      - name: Show resolved Python release environment
+        shell: pwsh
+        run: Get-Content release/.build/python-resolved.txt
+      - name: Smoke packaged launcher, API, and frontend
+        shell: pwsh
+        run: ./release/smoke-windows.ps1
+      - name: Upload inspectable Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-onedir-stage11d
+          path: release/dist/Law-Rag
+          if-no-files-found: error
+          retention-days: 3
+
   windows-ocr-dependency-smoke:
     if: github.event_name == 'push' && contains(github.event.head_commit.message, 'verify OCR deps')
     runs-on: windows-latest
