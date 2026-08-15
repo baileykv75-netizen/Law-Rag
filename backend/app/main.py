@@ -9,6 +9,14 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .contract_models import CanonicalContract, StructureSummary
+from .contract_structure import (
+    StructureIncompleteError,
+    StructureProcessingError,
+    build_contract_structure,
+    load_contract_structure,
+    structure_summary,
+)
 from .document_ingestion import DocumentProcessingError, inspect_document
 from .models import IngestResponse, OcrRunResult, PageEvidenceSummary
 from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
@@ -26,7 +34,7 @@ EXPECTED_MEDIA_TYPES = {
     ".png": {"image/png", "application/octet-stream"},
 }
 
-app = FastAPI(title=APP_NAME, version="0.3.0")
+app = FastAPI(title=APP_NAME, version="0.4.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -199,6 +207,43 @@ def ocr_document(job_id: UUID) -> OcrRunResult:
             detail=str(exc),
         ) from exc
     except OcrProcessingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+
+@app.post("/api/documents/{job_id}/structure", response_model=StructureSummary)
+def generate_structure(job_id: UUID) -> StructureSummary:
+    """Generate deterministic canonical contract structure from local evidence."""
+
+    try:
+        contract = build_contract_structure(job_id)
+        return structure_summary(contract)
+    except StructureIncompleteError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except StructureProcessingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+
+@app.get("/api/documents/{job_id}/structure", response_model=CanonicalContract)
+def get_structure(job_id: UUID) -> CanonicalContract:
+    """Return the persisted canonical contract structure for a local job."""
+
+    try:
+        return load_contract_structure(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except StructureProcessingError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
