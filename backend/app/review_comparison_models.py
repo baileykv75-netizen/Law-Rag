@@ -136,6 +136,7 @@ class AgentActionRecord(BaseModel):
     normalized_arguments: dict = Field(default_factory=dict)
     input_evidence_ids: list[str] = Field(default_factory=list)
     output_evidence_ids: list[str] = Field(default_factory=list)
+    result_payload: dict = Field(default_factory=dict)
     provider_call_occurred: bool = False
     private_contract_evidence_left_machine: bool = False
     validation_or_error: str | None = None
