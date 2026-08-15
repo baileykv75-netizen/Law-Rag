@@ -11,6 +11,7 @@ $BuildVenv = Join-Path $PSScriptRoot ".build-venv"
 $DistRoot = Join-Path $PSScriptRoot "dist"
 $WorkRoot = Join-Path $PSScriptRoot "work"
 $LockFile = Join-Path $Backend "requirements-release-lock-windows.txt"
+$NoticeRoot = Join-Path $BuildRoot "THIRD-PARTY-NOTICES"
 
 function Invoke-Checked {
     param([scriptblock]$Command, [string]$Label)
@@ -67,9 +68,15 @@ Push-Location $Backend
 try {
     $env:PYTHONPATH = "."
     Invoke-Checked { & $ReleasePython -m app.release_assets_cli --output-dir $BuildRoot } "Public legal/retrieval release asset build"
+    Invoke-Checked { & $ReleasePython -m app.release_notices_cli --lock $LockFile --output-dir $NoticeRoot } "Exact installed Python license/NOTICE collection"
 }
 finally {
     Pop-Location
+}
+
+$PythonNoticeReport = Join-Path $NoticeRoot "python-third-party-notices.json"
+if (-not (Test-Path $PythonNoticeReport)) {
+    throw "Python third-party notice collector did not emit its review report"
 }
 
 & $ReleasePython -m pip freeze --all | Sort-Object | Set-Content -Encoding UTF8 (Join-Path $BuildRoot "python-resolved.txt")
@@ -98,4 +105,5 @@ Copy-Item (Join-Path $BuildRoot "python-runtime.json") (Join-Path $Bundle "pytho
 Write-Host ""
 Write-Host "[Law-Rag] Windows onedir bundle created at: $Bundle"
 Write-Host "[Law-Rag] Build runtime: CPython $PythonVersion / Node $NodeVersion / npm $NpmVersion"
+Write-Host "[Law-Rag] Exact Python notices and Vite bundled dependency licenses were generated for review."
 Write-Host "[Law-Rag] No API keys, user runtime data, OCR weights, or BGE weights were bundled."
