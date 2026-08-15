@@ -1,0 +1,69 @@
+.human-decision-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #d8dfe8;
+  background: #fff;
+}
+.human-target-heading { display: grid; gap: 3px; }
+.human-target-heading strong { color: #26334a; font-size: 12px; line-height: 1.4; }
+.human-target-heading span { color: #7d8899; font-size: 9px; overflow-wrap: anywhere; }
+.latest-decision {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border-left: 3px solid #557760;
+  background: #f4f8f5;
+}
+.latest-decision.is-stale { border-left-color: #bd7a32; background: #fff8ec; }
+.latest-decision span { color: #778395; font-size: 8px; font-weight: 800; letter-spacing: .06em; }
+.latest-decision strong { font-size: 10px; }
+.latest-decision small { color: #7b8697; font-size: 8px; }
+.latest-decision em { color: #a06424; font-size: 8px; font-style: normal; font-weight: 800; }
+.human-decision-panel form { display: grid; gap: 8px; }
+.decision-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.decision-options button {
+  padding: 7px 8px;
+  border: 1px solid #d1d9e4;
+  border-radius: 4px;
+  background: #f8fafb;
+  color: #5e6b80;
+  font-size: 9px;
+  cursor: pointer;
+}
+.decision-options button.is-active { border-color: #4d6480; background: #e8eef4; color: #283951; font-weight: 800; }
+.human-decision-panel form > label { color: #6d798b; font-size: 9px; font-weight: 800; }
+.human-decision-panel textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 9px;
+  border: 1px solid #cfd7e2;
+  border-radius: 4px;
+  background: #fbfcfd;
+  color: #28354b;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.save-human-decision {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: #26364f;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.save-human-decision:disabled { opacity: .45; cursor: default; }
+.human-panel-message { margin: 0; color: #7b8697; font-size: 9px; line-height: 1.5; }
+.human-history { display: grid; gap: 6px; padding-top: 7px; border-top: 1px solid #e6eaf0; }
+.human-history article { padding: 8px; border: 1px solid #e0e5eb; background: #fafbfc; }
+.human-history article.is-stale { border-color: #e1c69c; background: #fffaf2; }
+.human-history article > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.human-history strong { font-size: 9px; }
+.human-history span { color: #8993a2; font-size: 8px; text-align: right; }
+.human-history p { margin: 5px 0; color: #606d81; font-size: 9px; line-height: 1.5; }
+.human-history small { color: #8a94a2; font-size: 8px; }
+.human-history em { display: block; margin-top: 4px; color: #a1682b; font-size: 8px; font-style: normal; font-weight: 800; }
