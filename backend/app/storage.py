@@ -44,6 +44,10 @@ def job_ocr_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "ocr.json"
 
 
+def job_contract_path(job_id: UUID) -> Path:
+    return job_output_dir(job_id) / "contract.json"
+
+
 def find_source_path(job_id: UUID) -> Path:
     upload_dir = runtime_dir() / "uploads" / str(job_id)
     candidates = sorted(upload_dir.glob("source.*"))
