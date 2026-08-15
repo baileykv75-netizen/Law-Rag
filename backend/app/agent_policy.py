@@ -90,11 +90,15 @@ def plan_follow_up(comparison: ReviewComparisonReport) -> AgentFollowUpPlan:
             | set(item.legal_basis.secondary_only)
         )
 
-        if item.risk_state in {
-            RiskComparisonState.DISAGREE_RISK_EXISTS,
-            RiskComparisonState.DISAGREE_EVIDENCE_SUFFICIENCY,
-            RiskComparisonState.STATE_DIFFERENCE,
-        } or item.contract_evidence.state == EvidenceSetComparisonState.DISJOINT:
+        if (
+            item.risk_state
+            in {
+                RiskComparisonState.DISAGREE_RISK_EXISTS,
+                RiskComparisonState.DISAGREE_EVIDENCE_SUFFICIENCY,
+                RiskComparisonState.STATE_DIFFERENCE,
+            }
+            or item.contract_evidence.state == EvidenceSetComparisonState.DISJOINT
+        ) and contract_ids:
             candidates.append(
                 (
                     10,
@@ -105,7 +109,7 @@ def plan_follow_up(comparison: ReviewComparisonReport) -> AgentFollowUpPlan:
                 )
             )
 
-        if item.legal_basis.state == EvidenceSetComparisonState.DISJOINT:
+        if item.legal_basis.state == EvidenceSetComparisonState.DISJOINT and legal_ids:
             candidates.append(
                 (
                     20,
@@ -119,30 +123,24 @@ def plan_follow_up(comparison: ReviewComparisonReport) -> AgentFollowUpPlan:
                 )
             )
 
-        if (
-            item.overall_state.value in {"AGREEMENT_WITH_REVIEW", "REQUIRES_MORE_EVIDENCE"}
-            and not contract_ids
-        ):
-            candidates.append(
-                (
-                    30,
-                    AgentToolName.GET_CLAUSE_CONTEXT,
-                    f"{item.primary_finding_id}:CONTEXT_FOLLOW_UP",
-                    {"primary_finding_id": item.primary_finding_id},
-                    [],
-                )
-            )
+        # Deliberately do not guess a clause_id when the comparison only says
+        # "more context is needed". get_clause_context is executable only when
+        # a canonical clause_id is explicitly available from a later bounded
+        # action request. Guessing from a finding ID would violate the evidence
+        # boundary, so this case safely falls through to human review if no
+        # other grounded action exists.
 
     for omission in comparison.omission_comparisons:
-        candidates.append(
-            (
-                5,
-                AgentToolName.INSPECT_CONTRACT_EVIDENCE,
-                f"{omission.omission_id}:POSSIBLE_PRIMARY_OMISSION",
-                {"omission_id": omission.omission_id},
-                omission.contract_evidence_ids,
+        if omission.contract_evidence_ids:
+            candidates.append(
+                (
+                    5,
+                    AgentToolName.INSPECT_CONTRACT_EVIDENCE,
+                    f"{omission.omission_id}:POSSIBLE_PRIMARY_OMISSION",
+                    {"omission_id": omission.omission_id},
+                    omission.contract_evidence_ids,
+                )
             )
-        )
         if omission.legal_evidence_ids:
             candidates.append(
                 (
@@ -161,7 +159,7 @@ def plan_follow_up(comparison: ReviewComparisonReport) -> AgentFollowUpPlan:
     # hard two-cycle budget. Lower priority number wins.
     deduped: dict[tuple[str, str], tuple[int, AgentToolName, str, dict, list[str]]] = {}
     for candidate in sorted(candidates, key=lambda row: (row[0], row[1].value, row[2])):
-        _, tool_name, reason, arguments, _ = candidate
+        _, tool_name, _, arguments, _ = candidate
         key = (
             tool_name.value,
             json.dumps(arguments, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
