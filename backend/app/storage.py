@@ -45,6 +45,13 @@ def legal_db_path() -> Path:
     return legal_runtime_dir() / "legal.db"
 
 
+def legal_retrieval_index_path() -> Path:
+    configured = os.getenv("LAW_RAG_RETRIEVAL_DB")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return legal_runtime_dir() / "retrieval.db"
+
+
 def legal_import_reports_dir() -> Path:
     path = legal_runtime_dir() / "import_reports"
     path.mkdir(parents=True, exist_ok=True)
