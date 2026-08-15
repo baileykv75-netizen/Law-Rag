@@ -65,6 +65,19 @@ export type OmissionComparison = {
   reason: string
 }
 
+export type AgentAction = {
+  action_id: string
+  cycle: number
+  tool_name: string
+  state: string
+  reason: string
+  input_evidence_ids: string[]
+  output_evidence_ids: string[]
+  provider_call_occurred: boolean
+  private_contract_evidence_left_machine: boolean
+  validation_or_error: string | null
+}
+
 export type ReviewReport = {
   job_id: string
   as_of: string
@@ -82,18 +95,7 @@ export type ReviewReport = {
     finding_comparisons: FindingComparison[]
     omission_comparisons: OmissionComparison[]
   }
-  action_trace: Array<{
-    action_id: string
-    cycle: number
-    tool_name: string
-    state: string
-    reason: string
-    input_evidence_ids: string[]
-    output_evidence_ids: string[]
-    provider_call_occurred: boolean
-    private_contract_evidence_left_machine: boolean
-    validation_or_error: string | null
-  }>
+  action_trace: AgentAction[]
   evidence_gathered: boolean
   final_reasons: string[]
   warnings: string[]
@@ -104,10 +106,12 @@ export type SelectedAuditItem = {
   itemId: string
   title: string
   riskCategory: string
+  asOf: string
   primary?: PrimaryFinding
   secondary?: SecondaryFinding
   omission?: PossibleOmission
   comparison?: FindingComparison | OmissionComparison
   contractEvidenceIds: string[]
   legalEvidenceIds: string[]
+  agentActions: AgentAction[]
 }
