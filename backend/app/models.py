@@ -26,6 +26,7 @@ class DocumentRoute(str, Enum):
 class SourceMethod(str, Enum):
     NATIVE_PDF_TEXT = "native_pdf_text"
     IMAGE_SOURCE = "image_source"
+    OCR = "ocr"
 
 
 class PageEvidence(BaseModel):
@@ -76,3 +77,59 @@ class IngestResponse(BaseModel):
     native_text_pages: int
     ocr_required_pages: int
     pages: list[PageEvidenceSummary]
+
+
+class OcrPageState(str, Enum):
+    NATIVE_RETAINED = "NATIVE_RETAINED"
+    OCR_COMPLETE = "OCR_COMPLETE"
+    OCR_LOW_CONFIDENCE = "OCR_LOW_CONFIDENCE"
+    OCR_NO_TEXT = "OCR_NO_TEXT"
+    OCR_FAILED = "OCR_FAILED"
+
+
+class OcrBlockEvidence(BaseModel):
+    evidence_id: str
+    page_number: int = Field(ge=1)
+    block_index: int = Field(ge=1)
+    text: str
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    bbox: list[int] | None = None
+    polygon: list[list[int]] | None = None
+    provider: str
+    model: str
+    provider_version: str
+    source_method: SourceMethod = SourceMethod.OCR
+    low_confidence: bool = False
+    low_confidence_reason: str | None = None
+    source_locator: str
+
+
+class OcrPageEvidence(BaseModel):
+    page_number: int = Field(ge=1)
+    state: OcrPageState
+    source_method: SourceMethod
+    text: str
+    native_evidence_id: str | None = None
+    source_image_locator: str | None = None
+    width_px: int | None = Field(default=None, ge=1)
+    height_px: int | None = Field(default=None, ge=1)
+    blocks: list[OcrBlockEvidence] = Field(default_factory=list)
+    mean_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    low_confidence_blocks: int = Field(default=0, ge=0)
+    error: str | None = None
+
+
+class OcrRunResult(BaseModel):
+    job_id: UUID
+    provider: str
+    model: str
+    provider_version: str
+    status: str
+    page_count: int = Field(ge=1)
+    native_pages: int = Field(ge=0)
+    ocr_pages_attempted: int = Field(ge=0)
+    ocr_pages_complete: int = Field(ge=0)
+    low_confidence_pages: int = Field(ge=0)
+    failed_pages: int = Field(ge=0)
+    no_text_pages: int = Field(ge=0)
+    pages: list[OcrPageEvidence]
