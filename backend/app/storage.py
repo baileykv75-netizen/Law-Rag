@@ -32,6 +32,29 @@ def job_rendered_dir(job_id: UUID) -> Path:
     return path
 
 
+def legal_runtime_dir() -> Path:
+    path = runtime_dir() / "legal"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def legal_db_path() -> Path:
+    configured = os.getenv("LAW_RAG_LEGAL_DB")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return legal_runtime_dir() / "legal.db"
+
+
+def legal_import_reports_dir() -> Path:
+    path = legal_runtime_dir() / "import_reports"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def legal_last_import_report_path() -> Path:
+    return legal_import_reports_dir() / "last-import-report.json"
+
+
 def job_document_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "document.json"
 
