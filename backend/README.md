@@ -1,6 +1,6 @@
 # Law-Rag Backend
 
-The backend is the local Python/FastAPI application for Law-Rag. Provider-specific OCR/LLM details remain behind adapters instead of leaking into API or domain code.
+The backend is the local Python/FastAPI application for Law-Rag. Provider-specific OCR/embedding/LLM details remain behind adapters instead of leaking into API or domain code.
 
 ## Current pipeline
 
@@ -22,9 +22,14 @@ POST /api/documents/{job_id}/audit-rules
   -> consume contract.json only
   -> execute deterministic rule registry
   -> persist audit-rules.json
+
+legal manifest + curated snapshots
+  -> deterministic validation/import
+  -> authority/version/article SQLite store
+  -> exact Legal Evidence IDs + as_of resolution
 ```
 
-No external LLM API is required through Stage 5.
+No external generative LLM API is required through Stage 7 retrieval foundation work.
 
 ## Runtime files
 
@@ -36,9 +41,11 @@ runtime/jobs/<job-id>/ocr.json
 runtime/jobs/<job-id>/contract.json
 runtime/jobs/<job-id>/audit-rules.json
 runtime/rendered/<job-id>/page-0001.png
+runtime/legal/legal.db
+runtime/legal/import_reports/last-import-report.json
 ```
 
-All runtime artifacts are local/ignored and must not be committed.
+All generated runtime artifacts are local/ignored and must not be committed.
 
 ## Stage 2 — Document ingestion
 
@@ -85,7 +92,7 @@ Canonical schema version: `1.0.0`.
 
 Native PDF text and OCR blocks are transformed into one ordered EvidenceUnit stream. Reusable SourceSpan objects preserve page/Evidence IDs plus native character offsets or OCR bbox/polygon/confidence.
 
-The deterministic parser currently reconstructs title candidates, clause hierarchy/cross-page continuation, party mentions, explicit dates, money, percentages, identifiers, references, conservative table candidates and unresolved/warning states.
+The deterministic parser reconstructs title candidates, clause hierarchy/cross-page continuation, party mentions, explicit dates, money, percentages, identifiers, references, conservative table candidates and unresolved/warning states.
 
 If a required OCR page is missing, failed or no-text, complete structure generation is refused rather than silently omitting a page.
 
@@ -109,9 +116,7 @@ POST /api/documents/{job_id}/audit-rules?profile=basic-bilateral-v1
 GET  /api/documents/{job_id}/audit-rules
 ```
 
-### Result semantics
-
-Every RuleResult includes stable rule ID/version, family/title, final state, deterministic state, reason code, explanation, canonical object IDs, SourceSpans, Evidence IDs, observed values and review reasons.
+Every RuleResult retains rule ID/version, final/deterministic state, reason code, explanation, canonical object IDs, SourceSpans, Evidence IDs, observed values and review reasons.
 
 Visible states:
 
@@ -120,40 +125,100 @@ Visible states:
 - `REVIEW` — ambiguity/source uncertainty/parser limitation/intent requires verification;
 - `NOT_APPLICABLE` — explicit context is insufficient for a safe check.
 
-### Initial rule registry
+Low/unknown OCR confidence can downgrade an otherwise machine-determined PASS/FAIL to `REVIEW` while preserving the original `deterministic_state`.
 
-- `REQ-BASIC-PROFILE` — profile-driven minimum title/party presence;
-- `PARTY-ROLE-CONSISTENCY` — repeated same-role party names, with no fuzzy entity merge;
-- `IDENTIFIER-LABEL-CONSISTENCY` — repeated values under the same explicit identifier label;
-- `DATE-FIELD-CONSISTENCY` — repeated explicit date-field values;
-- `DATE-SIGNING-EFFECTIVE-ORDER` — chronology review; retroactive effective dates route to REVIEW rather than a legal-invalidity claim;
-- `PAYMENT-PERCENTAGE-TOTAL` — conservative same-line explicitly labelled payment groups only;
-- `AMOUNT-LABEL-CONSISTENCY` — supported repeated explicit contract-total amount labels;
-- `UPPERCASE-RMB-REVIEW` — detects uppercase RMB text and documents the current parser limitation rather than shipping weak numeric conversion.
+## Stage 6 — Versioned legal evidence
 
-### OCR uncertainty propagation
-
-If a material SourceSpan comes from OCR with missing confidence or confidence below `0.85`, an otherwise machine-determined PASS/FAIL can become final `REVIEW`. The original `deterministic_state` is retained so the calculation remains inspectable.
-
-### Rule isolation
-
-Rules are registered explicitly and run in deterministic order. A rule exception is captured in `engine_errors` and emitted as a REVIEW result; unrelated rules continue running.
-
-### Persistence / determinism
-
-Reports are persisted to:
+Dedicated package:
 
 ```text
-runtime/jobs/<job-id>/audit-rules.json
+app/legal/models.py
+app/legal/parser.py
+app/legal/store.py
+app/legal/importer.py
+app/legal/cli.py
 ```
 
-The report records canonical source/content fingerprints. Re-running against unchanged `contract.json` produces idempotent output.
+Legal schema version: `1.0.0`.
+Importer version: `stage6-1.0.0`.
 
-## Stage 6 boundary
+### Canonical identities
 
-Stage 6 is the next active task. It will add a local, version-aware legal-authority/article store with official source/version metadata, deterministic legal Evidence IDs, hashes, SQLite persistence, historical-version relationships and `as_of` resolution.
+SQLite stores:
 
-Stage 6 does not add embeddings, BM25/vector retrieval, LLM legal reasoning or Agent behavior.
+```text
+authorities
+  -> authority_versions
+       -> legal_articles
+```
+
+Every article has a deterministic Legal Evidence ID, for example:
+
+```text
+legal:prc-civil-code:effective-2021-01-01:article-585
+```
+
+Legal versions preserve status, issuing/source metadata, publication/effective interval, coverage type, source snapshot hash, importer/schema version and verification notes. Articles retain exact source text/token, SHA-256 and heading context.
+
+### Deterministic parser
+
+The Stage 6 Chinese article parser starts a new article only when a `第X条` heading begins a physical line. Article references appearing inside ordinary prose do not become fake articles. Structural chapter/section headings remain article context.
+
+### Import/rebuild
+
+From repository root on Windows:
+
+```text
+rebuild-legal-seed.bat
+```
+
+Developer equivalent from `backend/`:
+
+```text
+python -m app.legal.cli rebuild --manifest ../legal_data/seed/manifest.json
+```
+
+The importer validates official source hosts for real seed data, expected source SHA-256, expected article count, identity conflicts and metadata. Rebuild writes a temporary database and atomically replaces `runtime/legal/legal.db` only after successful validation.
+
+### Version resolver
+
+Applicability uses:
+
+```text
+effective_date <= as_of < end_date_exclusive
+```
+
+Resolution states are explicit:
+
+- `RESOLVED`;
+- `NO_APPLICABLE_VERSION`;
+- `AMBIGUOUS` for overlapping stored intervals.
+
+The resolver never silently chooses “the latest” record when metadata is ambiguous.
+
+### Legal API
+
+```text
+GET /api/legal/summary
+GET /api/legal/authorities
+GET /api/legal/authorities/{authority_id}
+GET /api/legal/evidence/{legal_evidence_id}
+GET /api/legal/resolve/{authority_id}?as_of=YYYY-MM-DD&article_token=第...条
+```
+
+These endpoints inspect canonical identity/version/evidence only; they do not perform RAG ranking.
+
+### Seed coverage
+
+The Stage 6 checked-in seed has two `CURATED_EXCERPT` versions totaling 15 articles. It is intentionally partial. A missing hit can therefore mean “corpus incomplete”; it cannot support a claim that the law contains no such rule.
+
+## Stage 7 boundary
+
+Stage 7 is active. It will add version-aware exact, lexical/BM25 and semantic retrieval over canonical Legal Evidence IDs, followed by deterministic fusion/reranking and retrieval evaluation.
+
+Derivative indexes must remain rebuildable/local, must detect stale legal-db state, and must preserve `as_of`, source/version provenance and `CURATED_EXCERPT` coverage warnings.
+
+Stage 7 does not add generative LLM legal reasoning or Agent behavior.
 
 ## Local run
 
