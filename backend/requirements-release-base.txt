@@ -1,0 +1,14 @@
+# Stage 11D base Windows release runtime.
+#
+# These are direct runtime pins for the first native-PDF/deterministic release
+# bundle. They intentionally exclude pytest, Uvicorn development extras,
+# PaddleOCR/PaddlePaddle, sentence-transformers/PyTorch, and PyInstaller itself.
+# A full resolved transitive lock/notice inventory is generated and validated
+# by the release build before Stage 11D completion.
+fastapi==0.141.1
+uvicorn==0.52.3
+python-multipart==0.0.32
+pypdf==6.16.1
+pypdfium2==5.12.1
+pillow==12.3.0
+httpx==0.28.1
