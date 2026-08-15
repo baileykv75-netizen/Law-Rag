@@ -55,28 +55,19 @@ Validated:
 
 - versioned rule-result schema and explicit rule registry;
 - `PASS`, `FAIL`, `REVIEW`, `NOT_APPLICABLE`, plus preserved `deterministic_state`;
-- explicit audit profile `basic-bilateral-v1` rather than universal required-field assumptions;
-- conservative payment-percentage grouping that does not sum unrelated percentages;
-- repeated explicit labelled amount consistency;
-- party-name consistency grouped by the same explicit role without fuzzy merging;
-- identifier consistency grouped by the same explicit label;
-- repeated labelled date consistency;
-- signing/effective chronology review that does not declare retroactive effect legally invalid;
-- OCR uncertainty propagation: low/unknown OCR confidence can downgrade a machine PASS/FAIL to `REVIEW`;
-- Chinese uppercase RMB detection with an explicit manual-review limitation instead of a weak parser;
-- rule exceptions isolated as visible engine errors while unrelated rules continue;
-- canonical object IDs, SourceSpans, Evidence IDs and observed values retained in each result;
+- explicit audit profile `basic-bilateral-v1`;
+- conservative payment-percentage grouping;
+- repeated labelled amount/party/identifier/date consistency checks;
+- signing/effective chronology review without claiming retroactive effect is legally invalid;
+- OCR uncertainty propagation into final `REVIEW` state;
+- Chinese uppercase RMB detection routed to review rather than weak conversion;
+- rule exception isolation;
+- canonical object IDs, SourceSpans, Evidence IDs and observed values retained;
 - `runtime/jobs/<job-id>/audit-rules.json` persistence;
-- POST/GET deterministic-audit APIs;
-- minimal rule-result UI with state counts and evidence/review warnings;
-- deterministic/idempotent persistence tests, API tests, all Stage 1–4 regressions, and frontend production build green in GitHub Actions.
+- POST/GET deterministic-audit APIs and minimal UI;
+- regressions/CI green.
 
-Known limitations intentionally carried forward:
-
-- rule `FAIL` means a configured machine condition failed; it is not a legal conclusion;
-- percentage grouping is deliberately conservative and may return not-applicable/review rather than guessing across lines or clauses;
-- Chinese uppercase RMB numeric comparison remains deferred until a thoroughly tested parser exists;
-- nuanced contractual/legal risk belongs to later legal-retrieval and LLM stages.
+Key boundary: rule `FAIL` is a configured machine-condition failure, not a legal conclusion.
 
 ## Stage 6 — Versioned legal knowledge base
 
@@ -84,59 +75,82 @@ Status: complete.
 
 Validated:
 
-- dedicated legal-domain schema `1.0.0`, separate from contract/rule schemas;
-- explicit authority classes, version statuses and coverage types;
-- authority → version → article identity in local SQLite;
-- unique authority/version/article constraints and foreign-key integrity;
+- dedicated legal-domain schema `1.0.0`;
+- authority -> version -> article identity in local SQLite;
+- authority/version/article constraints and foreign-key integrity;
 - exact article text, source SHA-256 and article SHA-256 persistence;
-- deterministic Legal Evidence IDs such as `legal:<authority>:<version>:<article>`;
-- line-start Chinese article segmentation without falsely splitting inline article references;
-- structural chapter/section context retained for articles;
-- manifest-driven deterministic import rather than live scraping at application startup;
-- official-source host policy for real seed data, with explicit testing override for fictional fixtures;
-- source hash/article-count validation and same-version source-change rejection;
-- atomic rebuild through a temporary SQLite database and replacement only after successful validation;
-- normal import transaction rollback on critical conflicts;
-- historical versions retained and queryable;
-- half-open effective interval resolution `effective_date <= as_of < end_date_exclusive`;
-- explicit `RESOLVED`, `NO_APPLICABLE_VERSION`, and `AMBIGUOUS` version-resolution states;
-- machine-readable import reports and local `runtime/legal/legal.db` storage;
-- Windows `rebuild-legal-seed.bat` command;
-- legal summary/authority/evidence/version-resolution APIs;
-- minimal legal-knowledge health UI;
-- small verified contract-relevant seed with coverage explicitly marked `CURATED_EXCERPT`;
-- seed contains 8 selected Civil Code contract articles and 7 selected SPC contract-general interpretation articles;
-- regression coverage for parsing, inline references, stable IDs, rebuild idempotence, hash changes, duplicate identities, missing metadata, history, overlap ambiguity, rollback, malformed snapshots, curated seed import and APIs;
-- all earlier regressions and frontend production build green in GitHub Actions.
+- deterministic Legal Evidence IDs;
+- Chinese article segmentation without false inline-reference splitting;
+- manifest-driven import and official-source provenance policy;
+- source hash/article-count validation and same-version change rejection;
+- atomic rebuild and transactional imports;
+- historical versions retained/queryable;
+- half-open `effective_date <= as_of < end_date_exclusive` resolution;
+- explicit `RESOLVED`, `NO_APPLICABLE_VERSION`, `AMBIGUOUS` states;
+- Windows legal-seed rebuild command;
+- legal inspection APIs and health UI;
+- verified public `CURATED_EXCERPT` seed: 2 authorities / 2 versions / 15 articles;
+- regressions/CI green.
 
-Known limitation intentionally recorded before release hardening:
+Known hardening item: a failed multi-record normal-import report may contain an intermediate `IMPORTED` label for a row subsequently rolled back; authoritative SQLite rollback remains correct. Refine report wording before release packaging.
 
-- on a failed multi-record non-rebuild transaction, SQLite rollback is correct, but an intermediate failure report may retain an `IMPORTED` state for a record that was subsequently rolled back. This report-state wording must be refined before release packaging; it does not alter the authoritative database state.
-
-Key boundary: absence from a `CURATED_EXCERPT` seed is never evidence that the law contains no such rule. Coverage metadata must propagate into retrieval.
+Key boundary: absence from a `CURATED_EXCERPT` corpus is never evidence that no law exists.
 
 ## Stage 7 — Hybrid legal RAG
 
-Status: active.
+Status: complete.
 
-Goal: retrieve the right versioned Legal Evidence IDs for a contract issue while preserving `as_of`, source identity, version status and corpus coverage.
+Validated:
 
-Planned retrieval channels:
+- retrieval schema/engine `1.0.0` / `stage7-1.0.0`;
+- explicit `query`, `as_of`, top-K, authority/article/Legal-Evidence hints and channel provenance;
+- deterministic exact authority/article lookup before probabilistic ranking;
+- normalized Chinese article-reference handling and exact-hit priority;
+- exact lookup still works when derivative retrieval index is absent;
+- SQLite FTS5 trigram lexical index with `bm25()` ranking;
+- lexical index rebuilt only from canonical Stage 6 Legal Evidence;
+- canonical legal-source fingerprint and stale-index detection;
+- provider-neutral embedding interface;
+- deterministic fake embedding provider for CI;
+- optional local `BAAI/bge-small-zh-v1.5` semantic provider;
+- vector metadata records provider/model/dimension and Legal Evidence identity;
+- real Windows semantic stack/model/index/query smoke verified through opt-in GitHub Actions;
+- weighted reciprocal-rank fusion with duplicate merge and exact-hit pinning;
+- final evidence filtered by Stage 6 `as_of` version applicability;
+- explicit `PARTIAL_COVERAGE`, `INSUFFICIENT_CORPUS`, `NO_APPLICABLE_VERSION`, `VERSION_AMBIGUOUS`, and `INDEX_NOT_READY` semantics;
+- explicit requested article missing from partial corpus cannot be hidden by nearby BM25/vector candidates;
+- retrieval candidates retain per-channel rank/raw score/contribution, fused score, version and coverage metadata;
+- `GET /api/legal/retrieval/summary` and `POST /api/legal/retrieve`;
+- local Stage 7 retrieval inspection UI;
+- Windows `build-retrieval-index.bat`, `setup-rag-semantic-cpu.bat`, and `build-retrieval-index-semantic.bat` flows;
+- public 10-case retrieval benchmark over the checked-in seed;
+- CI gate `Recall@5 >= 0.90` and `MRR >= 0.80`;
+- all Stage 1–6 regressions and frontend production build green.
 
-- exact authority/article/citation lookup;
-- lexical/BM25 retrieval;
-- semantic/vector retrieval behind a replaceable embedding boundary;
-- deterministic candidate fusion/reranking;
-- version filtering/resolution before evidence can be returned;
-- coverage-aware `INSUFFICIENT_CORPUS` / ambiguity states rather than false negatives.
-
-Retrieval quality must be measured on labeled fictional/curated questions (for example Recall@K) before later LLM audit quality is attributed to the model.
-
-Stage 7 does not add DeepSeek/Kimi/Qwen audit reasoning.
+Key boundary: a retrieval score is not a legal conclusion or calibrated correctness probability. No-hit in a partial corpus remains insufficient evidence, not proof of legal absence.
 
 ## Stage 8 — Primary LLM audit reasoning
 
-Goal: add evidence-grounded semantic risk analysis through a provider-neutral interface, with DeepSeek planned first. Models receive canonical contract evidence and retrieved legal evidence; they may not invent legal Evidence IDs or unsupported authorities.
+Status: active.
+
+Goal: add one provider-neutral primary generative audit layer, with DeepSeek planned first after current official API verification.
+
+The model may reason only over a deterministic package containing canonical contract evidence, deterministic rule results, version-aware Stage 7 Legal Evidence, explicit `as_of`, and source/corpus uncertainty.
+
+Stage 8 must add:
+
+- versioned AI-audit schema;
+- provider-neutral primary-audit interface;
+- real DeepSeek adapter plus deterministic fake provider for normal CI;
+- strict structured model output;
+- deterministic validation that rejects invented contract/Legal Evidence IDs;
+- explicit insufficient-evidence/review states;
+- prompt-injection regression cases where contract text remains untrusted data;
+- local `ai-audit.json` provenance/persistence;
+- minimal primary-audit API/UI;
+- optional real-provider smoke using only fictional/public data.
+
+Stage 8 does not add a second reviewer model or Agent orchestration.
 
 ## Stage 9 — Constrained Agent and secondary review
 
