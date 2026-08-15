@@ -153,7 +153,7 @@ async def ingest_document(
         )
     except DocumentProcessingError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
 
@@ -200,6 +200,6 @@ def ocr_document(job_id: UUID) -> OcrRunResult:
         ) from exc
     except OcrProcessingError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
