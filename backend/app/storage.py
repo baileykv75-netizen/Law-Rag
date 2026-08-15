@@ -90,6 +90,10 @@ def job_secondary_review_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "secondary-review.json"
 
 
+def job_review_report_path(job_id: UUID) -> Path:
+    return job_output_dir(job_id) / "review-report.json"
+
+
 def find_source_path(job_id: UUID) -> Path:
     upload_dir = runtime_dir() / "uploads" / str(job_id)
     candidates = sorted(upload_dir.glob("source.*"))
