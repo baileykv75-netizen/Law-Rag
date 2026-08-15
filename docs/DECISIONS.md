@@ -165,13 +165,13 @@ Distribution note: pypdfium2's upstream documentation states that PDFium and bun
 ## D-016 — PaddleOCR local CPU provider is optional and lazy-loaded
 
 **Date:** 2026-08-15  
-**Status:** accepted
+**Status:** accepted, model choice superseded by D-017
 
 The first real OCR provider is local PaddleOCR using:
 
 - PaddlePaddle CPU `3.3.0` from the official Windows CPU package index;
 - PaddleOCR `3.7.0`;
-- `PP-OCRv5_mobile_det` + `PP-OCRv5_mobile_rec` for the initial CPU-oriented path.
+- initially proposed `PP-OCRv5_mobile_det` + `PP-OCRv5_mobile_rec` for a lightweight CPU path.
 
 PaddlePaddle and PaddleOCR are both released under Apache-2.0. Current official PaddlePaddle Windows pip documentation supports 64-bit Python 3.9–3.13; Law-Rag's existing Python 3.11+ target is therefore retained.
 
@@ -180,3 +180,22 @@ OCR is installed separately with `setup-ocr-cpu.bat` rather than placed in the b
 The provider disables automatic document rotation/unwarping/text-line-orientation in the first integration because Stage 3 prioritizes direct pixel-coordinate traceability. Rotation/unwarping may be added later only with explicit coordinate-remapping evidence so transformed OCR coordinates are not falsely presented as original-image coordinates.
 
 PaddleOCR model downloads remain local runtime/cache data and must never be committed to Git.
+
+## D-017 — Accuracy-first default: PP-OCRv6 medium
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+The initial v5-mobile model choice in D-016 is superseded before Stage 3 completion. The default provider now uses:
+
+- `PP-OCRv6_medium_det`;
+- `PP-OCRv6_medium_rec`.
+
+Rationale:
+
+- PaddleOCR 3.7 makes PP-OCRv6 medium the default general-OCR model family;
+- the medium tier is the accuracy-oriented tier in the current official model lineup;
+- Law-Rag's first priority is reliable legal-document evidence rather than minimum CPU latency;
+- provider construction accepts explicit detection/recognition model names, so later benchmark data may justify switching to v6 small/tiny or another model without changing OCR-domain code.
+
+This is still a hypothesis to be validated against Law-Rag's private legal-document benchmark. Model selection must ultimately be driven by measured OCR accuracy on amounts, dates, percentages, party names, article numbers, tables, and difficult scans, not by vendor benchmark claims alone.
