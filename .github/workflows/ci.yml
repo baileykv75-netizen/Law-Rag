@@ -53,15 +53,15 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.12.10'
       - uses: actions/setup-node@v6
         with:
           node-version: '22.23.2'
           package-manager-cache: false
-      - name: Build Windows onedir bundle
+      - name: Build Windows onedir bundle from isolated exact lock
         shell: pwsh
         run: ./release/build-windows.ps1
-      - name: Show resolved Python release environment
+      - name: Show resolved isolated Python release environment
         shell: pwsh
         run: Get-Content release/.build/python-resolved.txt
       - name: Smoke packaged launcher, API, and frontend
