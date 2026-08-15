@@ -127,3 +127,21 @@ Progression:
 3. dependency/model-cache handling;
 4. downloadable Windows-oriented bundle;
 5. installer only when runtime behavior is proven.
+
+## D-014 — pypdf for Stage 2 native PDF inspection
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 2 uses `pypdf` behind the document-ingestion layer for PDF page count and native text extraction.
+
+Rationale:
+
+- pure Python and practical on Windows;
+- supports page-level PDF text extraction and metadata access;
+- BSD-3-Clause licensing is compatible with the project's current goal of preserving future distribution options;
+- OCR and page rendering remain separate concerns rather than being coupled to the PDF text library.
+
+The dependency is constrained to major version 6 (`pypdf>=6.14,<7`) so a future breaking major release requires an intentional compatibility review.
+
+No concrete PDF page renderer is selected in Stage 2. A renderer must be evaluated separately for capability, license, packaging cost, and OCR quality before adoption.
