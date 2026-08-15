@@ -61,11 +61,12 @@ temp/
 .eggs/
 .wheels/
 
-# Stage 11D generated release/build output
+# Stage 11D/11E generated release/build output
 release/.build/
 release/.build-venv/
 release/dist/
 release/work/
+release/rc/
 
 # Frontend local env files
 frontend/.env
