@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "law-rag-public-deterministic-ci",
+  "profile_version": "1.0.0",
+  "title": "Law-Rag public deterministic CI quality gates",
+  "scope": "Repository-safe deterministic gates only. The Stage 11A schema smoke verifies harness integrity; the Stage 7 10-case CURATED_EXCERPT retrieval benchmark provides retrieval regression metrics. These thresholds are not general legal-accuracy claims.",
+  "gates": [
+    {
+      "gate_id": "schema-smoke-cases",
+      "metric_key": "benchmark.schema_smoke.case_pass_rate",
+      "operator": "EQ",
+      "threshold": 1.0,
+      "rationale": "The benchmark harness smoke is deterministic and every checked-in schema case must continue to evaluate successfully."
+    },
+    {
+      "gate_id": "schema-smoke-assertions",
+      "metric_key": "benchmark.schema_smoke.assertion_pass_rate",
+      "operator": "EQ",
+      "threshold": 1.0,
+      "rationale": "Every assertion in the public harness smoke must remain compatible with the versioned evaluator."
+    },
+    {
+      "gate_id": "schema-task-coverage",
+      "metric_key": "benchmark.schema_smoke.task_coverage_count",
+      "operator": "EQ",
+      "threshold": 9.0,
+      "rationale": "The public schema smoke must keep representing all nine Stage 11A task families."
+    },
+    {
+      "gate_id": "retrieval-recall-at-5",
+      "metric_key": "retrieval.public.recall_at_5",
+      "operator": "GTE",
+      "threshold": 0.9,
+      "rationale": "Preserves the existing Stage 7 Recall@5 regression threshold on the named 10-case public CURATED_EXCERPT benchmark."
+    },
+    {
+      "gate_id": "retrieval-mrr",
+      "metric_key": "retrieval.public.mrr",
+      "operator": "GTE",
+      "threshold": 0.8,
+      "rationale": "Preserves the existing Stage 7 MRR regression threshold on the named public retrieval benchmark."
+    },
+    {
+      "gate_id": "retrieval-explicit-citation",
+      "metric_key": "retrieval.public.exact_citation_hit_rate",
+      "operator": "EQ",
+      "threshold": 1.0,
+      "rationale": "Every explicit-article case currently present in the named public benchmark must keep the expected exact Legal Evidence candidate pinned at rank 1."
+    }
+  ]
+}
