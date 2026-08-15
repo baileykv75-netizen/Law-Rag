@@ -1,0 +1,72 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Law-Rag private/local runtime data
+runtime/
+uploads/
+outputs/
+logs/
+data_private/
+benchmark_private/
+vector_db/
+model_cache/
+cache/
+tmp/
+temp/
+
+# Local databases / indexes
+*.db
+*.sqlite
+*.sqlite3
+*.faiss
+*.index
+
+# Local generated document artifacts
+*.log
+
+# Python packaging
+*.egg-info/
+.eggs/
+.wheels/
+
+# Frontend local env files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Backend local env files
+backend/.env
+backend/.env.*
+!backend/.env.example
