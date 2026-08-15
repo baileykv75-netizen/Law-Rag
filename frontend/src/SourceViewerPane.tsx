@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
@@ -23,6 +23,7 @@ type Props = {
   jobId: string
   pageCount: number
   sourceAvailable: boolean
+  requestedEvidenceId?: string | null
 }
 
 function sourceMethodLabel(method: SourceEvidenceDetail['source_method']) {
@@ -31,7 +32,7 @@ function sourceMethodLabel(method: SourceEvidenceDetail['source_method']) {
   return '原始图片'
 }
 
-export default function SourceViewerPane({ jobId, pageCount, sourceAvailable }: Props) {
+export default function SourceViewerPane({ jobId, pageCount, sourceAvailable, requestedEvidenceId }: Props) {
   const [page, setPage] = useState(1)
   const [zoom, setZoom] = useState(1)
   const [evidenceInput, setEvidenceInput] = useState('')
@@ -74,12 +75,12 @@ export default function SourceViewerPane({ jobId, pageCount, sourceAvailable }: 
     setPage(bounded)
   }
 
-  const resolveEvidence = async (event: FormEvent) => {
-    event.preventDefault()
-    const id = evidenceInput.trim()
-    if (!id || loadingEvidence) return
+  const resolveEvidenceById = async (rawId: string) => {
+    const id = rawId.trim()
+    if (!id) return
     setLoadingEvidence(true)
     setEvidenceMessage('正在解析 Evidence…')
+    setEvidenceInput(id)
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/documents/${encodeURIComponent(jobId)}/evidence/${encodeURIComponent(id)}`,
@@ -99,6 +100,18 @@ export default function SourceViewerPane({ jobId, pageCount, sourceAvailable }: 
     } finally {
       setLoadingEvidence(false)
     }
+  }
+
+  useEffect(() => {
+    if (requestedEvidenceId) void resolveEvidenceById(requestedEvidenceId)
+    // The request is an explicit cross-pane navigation event.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedEvidenceId, jobId])
+
+  const resolveEvidence = (event: FormEvent) => {
+    event.preventDefault()
+    if (loadingEvidence) return
+    void resolveEvidenceById(evidenceInput)
   }
 
   if (!sourceAvailable) {
