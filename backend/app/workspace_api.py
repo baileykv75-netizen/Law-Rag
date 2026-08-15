@@ -32,7 +32,9 @@ def get_source_page(job_id: UUID, page_number: int) -> FileResponse:
 
     try:
         asset = source_page_asset(job_id, page_number)
-        return FileResponse(asset.path, media_type=asset.media_type, filename=asset.path.name)
+        # No filename is supplied: source pages are browser-view assets, not a
+        # download endpoint. This also avoids exposing local path semantics.
+        return FileResponse(asset.path, media_type=asset.media_type)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except SourceViewerError as exc:
