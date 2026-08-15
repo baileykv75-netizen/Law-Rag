@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 
-from .runtime_health import inspect_runtime_health
+from .runtime_health_models import RuntimeHealthReport
+from .startup_diagnostics import inspect_startup_health
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,8 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _text_report() -> str:
-    report = inspect_runtime_health()
+def _text_report(report: RuntimeHealthReport) -> str:
     lines = [
         "Law-Rag Runtime Health",
         f"base_app_ready: {'YES' if report.base_app_ready else 'NO'}",
@@ -36,11 +36,11 @@ def _text_report() -> str:
 
 def main() -> int:
     args = build_parser().parse_args()
-    report = inspect_runtime_health()
+    report = inspect_startup_health()
     if args.json:
         print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
     else:
-        print(_text_report())
+        print(_text_report(report))
     return 0 if report.base_app_ready else 2
 
 
