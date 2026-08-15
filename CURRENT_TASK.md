@@ -1,332 +1,321 @@
 # CURRENT_TASK.md
 
-# Stage 7 — Hybrid Legal RAG
+# Stage 8 — Primary LLM Audit Reasoning
 
 ## Goal
 
-Build a measurable, version-aware legal retrieval layer over the Stage 6 canonical legal evidence store.
+Add the first evidence-grounded generative audit layer to Law-Rag through a provider-neutral LLM boundary, with DeepSeek planned as the first real provider after its current official API contract is verified during implementation.
 
-At the end of Stage 7, Law-Rag should accept an evidence-grounded legal retrieval request, resolve the legally applicable authority versions for an explicit `as_of` date, retrieve/rank relevant article-level Legal Evidence IDs through complementary exact/lexical/semantic channels, and make corpus/version uncertainty visible.
+At the end of Stage 8, Law-Rag should be able to take a completed local contract job, package only canonical contract evidence + deterministic rule context + version-aware retrieved Legal Evidence, call one primary model, validate its structured findings, reject unsupported citations, persist the result locally, and display a minimal reviewable finding list.
 
-Stage 7 is **retrieval only**. It does not ask DeepSeek/Kimi/Qwen to judge contract risk, write legal conclusions, or invent citations. Primary LLM audit reasoning remains Stage 8.
+Stage 8 is **primary reasoning only**. It does not add a second reviewer model, free-form Agent orchestration, automatic final legal conclusions, or the final professional workstation.
 
 ## Core principle
 
 ```text
-canonical contract/rule context + explicit as_of
+contract.json
++ audit-rules.json
++ Stage 7 retrieval package
++ explicit as_of
         ↓
-version/coverage constraints
+validated audit context
         ↓
-exact citation lookup
-+ lexical/BM25 retrieval
-+ semantic retrieval
+provider-neutral primary LLM
         ↓
-candidate fusion/reranking
+strict structured findings
         ↓
-versioned Legal Evidence IDs
-+ retrieval provenance
-+ coverage/ambiguity state
+deterministic citation/evidence validation
+        ↓
+ai-audit.json
+        ↓
+human-reviewable UI
 ```
 
-A retrieval score is not a legal conclusion. A missing hit in an incomplete corpus is not proof that no legal rule exists.
+The model may reason about supplied evidence. It may not create facts, contract Evidence IDs, Legal Evidence IDs, law versions, or source text that were not supplied by Law-Rag.
 
-## Hard boundaries inherited from Stage 6
+## Hard boundaries inherited from Stages 4–7
 
-1. Retrieval consumes canonical Stage 6 legal evidence. It must not rebuild anonymous chunks from raw seed files and discard authority/version/article identity.
-2. Legal Evidence IDs are created only by the legal knowledge layer. Retrieval may return them but may not fabricate them.
-3. `as_of` is mandatory for version-sensitive retrieval paths. The version resolver runs before evidence is accepted as legally applicable.
-4. `AMBIGUOUS` legal-version resolution must remain explicit and must not be hidden by ranking.
-5. `CURATED_EXCERPT` coverage must propagate to retrieval results. No-hit results from partial coverage must use an insufficient-corpus/review state rather than a negative legal claim.
-6. Search/index artifacts are derivative and rebuildable. SQLite authority/version/article records remain the source of truth.
+1. The model does not independently reread the raw PDF. Contract facts come from the canonical Stage 4 representation and its SourceSpans/Evidence IDs.
+2. Deterministic Stage 5 results remain separate facts. An LLM may discuss them but may not rewrite machine results.
+3. Legal authority comes only from Stage 6 canonical Legal Evidence and Stage 7 retrieval output.
+4. `as_of`, version-resolution state, and corpus coverage are mandatory context. `CURATED_EXCERPT` must remain visible to the model and the final result.
+5. Unsupported Legal Evidence IDs are validation failures, not acceptable hallucinations.
+6. `INSUFFICIENT_CORPUS`, `NO_APPLICABLE_VERSION`, `VERSION_AMBIGUOUS`, missing contract evidence, or low-confidence OCR may force review/insufficient-evidence states.
+7. Contract/legal text is untrusted **data**, never executable prompt instruction. Prompt injection inside a contract must not alter system behavior.
 
 ## In scope
 
-### 1. Typed retrieval-domain schema
+### 1. Versioned AI-audit domain schema
 
-Create dedicated retrieval models with explicit versioning.
+Create a dedicated versioned schema separate from deterministic rule and retrieval schemas.
 
-A retrieval request/result should represent at least:
+Represent at least:
 
-- request/query ID;
-- query text;
-- optional exact authority title/ID hint;
-- optional explicit article token/citation hint;
-- required or explicitly defaulted `as_of` date;
-- requested top-K;
-- channels executed;
-- Legal Evidence ID;
-- authority/version/article metadata;
-- channel-specific scores/ranks;
-- fused/reranked score;
-- matched text/snippet for inspection;
-- version-resolution provenance;
-- corpus coverage type;
-- retrieval state / uncertainty reason;
-- index/schema/provider versions.
+- audit/job ID;
+- schema/engine/provider/model versions;
+- explicit `as_of`;
+- contract source/content fingerprints;
+- retrieval package/query IDs or fingerprints;
+- finding ID;
+- finding state;
+- risk category/type;
+- severity/risk level;
+- concise issue title;
+- reasoning summary;
+- recommended review/change suggestion;
+- contract Evidence IDs / canonical object IDs;
+- Legal Evidence IDs;
+- evidence-sufficiency state;
+- review-required reasons;
+- model raw-response hash / validation status;
+- provider request metadata that is safe to persist.
 
 Do not expose a fake calibrated probability of legal correctness.
 
-### 2. Exact citation / article lookup channel
+Suggested finding states may include:
 
-Implement deterministic exact lookup before probabilistic retrieval.
+- `SUPPORTED_FINDING`;
+- `NO_FINDING`;
+- `INSUFFICIENT_EVIDENCE`;
+- `REVIEW_REQUIRED`;
+- `MODEL_ERROR`.
 
-Support at least:
+Exact names may differ, but uncertainty must be first-class.
 
-- internal authority ID + exact article token;
-- recognized explicit authority title + article token;
-- normalized common Chinese article references such as `第五百八十五条`;
-- exact Legal Evidence ID lookup where supplied.
+### 2. Provider-neutral LLM boundary
 
-Requirements:
-
-- resolve the applicable authority version for `as_of` first;
-- exact article hits receive explicit `EXACT` provenance;
-- an exact hit is not displaced solely because a vector similarity score is lower/higher;
-- missing article in `CURATED_EXCERPT` becomes coverage-insufficient rather than `NO_SUCH_LAW`;
-- ambiguous version resolution blocks exact applicability rather than selecting one silently.
-
-### 3. Lexical / BM25 channel
-
-Use a local deterministic lexical index over canonical article evidence.
-
-Preferred baseline: SQLite FTS5/BM25 if available in the supported Python/SQLite runtime. If a blocker is found, document and use another local implementation without changing the canonical legal schema.
-
-Requirements:
-
-- index stores/references Legal Evidence IDs, never anonymous legal text only;
-- Chinese tokenization strategy must be explicit/tested rather than assumed to behave well by accident;
-- authority title/article token can receive deterministic lexical boosts;
-- lexical index can be rebuilt from `legal.db`;
-- version/coverage constraints are applied to returned evidence;
-- ranking remains reproducible for unchanged query/index/version.
-
-### 4. Semantic/vector channel
-
-Add a provider-neutral embedding boundary.
-
-Requirements:
-
-- embedding provider/model/version/dimension are explicit;
-- vector/index files live under ignored runtime paths;
-- canonical article identity and Legal Evidence ID accompany every vector;
-- provider can later be replaced by a Chinese/local model without rewriting retrieval-domain logic;
-- tests use deterministic fake embeddings where appropriate;
-- at least one real/local semantic path must be documented and smoke-testable before Stage 7 is declared complete, unless current dependency/license/platform evidence shows a blocker and the limitation is explicitly accepted;
-- external model API must not be required merely to run exact/lexical retrieval.
-
-Do not call a generative LLM for semantic retrieval.
-
-### 5. Candidate fusion / reranking
-
-Combine channels in a deterministic, explainable manner.
-
-Initial options may include reciprocal-rank fusion (RRF) plus explicit exact-match priority and authority/article-token boosts.
-
-Requirements:
-
-- retain each channel's original rank/score;
-- fused ranking is deterministic;
-- exact citation hits retain priority when applicable;
-- duplicate Legal Evidence IDs from multiple channels are merged, not duplicated;
-- no opaque LLM reranker in Stage 7;
-- fusion parameters/version are stored in retrieval provenance.
-
-### 6. Version-aware filtering
-
-Retrieval must not merely search all historical text and label the top result current afterward.
-
-For authority-specific searches:
+Create an interface such as:
 
 ```text
-resolve authority version on as_of
+PrimaryAuditProvider
+  -> DeepSeekProvider
+  -> FakeAuditProvider (tests)
+```
+
+Requirements:
+
+- domain logic must not depend directly on DeepSeek SDK-specific objects;
+- provider/model/base URL/version are explicit;
+- API key comes from local environment/config only;
+- no API key in source code, logs, fixtures or Git;
+- timeouts/retry policy are bounded and explicit;
+- provider errors are visible and do not destroy prior local artifacts;
+- no automatic hidden fallback to a different model/provider.
+
+Before implementing the real DeepSeek provider, verify current official API documentation rather than assuming old model names or request fields.
+
+### 3. Strict structured model output
+
+The primary model must return machine-parseable structured output.
+
+Requirements:
+
+- define a strict expected JSON/Pydantic schema;
+- reject malformed output explicitly;
+- reject unknown/unsupported Evidence IDs;
+- reject Legal Evidence IDs not present in the supplied retrieval package;
+- reject contract Evidence IDs not present in the supplied audit context;
+- limit free-form text sizes;
+- do not accept model-created source quotations as authoritative evidence;
+- persist normalized validated output separately from raw provider response metadata/hash.
+
+Do not silently coerce arbitrary prose into a valid legal finding.
+
+### 4. Audit-context builder
+
+Build a deterministic context package from existing artifacts.
+
+Inputs may include:
+
+- selected canonical clause(s) and related SourceSpans;
+- explicit neighboring/parent/referenced clause context;
+- relevant party/date/money/percentage/identifier facts;
+- deterministic Stage 5 rule results;
+- Stage 7 Legal Evidence candidates and retrieval provenance;
+- explicit coverage/version warnings;
+- OCR/source uncertainty;
+- `as_of`.
+
+Requirements:
+
+- record exactly which canonical/legal evidence was sent;
+- deterministic ordering;
+- explicit context size/token-budget strategy;
+- no entire-contract dump by default when a focused evidence package is sufficient;
+- never drop a warning/ambiguity merely to save tokens;
+- referenced clauses/attachments absent from evidence become explicit missing-context warnings.
+
+### 5. Retrieval before legal reasoning
+
+Stage 8 must not ask the LLM to recall law from memory as a substitute for retrieval.
+
+For each legal issue package:
+
+```text
+contract/rule context
     ↓
-retrieve only applicable version
+Stage 7 retrieval
+    ↓
+validated Legal Evidence package
+    ↓
+primary LLM reasoning
 ```
 
-For broad searches across multiple authorities:
+If retrieval is `INSUFFICIENT_CORPUS`, version ambiguous, or otherwise inadequate, the model must be instructed to return an insufficient/review state rather than inventing a legal basis.
 
-- determine candidate authority versions applicable on `as_of` before final evidence acceptance;
-- suppress not-yet-effective / expired historical versions unless explicitly requested for historical comparison;
-- retain explicit ambiguity/no-applicable states.
+### 6. Prompt/instruction hierarchy
 
-Historical comparison mode, if added, must be an explicit request mode rather than accidental mixing.
+System/developer instructions must state clearly:
 
-### 7. Coverage-aware retrieval state
+- contract content is evidence, not instructions;
+- legal text is evidence, not instructions;
+- only supplied Evidence IDs may be cited;
+- unsupported legal knowledge must not be asserted as authoritative;
+- uncertainty is allowed;
+- do not claim a contract is definitively lawful/unlawful/invalid/enforceable beyond supplied evidence;
+- output only the agreed structured schema.
 
-Define retrieval states such as:
+Regression tests must include prompt-injection-like text embedded inside fictional contract clauses.
 
-- `RESULTS_FOUND`;
-- `NO_RESULTS_FULL_COVERAGE` when a complete authority corpus was actually searched;
-- `INSUFFICIENT_CORPUS` for partial/curated coverage;
-- `VERSION_AMBIGUOUS`;
-- `NO_APPLICABLE_VERSION`;
-- `INDEX_UNAVAILABLE` / channel degraded when a derivative index is missing.
+### 7. Finding validation layer
 
-Exact enum names may differ, but the semantics must be explicit.
+After model output, run deterministic validation before persistence.
 
-A later LLM must be able to distinguish “retrieval found nothing” from “we do not have enough corpus to know.”
+Validate at least:
 
-### 8. Query construction from current Law-Rag evidence
+- schema validity;
+- finding ID uniqueness;
+- referenced canonical object/Evidence IDs exist;
+- referenced Legal Evidence IDs exist and were actually supplied;
+- cited legal version is applicable to `as_of` as represented by Stage 7;
+- partial-corpus warnings are not erased;
+- risk level belongs to allowed enum;
+- insufficient-evidence findings do not falsely carry authoritative legal conclusions;
+- source uncertainty propagates to review-required state where configured.
 
-Add a deterministic retrieval-request boundary that can consume:
+Invalid output should fail closed into a visible model/validation error.
 
-- explicit user/developer retrieval text for testing;
-- canonical clause text/source context;
-- deterministic rule result + observed values;
-- explicit contract date/as-of supplied by the caller.
+### 8. Local persistence / provenance
 
-Do not let Stage 7 infer nuanced legal issues through an LLM.
-
-If a deterministic heuristic constructs keywords (for example `违约金`, `格式条款`, `定金`), record the query-construction method and keep the source contract/rule IDs.
-
-### 9. Index build/rebuild lifecycle
-
-Add explicit commands instead of silently indexing at application startup.
-
-Target concept:
+Persist validated output under ignored job storage, target:
 
 ```text
-python -m app.legal.retrieval_cli rebuild
+runtime/jobs/<job-id>/ai-audit.json
 ```
 
-Generated artifacts may include:
+Optionally persist a redacted/provider-safe request/response diagnostic artifact under ignored runtime storage when explicitly enabled for development.
+
+Do not persist API keys, authorization headers, or unnecessary sensitive request logs.
+
+The persisted report should include enough provenance to reproduce which local artifacts/model configuration produced it.
+
+### 9. API boundary
+
+Add minimal endpoints such as:
 
 ```text
-runtime/legal/retrieval/
-  lexical index / FTS tables or metadata
-  vectors.*
-  retrieval-manifest.json
+POST /api/documents/{job_id}/ai-audit
+GET  /api/documents/{job_id}/ai-audit
+GET  /api/ai/providers/health
 ```
 
 Requirements:
 
-- source legal DB fingerprint or article-hash set recorded;
-- stale indexes detected when `legal.db` changes;
-- rebuild is deterministic/atomic where practical;
-- index artifacts remain outside Git;
-- startup can report index health without mutating it.
+- missing API key/provider configuration returns a clear configuration error;
+- missing contract/rule/retrieval prerequisites fail explicitly;
+- no public multi-user auth/deployment work in this stage;
+- request lets the caller specify/confirm `as_of` rather than hiding the date;
+- no second-model review in this endpoint.
 
-### 10. Retrieval API
+### 10. Minimal UI
 
-Add minimal local endpoints, for example:
+Add only enough UI to inspect primary-model output:
 
-```text
-GET  /api/legal/retrieval/health
-POST /api/legal/retrieve
-```
+- provider/configuration readiness;
+- explicit `as_of`;
+- run-primary-audit action;
+- finding title/state/severity;
+- contract Evidence IDs;
+- Legal Evidence IDs and version labels;
+- reasoning summary;
+- suggestion;
+- insufficient/review warnings;
+- clear label that this is AI-assisted analysis requiring professional review.
 
-Request must expose `query`, `as_of`, `top_k`, and optional authority/article hints.
+Do not build the final document-highlight workstation yet.
 
-Response must expose:
+### 11. Test strategy
 
-- retrieval state;
-- channels executed/degraded;
-- exact/lexical/semantic/fused provenance;
-- applicable version metadata;
-- coverage type;
-- Legal Evidence IDs and article text/snippet;
-- no-result/ambiguity explanations.
-
-No model-generated legal advice in these endpoints.
-
-### 11. Minimal retrieval UI
-
-Extend the Stage 6 legal panel only enough to inspect retrieval quality manually:
-
-- query input;
-- visible `as_of` date;
-- optional authority/article hint fields if useful;
-- top results with title, article token, effective version and Legal Evidence ID;
-- channel badges/ranks;
-- coverage warning;
-- ambiguity/no-result state.
-
-Do not build the final risk-law audit workstation yet.
-
-### 12. Retrieval benchmark
-
-Create a small checked-in benchmark using only public curated/legal seed evidence and fictional contract questions.
-
-Each case should define:
-
-- query;
-- `as_of`;
-- expected relevant Legal Evidence ID(s);
-- optional exact citation expectation;
-- expected coverage/ambiguity state when applicable.
-
-Measure at least:
-
-- exact-citation accuracy;
-- Recall@1;
-- Recall@3;
-- Recall@5 where corpus size supports it;
-- channel-specific recall;
-- fused recall;
-- no-result/coverage-state correctness.
-
-The benchmark must make regressions visible in CI. Do not declare retrieval “accurate” based only on a few screenshots.
-
-### 13. Tests
-
-Use fictional legal fixtures for deterministic edge cases plus the verified Stage 6 seed for public retrieval benchmark cases.
+Normal CI must use a deterministic fake provider and never require a real paid API call.
 
 Cover at least:
 
-- exact article lookup on the correct `as_of` version;
-- explicit article absent from `CURATED_EXCERPT` -> insufficient corpus, not negative legal conclusion;
-- old/new version separation by `as_of`;
-- ambiguous overlapping versions block confident retrieval;
-- lexical query retrieves expected Legal Evidence IDs;
-- inline article references do not create fake exact evidence;
-- semantic fake-provider ranking is deterministic;
-- real semantic provider smoke path is isolated/optional in normal CI;
-- fusion merges duplicates and preserves exact-hit priority;
-- stale derivative index detected after legal DB/article hash changes;
-- retrieval without semantic index degrades explicitly rather than silently pretending all channels ran;
-- API health/retrieve behavior;
-- benchmark Recall@K thresholds;
-- all Stage 1–6 regressions remain green;
-- frontend typecheck/build remain green.
+- valid structured fake-provider response;
+- malformed JSON/output rejected;
+- invented Legal Evidence ID rejected;
+- invented contract Evidence ID rejected;
+- retrieved-but-wrong-version evidence cannot pass applicability validation;
+- insufficient corpus causes insufficient/review state rather than fabricated law;
+- prompt-injection text inside contract evidence does not become an instruction;
+- deterministic rules remain unchanged by LLM output;
+- missing provider/API key gives explicit configuration error;
+- provider timeout/error remains visible and prior artifacts survive;
+- unchanged validated input + deterministic fake provider yields stable normalized output;
+- API persistence/load behavior;
+- all Stage 1–7 regressions stay green;
+- frontend typecheck/build stays green.
+
+### 12. Optional real-provider smoke
+
+After deterministic CI is green, add an **opt-in** real DeepSeek smoke path using only fictional/public data.
+
+Requirements:
+
+- current official API docs verified at implementation time;
+- no real/private contract sent in CI;
+- API key provided only through secret/local environment;
+- normal CI does not require or spend external-model credits;
+- smoke checks structured response + citation validation, not subjective legal quality.
 
 ## Out of scope
 
-Do **not** add the following in Stage 7:
+Do **not** add in Stage 8:
 
-- DeepSeek/Kimi/Qwen generative audit calls;
-- LLM-generated legal-risk analysis;
-- model-created statute/article citations;
-- second-model legal review;
-- Agent framework/orchestration;
-- final professional risk cards;
-- human approval workflow;
-- real/private contract fixtures;
-- public deployment;
+- Kimi/Qwen second-review calls;
+- multi-agent frameworks;
+- autonomous tool selection;
+- OCR retry decisions by an Agent;
+- automatic corpus expansion/web legal research by the model;
+- unrestricted chat over private contracts;
+- final legal opinion generation;
+- public SaaS deployment;
+- account systems;
+- final human approval workflow;
 - Windows installer packaging.
 
 ## Acceptance criteria
 
-Stage 7 is complete only when all of the following are true:
+Stage 8 is complete only when all are true:
 
-1. A versioned retrieval request/result schema exists.
-2. Exact citation lookup is deterministic and version-aware.
-3. A working local lexical/BM25 channel exists.
-4. A provider-neutral semantic embedding boundary exists with a documented real/local smoke path or an explicitly accepted blocker.
-5. Candidate fusion is deterministic and retains per-channel provenance.
-6. `as_of` version applicability is enforced before final legal evidence is returned.
-7. `CURATED_EXCERPT` no-hit behavior cannot masquerade as proof that no legal rule exists.
-8. Retrieval/index artifacts are derivative, local, rebuildable and stale-detectable.
-9. Retrieval returns only canonical Legal Evidence IDs from Stage 6.
-10. Minimal API and UI inspection are implemented.
-11. A labeled retrieval benchmark exists with explicit Recall@K output/thresholds.
-12. No generative LLM is needed for Stage 7 retrieval.
-13. All prior backend regressions pass.
-14. Frontend typecheck/production build passes.
-15. CI remains green.
-16. README documents verified Stage 7 behavior before completion.
+1. A versioned AI-audit schema exists.
+2. Provider-neutral primary-audit interface exists.
+3. A real DeepSeek adapter is implemented against current official API documentation.
+4. Normal CI uses a deterministic fake provider and requires no API key.
+5. Audit context is deterministically built from canonical contract/rule/retrieval artifacts.
+6. The model cannot cite arbitrary contract or Legal Evidence IDs without validation failure.
+7. `as_of`, version and corpus-coverage uncertainty propagate into findings.
+8. Prompt-injection-like contract text is covered by regression tests.
+9. Validated results persist locally as `ai-audit.json`.
+10. Minimal API and UI inspection work.
+11. Missing/invalid provider configuration is explicit.
+12. No second reviewer model or Agent is introduced.
+13. All Stage 1–7 backend regressions pass.
+14. Frontend production build/typecheck remains green.
+15. README documents the real behavior and limitations.
+16. CI remains green.
 
 ## Completion rule
 
-Do not change this file to Stage 8 until all Stage 7 acceptance criteria are actually verified.
+Do not change this file to Stage 9 until every Stage 8 acceptance criterion is actually verified.
 
-When Stage 7 is complete, the next task becomes **Stage 8 — Primary LLM Audit Reasoning**, where a provider-neutral LLM interface (DeepSeek planned first) may reason only over canonical contract evidence plus retrieved Legal Evidence IDs and must support an explicit insufficient-evidence state rather than inventing authorities.
+When Stage 8 is complete, the next task becomes **Stage 9 — Constrained Agent and Secondary Review**, where bounded adaptive actions and a second reviewer model may be introduced without surrendering control of the mandatory audit pipeline.
