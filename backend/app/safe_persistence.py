@@ -9,7 +9,14 @@ class AtomicWriteError(RuntimeError):
     pass
 
 
-def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> None:
+def atomic_write_text(
+    path: Path,
+    content: str,
+    *,
+    encoding: str = "utf-8",
+    errors: str | None = None,
+    newline: str | None = None,
+) -> None:
     """Atomically replace a text artifact while preserving any previous valid file on failure.
 
     Serialization should happen before calling this function. The temporary file is created in the
@@ -23,7 +30,8 @@ def atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> N
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding=encoding,
-            newline="\n",
+            errors=errors,
+            newline=newline,
             dir=path.parent,
             prefix=f".{path.name}.",
             suffix=".tmp",
