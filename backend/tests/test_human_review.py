@@ -159,6 +159,41 @@ def test_decision_appends_revision_and_server_snapshots_evidence(tmp_path: Path,
     assert persisted["revisions"][0]["reviewer_note"] == "人工确认第一版。"
 
 
+def test_human_decision_only_mutates_human_review_artifact(tmp_path: Path, monkeypatch) -> None:
+    job_id, review_report_path = _write_review_report(tmp_path, monkeypatch)
+    job_dir = tmp_path / "jobs" / job_id
+    legal_dir = tmp_path / "legal"
+    legal_dir.mkdir(parents=True, exist_ok=True)
+
+    protected = {
+        review_report_path: review_report_path.read_bytes(),
+        job_dir / "contract.json": b'{"sentinel":"contract"}',
+        job_dir / "audit-rules.json": b'{"sentinel":"rules"}',
+        job_dir / "ai-audit.json": b'{"sentinel":"primary"}',
+        job_dir / "secondary-review.json": b'{"sentinel":"secondary"}',
+        legal_dir / "legal.db": b"sentinel-legal-db",
+        legal_dir / "retrieval.db": b"sentinel-retrieval-db",
+    }
+    for path, content in protected.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+    response = client.post(
+        f"/api/documents/{job_id}/human-review/decisions",
+        json={
+            "target_type": "finding",
+            "target_id": "finding-human-001",
+            "state": "CONFIRMED",
+            "reviewer_note": "只允许写 human-review.json。",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (job_dir / "human-review.json").exists()
+    for path, original in protected.items():
+        assert path.read_bytes() == original
+
+
 def test_prior_revisions_become_stale_when_review_report_changes(tmp_path: Path, monkeypatch) -> None:
     job_id, report_path = _write_review_report(tmp_path, monkeypatch)
     response = client.post(
