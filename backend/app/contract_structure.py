@@ -5,7 +5,6 @@ import json
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Iterable
 from uuid import UUID
 
@@ -102,7 +101,7 @@ CLAUSE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^(?P<token>[（(][一二三四五六七八九十百零〇两]+[）)])\s*(?P<rest>.+)$"), "cn-sub"),
     (re.compile(r"^(?P<token>[（(]\d+[）)])\s*(?P<rest>.+)$"), "arabic-paren"),
     (re.compile(r"^(?P<token>\d+(?:\.\d+){1,2})(?:[.、]\s*|\s+)(?P<rest>.+)$"), "arabic-nested"),
-    (re.compile(r"^(?P<token>\d+)[.、]\s*(?P<rest>.+)$"), "arabic-major"),
+    (re.compile(r"^(?P<token>\d+[.、])\s*(?P<rest>.+)$"), "arabic-major"),
 )
 
 CHINESE_DIGITS = {
@@ -314,32 +313,6 @@ def _span(unit: EvidenceUnit, start: int = 0, end: int | None = None) -> SourceS
     )
 
 
-def _title_candidates(units: list[EvidenceUnit]) -> list[TitleCandidate]:
-    candidates: list[TitleCandidate] = []
-    preferred: list[EvidenceUnit] = []
-    fallback: list[EvidenceUnit] = []
-    for unit in units[:20]:
-        text = unit.text.strip()
-        if not (2 <= len(text) <= 80):
-            continue
-        if re.search(r"(合同|协议|契约|备忘录)$", text) or ("合同" in text and len(text) <= 40):
-            preferred.append(unit)
-        elif len(text) <= 40 and not _parse_clause_heading(text):
-            fallback.append(unit)
-    chosen = preferred[:3] if preferred else fallback[:1]
-    for index, unit in enumerate(chosen, start=1):
-        confidence = ExtractionConfidence.HIGH if unit in preferred else ExtractionConfidence.MEDIUM
-        candidates.append(
-            TitleCandidate(
-                candidate_id=f"title-{index:03d}",
-                text=unit.text,
-                source_spans=[_span(unit)],
-                provenance=_provenance("title.explicit-short-line", confidence),
-            )
-        )
-    return candidates
-
-
 def _parse_clause_heading(text: str) -> tuple[str, str, int] | None:
     for pattern, kind in CLAUSE_PATTERNS:
         match = pattern.match(text.strip())
@@ -375,6 +348,34 @@ def _parse_clause_heading(text: str) -> tuple[str, str, int] | None:
             level = 1
         return token, rest, level
     return None
+
+
+def _title_candidates(units: list[EvidenceUnit]) -> list[TitleCandidate]:
+    candidates: list[TitleCandidate] = []
+    preferred: list[EvidenceUnit] = []
+    fallback: list[EvidenceUnit] = []
+    for unit in units[:20]:
+        text = unit.text.strip()
+        if not (2 <= len(text) <= 80):
+            continue
+        if _parse_clause_heading(text):
+            continue
+        if re.search(r"(合同|协议|契约|备忘录)$", text) or ("合同" in text and len(text) <= 40):
+            preferred.append(unit)
+        elif len(text) <= 40:
+            fallback.append(unit)
+    chosen = preferred[:3] if preferred else fallback[:1]
+    for index, unit in enumerate(chosen, start=1):
+        confidence = ExtractionConfidence.HIGH if unit in preferred else ExtractionConfidence.MEDIUM
+        candidates.append(
+            TitleCandidate(
+                candidate_id=f"title-{index:03d}",
+                text=unit.text,
+                source_spans=[_span(unit)],
+                provenance=_provenance("title.explicit-short-line", confidence),
+            )
+        )
+    return candidates
 
 
 def _build_clauses(units: list[EvidenceUnit], title_spans: set[tuple[int, str]]) -> tuple[list[Clause], list[UnnumberedBlock]]:
