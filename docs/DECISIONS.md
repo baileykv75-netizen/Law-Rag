@@ -144,4 +144,39 @@ Rationale:
 
 The dependency is constrained to major version 6 (`pypdf>=6.14,<7`) so a future breaking major release requires an intentional compatibility review.
 
-No concrete PDF page renderer is selected in Stage 2. A renderer must be evaluated separately for capability, license, packaging cost, and OCR quality before adoption.
+## D-015 — pypdfium2/PDFium for OCR page rendering
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 3 uses `pypdfium2==5.12.1` as the concrete implementation of the PDF page-rendering boundary.
+
+Rationale:
+
+- Windows wheels are available, including x86-64 builds;
+- PDFium provides reliable page rasterization without requiring an external Poppler installation;
+- `pypdfium2` itself is Apache-2.0/BSD-3-Clause and avoids a strong-copyleft renderer dependency;
+- the renderer can target only pages already classified `OCR_REQUIRED`.
+
+The Stage 3 default render scale is `2.0` (approximately 144 DPI for standard PDF points). It is an OCR input-quality setting, not a legal/evidence confidence score.
+
+Distribution note: pypdfium2's upstream documentation states that PDFium and bundled dependency licenses must accompany applicable binary distributions. A future Windows release bundle must therefore preserve the license files shipped with the selected pypdfium2 wheel and must re-check them when the pinned version changes.
+
+## D-016 — PaddleOCR local CPU provider is optional and lazy-loaded
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+The first real OCR provider is local PaddleOCR using:
+
+- PaddlePaddle CPU `3.3.0` from the official Windows CPU package index;
+- PaddleOCR `3.7.0`;
+- `PP-OCRv5_mobile_det` + `PP-OCRv5_mobile_rec` for the initial CPU-oriented path.
+
+PaddlePaddle and PaddleOCR are both released under Apache-2.0. Current official PaddlePaddle Windows pip documentation supports 64-bit Python 3.9–3.13; Law-Rag's existing Python 3.11+ target is therefore retained.
+
+OCR is installed separately with `setup-ocr-cpu.bat` rather than placed in the base requirements. The adapter imports PaddleOCR lazily so a native-text-only PDF workflow does not fail or download models when OCR is not required.
+
+The provider disables automatic document rotation/unwarping/text-line-orientation in the first integration because Stage 3 prioritizes direct pixel-coordinate traceability. Rotation/unwarping may be added later only with explicit coordinate-remapping evidence so transformed OCR coordinates are not falsely presented as original-image coordinates.
+
+PaddleOCR model downloads remain local runtime/cache data and must never be committed to Git.
