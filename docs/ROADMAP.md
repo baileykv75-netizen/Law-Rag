@@ -35,36 +35,42 @@ No OCR or LLM work was added in this stage.
 
 ## Stage 2 — Document ingestion and native PDF path
 
-Status: active.
+Status: complete.
 
-Goal: distinguish files that can be parsed directly from files that require OCR.
+Validated deliverables:
 
-Deliverables:
+- PDF/JPG/PNG document ingestion;
+- stable local job IDs;
+- page-level native PDF text extraction using pypdf;
+- explicit deterministic native-text reliability heuristic;
+- `NATIVE_TEXT`, `OCR_REQUIRED`, and `MIXED` document routing;
+- image documents routed to future OCR without pretending text was extracted;
+- stable page Evidence IDs and page-number linkage;
+- local `document.json` and `evidence.json` persistence;
+- explicit corrupt-PDF failure;
+- PDF page-rendering interface boundary without prematurely selecting a renderer;
+- UI page/route summary;
+- regression coverage for native, blank, mixed, image, invalid, and corrupt inputs;
+- GitHub Actions validation for backend tests and frontend production build.
 
-- PDF/JPG/PNG ingestion abstraction;
-- stable local document/job IDs;
-- native PDF text extraction path;
-- PDF page count and metadata;
-- reliability heuristic for native text layer;
-- page rendering path for scan/image workflows;
-- evidence blocks that preserve page/source location.
-
-Key risk addressed: unnecessary OCR can reduce accuracy.
+Key risk addressed: unnecessary OCR can reduce accuracy and destroy already reliable text.
 
 ## Stage 3 — OCR and layout evidence layer
 
-Goal: convert scanned/image contracts into traceable evidence.
+Status: active.
+
+Goal: convert scanned/image contracts into traceable evidence while preserving Stage 2 native-text pages unchanged.
 
 Deliverables:
 
 - OCR provider interface;
-- PaddleOCR adapter;
+- PaddleOCR adapter if official dependency verification succeeds;
+- concrete PDF page renderer selected after licensing/packaging review;
 - text recognition with page/bounding-box metadata;
 - confidence preservation;
-- layout/table-region support where practical;
-- low-confidence flags;
+- low-confidence/no-text/failure states;
 - OCR regression fixtures;
-- optional visual-review hook defined but not necessarily connected to a second model yet.
+- mixed native/OCR evidence preservation.
 
 Key risks addressed:
 
