@@ -66,7 +66,7 @@ class LegalAuthority(BaseModel):
 
 class LegalVersion(BaseModel):
     authority_id: str
-    version_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{2,127}$")
+    version_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{1,127}$")
     status: VersionStatus
     publication_date: date | None = None
     effective_date: date
@@ -113,7 +113,7 @@ class LegalImportRecord(BaseModel):
 
 class ManifestRecord(BaseModel):
     authority: LegalAuthority
-    version_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{2,127}$")
+    version_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{1,127}$")
     status: VersionStatus
     publication_date: date | None = None
     effective_date: date
@@ -175,11 +175,11 @@ class ManifestImportReport(BaseModel):
 class LegalStoreSummary(BaseModel):
     ready: bool
     schema_version: str | None = None
-    authority_count: int = Field(ge=0)
-    version_count: int = Field(ge=0)
-    article_count: int = Field(ge=0)
-    effective_version_count: int = Field(ge=0)
-    excerpt_version_count: int = Field(ge=0)
+    authority_count: int = Field(default=0, ge=0)
+    version_count: int = Field(default=0, ge=0)
+    article_count: int = Field(default=0, ge=0)
+    effective_version_count: int = Field(default=0, ge=0)
+    excerpt_version_count: int = Field(default=0, ge=0)
 
 
 class AuthoritySummary(BaseModel):
