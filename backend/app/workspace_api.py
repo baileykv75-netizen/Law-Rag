@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 
+from .human_review_api import router as human_review_router
 from .source_viewer import SourceViewerError, resolve_contract_evidence, source_page_asset
 from .source_viewer_models import SourceEvidenceDetail
 from .workspace import WorkspaceLoadError, load_workspace_summary
@@ -12,6 +13,7 @@ from .workspace_models import WorkspaceSummary
 
 
 router = APIRouter()
+router.include_router(human_review_router)
 
 
 @router.get("/api/documents/{job_id}/workspace", response_model=WorkspaceSummary)
