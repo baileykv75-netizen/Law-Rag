@@ -45,14 +45,16 @@ def test_release_environment_never_overwrites_explicit_asset_paths(tmp_path: Pat
     assert configured["LAW_RAG_LEGAL_DB"] == str(custom_legal)
 
 
-def test_release_diagnose_is_non_mutating_and_does_not_require_provider_keys(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_release_diagnose_is_non_mutating_and_never_prints_provider_secret_values(tmp_path: Path, monkeypatch, capsys) -> None:
     _clear_release_env(monkeypatch)
     runtime = tmp_path / "runtime"
     asset_root = tmp_path / "assets"
+    deepseek_secret = "stage11d-deepseek-secret-sentinel"
+    kimi_secret = "stage11d-kimi-secret-sentinel"
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(runtime))
     monkeypatch.setenv("LAW_RAG_RELEASE_ASSET_ROOT", str(asset_root))
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.delenv("MOONSHOT_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", deepseek_secret)
+    monkeypatch.setenv("MOONSHOT_API_KEY", kimi_secret)
 
     code = main(["--diagnose", "--json"])
     output = capsys.readouterr().out
@@ -60,8 +62,10 @@ def test_release_diagnose_is_non_mutating_and_does_not_require_provider_keys(tmp
 
     assert code in {0, 2}
     assert "checks" in payload
-    assert "DEEPSEEK_API_KEY" not in output
-    assert "MOONSHOT_API_KEY" not in output
+    # Diagnostic remediation may name the environment variables, but it must
+    # never serialize the configured secret values themselves.
+    assert deepseek_secret not in output
+    assert kimi_secret not in output
     assert not runtime.exists()
 
 
