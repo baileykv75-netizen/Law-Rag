@@ -187,7 +187,7 @@ h1 {
 .route-mixed { background: #f5eedb; color: #745d19; }
 .route-ocr_required { background: #f3e8e5; color: #81483f; }
 
-.route-metrics, .structure-metrics {
+.route-metrics, .structure-metrics, .audit-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
@@ -195,14 +195,15 @@ h1 {
 }
 .ocr-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .structure-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.route-metrics > div, .structure-metrics > div {
+.audit-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.route-metrics > div, .structure-metrics > div, .audit-metrics > div {
   padding: 14px;
   border: 1px solid #e3e7e2;
   border-radius: 12px;
   background: #fafbf9;
 }
-.route-metrics span, .structure-metrics span { display: block; color: #78847b; font-size: 12px; }
-.route-metrics strong, .structure-metrics strong { display: block; margin-top: 5px; font-size: 24px; }
+.route-metrics span, .structure-metrics span, .audit-metrics span { display: block; color: #78847b; font-size: 12px; }
+.route-metrics strong, .structure-metrics strong, .audit-metrics strong { display: block; margin-top: 5px; font-size: 24px; }
 
 dl { margin: 0; }
 dl > div {
@@ -242,12 +243,12 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .clause-row strong { overflow-wrap: anywhere; }
 .clause-row > small { flex: 0 0 auto; color: #78847b; }
 
-.ocr-actions, .structure-actions {
+.ocr-actions, .structure-actions, .audit-actions {
   margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid #e6eae5;
 }
-.ocr-actions p, .structure-actions p {
+.ocr-actions p, .structure-actions p, .audit-actions p {
   margin: 9px 0 0;
   color: #78847b;
   font-size: 12px;
@@ -275,6 +276,80 @@ dd { margin: 0; overflow-wrap: anywhere; }
   line-height: 1.6;
 }
 
+.audit-card {
+  border-color: #c9d0c8;
+  background: rgba(251, 252, 250, 0.96);
+}
+.rule-results {
+  display: grid;
+  gap: 12px;
+}
+.rule-result {
+  padding: 16px;
+  border: 1px solid #e1e5df;
+  border-left-width: 4px;
+  border-radius: 12px;
+  background: #fff;
+}
+.rule-state-pass { border-left-color: #4e7b5d; }
+.rule-state-fail { border-left-color: #a64e43; }
+.rule-state-review { border-left-color: #a47b25; }
+.rule-state-not_applicable { border-left-color: #9aa39d; }
+.rule-result-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.rule-result-heading h3 {
+  margin: 5px 0 0;
+  font-size: 17px;
+}
+.rule-state-pill {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.state-pass { background: #e6f0e8; color: #2f6540; }
+.state-fail { background: #f7e9e6; color: #8a3f36; }
+.state-review { background: #f7f0dc; color: #765a14; }
+.state-not_applicable { background: #eef0ee; color: #667069; }
+.rule-result > p {
+  margin: 12px 0;
+  color: #4f5c53;
+  line-height: 1.65;
+}
+.rule-meta {
+  display: grid;
+  gap: 5px;
+  color: #778179;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.observed-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+.observed-values span {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #f3f5f2;
+  color: #59665d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.review-reasons {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: #765a14;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 footer {
   margin-top: 22px;
   color: #7c877f;
@@ -284,16 +359,16 @@ footer {
 }
 
 @media (max-width: 760px) {
-  .ocr-metrics, .structure-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ocr-metrics, .structure-metrics, .audit-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
   .page-shell { width: min(100% - 20px, 920px); padding-top: 38px; }
   .workspace, .result-card { border-radius: 14px; padding: 14px; }
   .drop-zone { min-height: 230px; padding: 20px; text-align: center; }
-  .route-metrics, .ocr-metrics, .structure-metrics { grid-template-columns: 1fr; }
+  .route-metrics, .ocr-metrics, .structure-metrics, .audit-metrics { grid-template-columns: 1fr; }
   dl > div { grid-template-columns: 1fr; gap: 4px; }
   .page-route, .clause-row { align-items: flex-start; }
   .page-route-detail { max-width: 58%; }
-  .result-heading { flex-direction: column; }
+  .result-heading, .rule-result-heading { flex-direction: column; }
 }
