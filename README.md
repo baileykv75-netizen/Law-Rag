@@ -20,11 +20,12 @@ PDF / JPG / PNG
   -> at most two allowlisted local Agent evidence actions
   -> review-report.json / human review
   -> professional audit workstation
+  -> benchmark / Windows hardening
 ```
 
 ## Current status
 
-**Stage 9 complete. Stage 10 active: Professional Audit Workstation UI.**
+**Stage 10 complete. Stage 11 active: Benchmark, Hardening, and Windows Release.**
 
 Completed foundations include:
 
@@ -51,8 +52,13 @@ Completed foundations include:
 - application-owned constrained Agent policy with a hard two-action budget;
 - allowlisted local evidence tools and explicit forbidden-action boundary;
 - local-only `review-report` generation with human-review escalation;
-- separate UI controls for the external Kimi call and local comparison/Agent processing;
-- all Stage 1–9 deterministic backend regressions and frontend TypeScript/production build green.
+- dedicated `/workspace` professional review surface;
+- bounded source-page rendering and Evidence-to-page/span/bbox navigation;
+- unified DeepSeek/Kimi/comparison/Agent review queue without rewriting source artifacts;
+- Legal Evidence detail with version, `as_of`, provenance and coverage display;
+- append-only local `human-review.json` with revision history and stale-report detection;
+- keyboard/focus/responsive workstation behavior and explicit missing/integrity states;
+- full Stage 1–10 deterministic backend regressions and frontend TypeScript/production build green.
 
 The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
@@ -146,6 +152,16 @@ Frontend: http://127.0.0.1:5173
 
 Provider health checks only inspect local configuration and do not make paid model requests.
 
+### 9. Open the professional workstation
+
+Open:
+
+```text
+http://127.0.0.1:5173/workspace?job=<job-id>
+```
+
+The workstation reads persisted local artifacts. Opening a job, navigating pages, filtering findings, resolving Evidence IDs, opening Legal Evidence, and loading human-review history do **not** run OCR/retrieval or call DeepSeek/Kimi.
+
 ## Local runtime artifacts
 
 Private/generated artifacts stay under ignored runtime paths:
@@ -160,7 +176,9 @@ runtime/jobs/<job-id>/audit-rules.json
 runtime/jobs/<job-id>/ai-audit.json
 runtime/jobs/<job-id>/secondary-review.json
 runtime/jobs/<job-id>/review-report.json
+runtime/jobs/<job-id>/human-review.json
 runtime/rendered/<job-id>/page-0001.png
+runtime/viewer/<job-id>/page-0001.png
 runtime/legal/legal.db
 runtime/legal/retrieval.db
 runtime/legal/import_reports/last-import-report.json
@@ -360,6 +378,77 @@ GET  /api/documents/<job-id>/review-report
 
 See [`docs/SECONDARY_REVIEW.md`](docs/SECONDARY_REVIEW.md).
 
+## Stage 10 professional audit workstation
+
+Stage 10 turns the persisted Stage 2–9 artifacts into one job-centric review surface. It does not create a new reasoning layer.
+
+```text
+/workspace?job=<job-id>
+
+left                          center                         right
+source page / Evidence   ->  audit queue / filters    ->   DeepSeek + Kimi
+OCR/native provenance        comparison / omission          law / Agent trace
+page + bbox/span              severity / triage             human decision history
+```
+
+### Read-only workspace aggregation
+
+```text
+GET /api/documents/<job-id>/workspace
+```
+
+The endpoint validates available artifacts and reports `READY`, `MISSING`, `NOT_REQUIRED`, or `INVALID`. A complete-job regression explicitly fails if workspace loading tries to resolve either external model provider.
+
+### Bounded source/Evidence navigation
+
+```text
+GET /api/documents/<job-id>/source/pages/<page-number>
+GET /api/documents/<job-id>/evidence/<evidence-id>
+```
+
+PDF pages use the existing local PDFium renderer and are cached under ignored `runtime/viewer/`. Image jobs expose only their bounded source page. The browser never receives an arbitrary filesystem path.
+
+OCR Evidence keeps bbox/polygon/confidence/coordinate-space metadata. Native PDF Evidence keeps exact quote/character offsets when no trustworthy visual bbox exists; the UI does not invent coordinates.
+
+### Unified review queue
+
+The presentation layer joins, without rewriting:
+
+- DeepSeek primary finding;
+- Kimi secondary assessment;
+- deterministic comparison state and severity distance;
+- contract/Legal Evidence sets;
+- validated Kimi possible omissions as separate items;
+- relevant bounded Agent action trace.
+
+Filters include severity, comparison state, attention-only and text search. Findings are keyboard-selectable and preserve direct Evidence/Legal Evidence navigation.
+
+### Legal authority context
+
+Clicking a Legal Evidence ID displays the canonical authority/article/version record, effective interval, current `as_of`, coverage type and public source provenance. `CURATED_EXCERPT` is visibly marked; no retrieval score is shown as a legal-confidence percentage.
+
+### Human review layer
+
+```text
+GET  /api/documents/<job-id>/human-review
+POST /api/documents/<job-id>/human-review/decisions
+```
+
+Human states:
+
+```text
+UNREVIEWED
+CONFIRMED
+REJECTED
+NEEDS_MORE_REVIEW
+```
+
+Each POST appends a new revision to `human-review.json`. The server snapshots the target contract/Legal Evidence references and a SHA-256 fingerprint of the current validated `review-report.json`.
+
+If that report later changes, prior revisions remain in history and are returned with `is_stale=true`; approval is never silently carried forward to a changed audit context.
+
+Human review writes are regression-tested so `review-report.json`, canonical contract, deterministic rules, DeepSeek report, Kimi report, `legal.db` and `retrieval.db` remain byte-for-byte unchanged. Human review never calls an external provider.
+
 ## Developer validation
 
 Backend deterministic suite:
@@ -404,8 +493,9 @@ set LAW_RAG_KIMI_SMOKE=1
 9. **Two-model agreement is not proof.** Agreement/disagreement remains reviewable structured evidence.
 10. **Uncertainty is first-class.** Insufficient corpus/version/source/OCR evidence remains visible.
 11. **Constrained Agent.** Mandatory stages, tools and budgets remain application-controlled.
-12. **Local-first private data.** External transmission is explicit; private artifacts stay outside Git.
-13. **One verifiable stage per iteration.** No broad half-finished rewrites.
+12. **Human decisions are append-only review data.** They never rewrite source, rules, models or legal evidence.
+13. **Local-first private data.** External transmission is explicit; private artifacts stay outside Git.
+14. **One verifiable stage per iteration.** No broad half-finished rewrites.
 
 ## Repository safety
 
@@ -417,7 +507,7 @@ See [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
 
 ## Legal-use boundary
 
-Law-Rag is an audit-assistance/research tool. Rule failures, retrieval scores, model findings and model agreement are not automatically final legal opinions. Material findings remain reviewable by a qualified professional.
+Law-Rag is an audit-assistance/research tool. Rule failures, retrieval scores, model findings, model agreement and human workstation states are not automatically final legal opinions. Material findings remain reviewable by a qualified professional.
 
 ## Development documents
 
