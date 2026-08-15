@@ -26,11 +26,90 @@ The intended final form is a downloadable local application. The browser is only
 
 ## Current status
 
-**Stage 0 complete: project foundation.**
+**Stage 1 implementation: local application shell.**
 
-No OCR, RAG, LLM, or Agent implementation should be considered complete yet.
+The repository now contains a React/Vite local UI, FastAPI local backend, local-only file ingestion, Windows development setup/start scripts, backend tests, and GitHub Actions validation.
 
-The next implementation task is defined in [`CURRENT_TASK.md`](CURRENT_TASK.md).
+Stage 1 deliberately does **not** contain OCR, PDF text extraction, legal RAG, LLM calls, audit reasoning, or Agent behavior.
+
+The current acceptance criteria remain defined in [`CURRENT_TASK.md`](CURRENT_TASK.md) until CI and run instructions are verified.
+
+## Stage 1 quick start on Windows
+
+### Prerequisites
+
+Install:
+
+- Python 3.11 or newer;
+- Node.js 22 LTS recommended. Vite 8 requires Node.js 20.19+ or 22.12+.
+
+No DeepSeek/Kimi/Qwen API key is required for Stage 1.
+
+### First setup
+
+Download/clone the repository, then double-click:
+
+```text
+setup-dev.bat
+```
+
+This creates a local Python virtual environment, installs FastAPI dependencies, and installs frontend npm dependencies.
+
+### Start Law-Rag
+
+After setup, double-click:
+
+```text
+start-dev.bat
+```
+
+It starts:
+
+```text
+Backend:  http://127.0.0.1:8000
+Frontend: http://127.0.0.1:5173
+```
+
+The frontend should open automatically in the browser. Two terminal windows remain open while Law-Rag is running; closing them stops the local application.
+
+### Current behavior
+
+You can select or drag one:
+
+- `.pdf`
+- `.jpg`
+- `.jpeg`
+- `.png`
+
+up to 50 MiB. The backend validates the basic type/signature, generates a UUID job ID, and stores the file only under:
+
+```text
+runtime/uploads/<job-id>/source.<ext>
+```
+
+`runtime/` is ignored by Git.
+
+At this stage the application only returns file metadata. It does not inspect contract contents or give legal conclusions.
+
+## Developer validation
+
+Backend:
+
+```bat
+cd backend
+set PYTHONPATH=.
+..\.venv\Scripts\python.exe -m pytest -q
+```
+
+Frontend:
+
+```bat
+cd frontend
+npm run typecheck
+npm run build
+```
+
+GitHub Actions runs backend tests and the frontend production build on pushes and pull requests to `main`.
 
 ## Core engineering principles
 
@@ -96,7 +175,7 @@ Law-Rag is an audit-assistance and research tool. Model output may be incomplete
 
 ## Configuration
 
-Secrets will be supplied through a local `.env` file. Only `.env.example` belongs in Git.
+Secrets will be supplied through a local `.env` file in later stages. Only `.env.example` belongs in Git.
 
 Model providers and OCR engines must be replaceable behind explicit interfaces so that changing DeepSeek, Kimi, Qwen, PaddleOCR, or another provider does not require rewriting the audit domain logic.
 
