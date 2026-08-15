@@ -1,0 +1,4 @@
+# PaddlePaddle itself is installed first from the official CPU wheel index by
+# setup-ocr-cpu.bat. Keep OCR dependencies separate so native-text-only use
+# does not force a heavyweight OCR installation.
+paddleocr==3.7.0
