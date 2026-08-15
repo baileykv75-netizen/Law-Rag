@@ -56,8 +56,76 @@ type OcrRunResult = {
   pages: OcrPageResult[]
 }
 
+type ClauseSummary = {
+  clause_id: string
+  heading_token: string
+  heading_text: string
+  body_text: string
+  level: number
+  parent_clause_id: string | null
+  page_start: number
+  page_end: number
+}
+
+type PartySummary = {
+  mention_id: string
+  role_label: string
+  raw_name: string | null
+  resolution_state: 'RESOLVED' | 'UNRESOLVED' | 'AMBIGUOUS'
+}
+
+type DateSummary = {
+  mention_id: string
+  raw_text: string
+  iso_date: string | null
+  field_label: string | null
+  resolution_state: 'RESOLVED' | 'UNRESOLVED' | 'AMBIGUOUS'
+}
+
+type MoneySummary = {
+  mention_id: string
+  raw_text: string
+  numeric_value: string | null
+  currency: string | null
+  unit: string | null
+}
+
+type PercentageSummary = {
+  mention_id: string
+  raw_text: string
+  numeric_value: string | null
+}
+
+type IdentifierSummary = {
+  mention_id: string
+  label: string
+  raw_value: string
+}
+
+type StructureSummary = {
+  job_id: string
+  schema_version: string
+  status: string
+  title: string | null
+  clause_count: number
+  party_count: number
+  date_count: number
+  money_count: number
+  percentage_count: number
+  identifier_count: number
+  unresolved_reference_count: number
+  warning_count: number
+  clauses: ClauseSummary[]
+  parties: PartySummary[]
+  dates: DateSummary[]
+  money_mentions: MoneySummary[]
+  percentages: PercentageSummary[]
+  identifiers: IdentifierSummary[]
+}
+
 type ViewState = 'idle' | 'ready' | 'uploading' | 'success' | 'error'
 type OcrViewState = 'idle' | 'running' | 'success' | 'error'
+type StructureViewState = 'idle' | 'running' | 'success' | 'error'
 
 function getExtension(name: string) {
   const dot = name.lastIndexOf('.')
@@ -71,9 +139,7 @@ function formatBytes(bytes: number) {
 }
 
 function validateFile(file: File): string | null {
-  if (!ALLOWED_EXTENSIONS.includes(getExtension(file.name))) {
-    return '暂仅支持 PDF、JPG、JPEG、PNG 文件。'
-  }
+  if (!ALLOWED_EXTENSIONS.includes(getExtension(file.name))) return '暂仅支持 PDF、JPG、JPEG、PNG 文件。'
   if (file.size === 0) return '文件为空，请选择有效文件。'
   if (file.size > MAX_BYTES) return '文件超过当前 50 MiB 限制。'
   return null
@@ -104,11 +170,21 @@ function App() {
   const [ocrState, setOcrState] = useState<OcrViewState>('idle')
   const [ocrMessage, setOcrMessage] = useState('')
   const [ocrResult, setOcrResult] = useState<OcrRunResult | null>(null)
+  const [structureState, setStructureState] = useState<StructureViewState>('idle')
+  const [structureMessage, setStructureMessage] = useState('')
+  const [structureResult, setStructureResult] = useState<StructureSummary | null>(null)
+
+  const resetStructure = () => {
+    setStructureState('idle')
+    setStructureMessage('')
+    setStructureResult(null)
+  }
 
   const resetOcr = () => {
     setOcrState('idle')
     setOcrMessage('')
     setOcrResult(null)
+    resetStructure()
   }
 
   const selectFile = (nextFile: File | null) => {
@@ -120,7 +196,6 @@ function App() {
       setMessage('')
       return
     }
-
     const error = validateFile(nextFile)
     if (error) {
       setFile(null)
@@ -128,7 +203,6 @@ function App() {
       setMessage(error)
       return
     }
-
     setFile(nextFile)
     setState('ready')
     setMessage('文件已准备好，可以进行本地文档检查。')
@@ -147,35 +221,28 @@ function App() {
 
   const upload = async () => {
     if (!file || state === 'uploading') return
-
     setState('uploading')
-    setMessage('正在保存并检查文档结构…')
+    setMessage('正在保存并检查文档…')
     setResult(null)
     resetOcr()
-
     try {
       const form = new FormData()
       form.append('file', file)
-      const response = await fetch(`${API_BASE_URL}/api/documents`, {
-        method: 'POST',
-        body: form,
-      })
+      const response = await fetch(`${API_BASE_URL}/api/documents`, { method: 'POST', body: form })
       const body = await response.json().catch(() => null)
-
       if (!response.ok) {
         const detail = body && typeof body.detail === 'string' ? body.detail : `处理失败（HTTP ${response.status}）`
         throw new Error(detail)
       }
-
       const inspection = body as UploadResult
       setResult(inspection)
       setState('success')
       if (inspection.route === 'NATIVE_TEXT') {
-        setMessage('检查完成：PDF 原生文本可直接保留，不需要 OCR。法律审计尚未开始。')
+        setMessage('检查完成：原生文本可用，可直接生成确定性合同结构。')
       } else if (inspection.route === 'MIXED') {
-        setMessage('检查完成：部分页面使用原生文本，其余页面可继续运行本地 OCR。')
+        setMessage('检查完成：部分页面需要 OCR；完成 OCR 后才能生成完整合同结构。')
       } else {
-        setMessage('检查完成：该文档需要 OCR。安装 OCR 运行时后可继续处理。')
+        setMessage('检查完成：该文档需要 OCR；完成 OCR 后才能生成合同结构。')
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : '未知错误'
@@ -186,35 +253,60 @@ function App() {
 
   const runOcr = async () => {
     if (!result || result.ocr_required_pages === 0 || ocrState === 'running') return
-
     setOcrState('running')
     setOcrMessage('正在本机执行 OCR；首次使用可能需要下载模型…')
     setOcrResult(null)
-
+    resetStructure()
     try {
-      const response = await fetch(`${API_BASE_URL}/api/documents/${result.job_id}/ocr`, {
-        method: 'POST',
-      })
+      const response = await fetch(`${API_BASE_URL}/api/documents/${result.job_id}/ocr`, { method: 'POST' })
       const body = await response.json().catch(() => null)
       if (!response.ok) {
         const detail = body && typeof body.detail === 'string' ? body.detail : `OCR 失败（HTTP ${response.status}）`
         throw new Error(detail)
       }
-
       const next = body as OcrRunResult
       setOcrResult(next)
       setOcrState('success')
       if (next.failed_pages || next.no_text_pages) {
-        setOcrMessage('OCR 已完成，但存在失败或无文本页面；这些页面必须保留为待人工复核状态。')
+        setOcrMessage('OCR 已完成，但存在失败或无文本页面；系统不会在缺页状态下生成合同结构。')
       } else if (next.low_confidence_pages) {
-        setOcrMessage('OCR 已完成，但存在低置信度页面。当前结果只是文字证据，不代表法律审计结论。')
+        setOcrMessage('OCR 已完成，存在低置信度页；这些不确定性会继续保留到结构化证据中。')
       } else {
-        setOcrMessage('OCR 已完成并保存页级证据。当前仍未开始法律审计。')
+        setOcrMessage('OCR 已完成并保存页级证据，可以继续生成合同结构。')
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : '未知错误'
       setOcrState('error')
       setOcrMessage(`OCR 无法运行：${detail}`)
+    }
+  }
+
+  const canStructure = Boolean(
+    result &&
+      (result.ocr_required_pages === 0 ||
+        (ocrResult && ocrResult.failed_pages === 0 && ocrResult.no_text_pages === 0)),
+  )
+
+  const runStructure = async () => {
+    if (!result || !canStructure || structureState === 'running') return
+    setStructureState('running')
+    setStructureMessage('正在基于现有证据生成确定性合同结构…')
+    setStructureResult(null)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/${result.job_id}/structure`, { method: 'POST' })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) {
+        const detail = body && typeof body.detail === 'string' ? body.detail : `结构化失败（HTTP ${response.status}）`
+        throw new Error(detail)
+      }
+      const next = body as StructureSummary
+      setStructureResult(next)
+      setStructureState('success')
+      setStructureMessage('合同结构已生成并保存在本机 contract.json。当前结果只是事实结构，不包含法律风险判断。')
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '未知错误'
+      setStructureState('error')
+      setStructureMessage(`合同结构无法生成：${detail}`)
     }
   }
 
@@ -225,48 +317,32 @@ function App() {
         <h1>Law-Rag</h1>
         <p className="subtitle">智能合同审计辅助系统 · 本地开发版</p>
         <p className="notice">
-          当前阶段完成文档分流和本地 OCR 证据提取，不提供法律意见，也不会调用任何大模型 API。
+          当前阶段支持文档证据提取与确定性合同结构化；不提供法律意见，也不会调用 DeepSeek、Kimi、Qwen 等大模型 API。
         </p>
       </section>
 
       <section className="workspace" aria-label="合同导入">
         <div
           className={`drop-zone ${dragging ? 'is-dragging' : ''}`}
-          onDragEnter={(event) => {
-            event.preventDefault()
-            setDragging(true)
-          }}
+          onDragEnter={(event) => { event.preventDefault(); setDragging(true) }}
           onDragOver={(event) => event.preventDefault()}
-          onDragLeave={(event) => {
-            if (event.currentTarget === event.target) setDragging(false)
-          }}
+          onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }}
           onDrop={handleDrop}
           role="button"
           tabIndex={0}
           onClick={() => inputRef.current?.click()}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click()
-          }}
+          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click() }}
         >
           <div className="document-icon" aria-hidden="true">§</div>
           <strong>拖入合同文件</strong>
           <span>或点击选择本机文件</span>
           <span className="file-hint">PDF · JPG · JPEG · PNG · 最大 50 MiB</span>
-          <input
-            ref={inputRef}
-            className="file-input"
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-            onChange={handleInput}
-          />
+          <input ref={inputRef} className="file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={handleInput} />
         </div>
 
         {file && (
           <div className="selected-file">
-            <div>
-              <span className="meta-label">已选择文件</span>
-              <strong>{file.name}</strong>
-            </div>
+            <div><span className="meta-label">已选择文件</span><strong>{file.name}</strong></div>
             <div className="file-size">{formatBytes(file.size)}</div>
           </div>
         )}
@@ -274,73 +350,60 @@ function App() {
         <button className="primary-action" onClick={upload} disabled={!file || state === 'uploading'}>
           {state === 'uploading' ? '正在检查…' : '导入并检查文档'}
         </button>
-
         {message && <div className={`status status-${state}`}>{message}</div>}
       </section>
 
       {result && (
         <section className="result-card" aria-label="文档检查结果">
           <div className="result-heading">
-            <div>
-              <span className="meta-label">本地任务</span>
-              <h2>文档检查完成</h2>
-            </div>
+            <div><span className="meta-label">Document Evidence</span><h2>文档检查完成</h2></div>
             <span className={`route-pill route-${result.route.toLowerCase()}`}>{routeLabel(result.route)}</span>
           </div>
-
           <div className="route-metrics">
             <div><span>总页数</span><strong>{result.page_count}</strong></div>
             <div><span>原生文本页</span><strong>{result.native_text_pages}</strong></div>
             <div><span>待 OCR 页</span><strong>{result.ocr_required_pages}</strong></div>
           </div>
-
           <dl>
             <div><dt>文件名</dt><dd>{result.filename}</dd></div>
             <div><dt>文档类型</dt><dd>{result.document_kind.toUpperCase()}</dd></div>
-            <div><dt>MIME 类型</dt><dd>{result.media_type}</dd></div>
             <div><dt>大小</dt><dd>{formatBytes(result.size_bytes)}</dd></div>
             <div><dt>任务 ID</dt><dd className="mono">{result.job_id}</dd></div>
-            <div><dt>存储范围</dt><dd>{result.storage_scope}</dd></div>
           </dl>
-
           <div className="page-routes">
             <div className="section-label">页级路由</div>
             {result.pages.map((page) => (
               <div className="page-route" key={page.evidence_id}>
-                <div>
-                  <strong>第 {page.page_number} 页</strong>
-                  <span className="mono">{page.evidence_id}</span>
-                </div>
-                <div className="page-route-detail">
-                  <span>{routeLabel(page.route)}</span>
-                  <small>{page.character_count} 字符</small>
-                </div>
+                <div><strong>第 {page.page_number} 页</strong><span className="mono">{page.evidence_id}</span></div>
+                <div className="page-route-detail"><span>{routeLabel(page.route)}</span><small>{page.character_count} 字符</small></div>
               </div>
             ))}
           </div>
-
           {result.ocr_required_pages > 0 && (
             <div className="ocr-actions">
               <button className="secondary-action" onClick={runOcr} disabled={ocrState === 'running'}>
                 {ocrState === 'running' ? '正在运行本地 OCR…' : `运行本地 OCR（${result.ocr_required_pages} 页）`}
               </button>
-              <p>首次使用请先运行根目录 <span className="mono">setup-ocr-cpu.bat</span>。OCR 仅处理待识别页面。</p>
+              <p>首次使用请先运行根目录 <span className="mono">setup-ocr-cpu.bat</span>。OCR 只处理待识别页面。</p>
               {ocrMessage && <div className={`status status-${ocrState === 'error' ? 'error' : 'ready'}`}>{ocrMessage}</div>}
             </div>
           )}
+          <div className="structure-actions">
+            <button className="secondary-action" onClick={runStructure} disabled={!canStructure || structureState === 'running'}>
+              {structureState === 'running' ? '正在生成合同结构…' : '生成确定性合同结构'}
+            </button>
+            {!canStructure && result.ocr_required_pages > 0 && <p>必须先完成全部待 OCR 页，失败/无文本页面不能被静默跳过。</p>}
+            {structureMessage && <div className={`status status-${structureState === 'error' ? 'error' : 'ready'}`}>{structureMessage}</div>}
+          </div>
         </section>
       )}
 
       {ocrResult && (
         <section className="result-card" aria-label="OCR 结果">
           <div className="result-heading">
-            <div>
-              <span className="meta-label">OCR Evidence</span>
-              <h2>本地 OCR 证据</h2>
-            </div>
+            <div><span className="meta-label">OCR Evidence</span><h2>本地 OCR 证据</h2></div>
             <span className="success-pill">{ocrResult.status.toUpperCase()}</span>
           </div>
-
           <div className="route-metrics ocr-metrics">
             <div><span>尝试 OCR</span><strong>{ocrResult.ocr_pages_attempted}</strong></div>
             <div><span>识别出文本</span><strong>{ocrResult.ocr_pages_complete}</strong></div>
@@ -348,21 +411,16 @@ function App() {
             <div><span>失败页</span><strong>{ocrResult.failed_pages}</strong></div>
             <div><span>无文本页</span><strong>{ocrResult.no_text_pages}</strong></div>
           </div>
-
           <dl>
             <div><dt>OCR Provider</dt><dd>{ocrResult.provider}</dd></div>
             <div><dt>模型</dt><dd>{ocrResult.model}</dd></div>
             <div><dt>Provider 版本</dt><dd>{ocrResult.provider_version}</dd></div>
           </dl>
-
           <div className="page-routes">
             <div className="section-label">处理后页级证据</div>
             {ocrResult.pages.map((page) => (
               <div className="page-route" key={`ocr-${page.page_number}`}>
-                <div>
-                  <strong>第 {page.page_number} 页</strong>
-                  <span>{page.source_method === 'ocr' ? 'OCR evidence' : 'Native evidence'}</span>
-                </div>
+                <div><strong>第 {page.page_number} 页</strong><span>{page.source_method === 'ocr' ? 'OCR evidence' : 'Native evidence'}</span></div>
                 <div className="page-route-detail">
                   <span>{ocrStateLabel(page.state)}</span>
                   {page.low_confidence_blocks > 0 && <small>{page.low_confidence_blocks} 个低置信度块</small>}
@@ -374,9 +432,66 @@ function App() {
         </section>
       )}
 
-      <footer>
-        真实合同、脱敏测试集和 API Key 不应提交到 GitHub。OCR 结果仍需人工复核，正式法律判断必须由专业人员完成。
-      </footer>
+      {structureResult && (
+        <section className="result-card structure-card" aria-label="合同结构结果">
+          <div className="result-heading">
+            <div><span className="meta-label">Canonical Contract · v{structureResult.schema_version}</span><h2>{structureResult.title ?? '未识别标题'}</h2></div>
+            <span className="success-pill">STRUCTURED</span>
+          </div>
+          <div className="structure-metrics">
+            <div><span>条款</span><strong>{structureResult.clause_count}</strong></div>
+            <div><span>主体出现项</span><strong>{structureResult.party_count}</strong></div>
+            <div><span>日期</span><strong>{structureResult.date_count}</strong></div>
+            <div><span>金额</span><strong>{structureResult.money_count}</strong></div>
+            <div><span>百分比</span><strong>{structureResult.percentage_count}</strong></div>
+            <div><span>编号</span><strong>{structureResult.identifier_count}</strong></div>
+            <div><span>未解析引用</span><strong>{structureResult.unresolved_reference_count}</strong></div>
+            <div><span>警告</span><strong>{structureResult.warning_count}</strong></div>
+          </div>
+
+          {structureResult.parties.length > 0 && (
+            <div className="structure-section">
+              <div className="section-label">主体出现项</div>
+              {structureResult.parties.map((party) => (
+                <div className="fact-row" key={party.mention_id}>
+                  <strong>{party.role_label}</strong>
+                  <span>{party.raw_name ?? '名称未解析'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {structureResult.identifiers.length > 0 && (
+            <div className="structure-section">
+              <div className="section-label">显式编号</div>
+              {structureResult.identifiers.map((item) => (
+                <div className="fact-row" key={item.mention_id}><strong>{item.label}</strong><span>{item.raw_value}</span></div>
+              ))}
+            </div>
+          )}
+
+          <div className="structure-section">
+            <div className="section-label">条款大纲</div>
+            {structureResult.clauses.length === 0 && <p className="empty-note">未检测到可保守确认的编号条款。</p>}
+            {structureResult.clauses.map((clause) => (
+              <div className="clause-row" key={clause.clause_id} style={{ paddingLeft: `${Math.max(0, clause.level - 1) * 18}px` }}>
+                <div><strong>{clause.heading_token} {clause.heading_text}</strong><span className="mono">{clause.clause_id}</span></div>
+                <small>{clause.page_start === clause.page_end ? `第 ${clause.page_start} 页` : `第 ${clause.page_start}–${clause.page_end} 页`}</small>
+              </div>
+            ))}
+          </div>
+
+          <div className="structure-section compact-facts">
+            <div className="section-label">其他显式事实</div>
+            <p>日期：{structureResult.dates.map((item) => item.iso_date ?? item.raw_text).join(' · ') || '无'}</p>
+            <p>金额：{structureResult.money_mentions.map((item) => item.raw_text).join(' · ') || '无'}</p>
+            <p>百分比：{structureResult.percentages.map((item) => item.raw_text).join(' · ') || '无'}</p>
+          </div>
+          <p className="stage-boundary">Stage 4 仅重建合同事实结构。这里没有法律风险等级、法条判断或大模型结论。</p>
+        </section>
+      )}
+
+      <footer>真实合同、脱敏测试集和 API Key 不应提交到 GitHub。正式法律判断必须由专业人员复核。</footer>
     </main>
   )
 }
