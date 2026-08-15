@@ -1,6 +1,6 @@
 # CURRENT_TASK.md
 
-# Stage 11D — Windows Dependency and Reproducible Release Bundle
+# Stage 11E — Release Candidate Validation and Installer Decision
 
 ## Status
 
@@ -8,206 +8,191 @@
 Stage 11A  COMPLETE — versioned benchmark schema + public synthetic evaluator
 Stage 11B  COMPLETE — layered metrics + failure diagnostics + deterministic CI quality gates
 Stage 11C  COMPLETE — runtime/startup/data-integrity hardening
-Stage 11D  ACTIVE   — Windows dependency + reproducible release-bundle work
-Stage 11E  PENDING  — release-candidate validation / installer decision
+Stage 11D  COMPLETE — reproducible Windows onedir bundle + clean-runner validation
+Stage 11E  ACTIVE   — release-candidate validation / distribution and installer decision
 ```
 
-Stage 11C added non-mutating startup diagnostics, read-only SQLite integrity/staleness checks, Job artifact integrity inspection, atomic Stage 4/5 writes, interrupted-write residue detection, safer Windows setup/start behavior, and explicit recovery guidance. See `docs/RUNTIME_HARDENING.md`.
+Stage 11D selected PyInstaller `onedir`, locked the release toolchain/dependencies, removed Node/Vite from the end-user runtime, generated public legal/retrieval assets, collected exact Python/PDFium and frontend license evidence, generated safe release metadata, and validated the packaged executable on a clean Windows runner. The final Stage 11D smoke also checks bundle privacy, native PDF upload, packaged PDFium rendering, React/API serving and artifact upload.
+
+See:
+
+- `docs/WINDOWS_PACKAGING.md`
+- `release/README-WINDOWS.md`
+- `release/dependency-inventory.json`
 
 ## Goal
 
-Produce a **reproducible Windows-oriented release bundle** that can be tested on a clean machine before deciding whether Law-Rag should have an installer or monolithic executable.
-
-The bundle should reduce setup friction without hiding the architecture or weakening local-data/evidence boundaries.
+Turn the verified Stage 11D portable folder into a **reviewable Release Candidate (RC)** and decide whether Law-Rag actually needs an installer.
 
 Priority:
 
 ```text
-inventory dependencies/licences
-  -> choose the smallest defensible packaging approach
-  -> define bundle layout
-  -> automate deterministic build
-  -> validate on Windows
-  -> document first-run/optional-model behavior
-  -> only then consider installer in 11E
+freeze RC identity
+  -> create portable distribution artifact + hashes/manifest
+  -> independently validate artifact contents
+  -> define/manual-run user acceptance checklist
+  -> review third-party notices and distribution boundary
+  -> decide portable ZIP vs installer
+  -> only then publish/tag a release if explicitly intended
 ```
 
-Do not use packaging as a reason to skip runtime diagnostics or benchmark gates.
+The default 11E bias is **portable first**. An installer must solve a demonstrated user problem; it is not a maturity badge.
 
 ## Hard boundaries
 
-1. Do not embed or commit API keys, `.env`, private contracts, runtime databases, logs, private benchmarks, model caches, or user review data.
-2. Do not silently download OCR/BGE weights during bundle creation.
-3. DeepSeek/Kimi remain external opt-in providers; no provider credentials are baked into the bundle.
-4. `legal.db` / `retrieval.db` treatment must be explicit: either reproducibly generated from checked-in public seed or deliberately included as generated public release assets with fingerprints documented.
-5. OCR and semantic stacks remain optional unless a packaging experiment proves a reliable redistributable path.
-6. Do not add a repository open-source license without the owner’s explicit decision.
-7. Before redistributing binaries/dependencies, inspect current official packaging-tool documentation and relevant dependency/license obligations; do not rely on stale memory.
-8. Do not create an installer in 11D.
-9. Do not create a single opaque `.exe` merely because a bundler supports it. Prefer an inspectable folder bundle first.
-10. Stage 1–10 regressions, Stage 11B public quality gates, and Stage 11C runtime diagnostics must remain green.
+1. Do not add an installer merely because Stage 11D can build an `.exe`.
+2. Do not add auto-update, registry mutation, file associations, PATH changes, services or startup tasks without a concrete need.
+3. Do not publish a GitHub Release/tag automatically as part of ordinary CI; publication is an explicit release action.
+4. Do not add a repository open-source license without the owner's explicit decision.
+5. Do not represent generated notice files as automatic legal/licensing sign-off; actual release review remains explicit.
+6. No API keys, `.env` with real values, private contracts, user jobs/reviews, logs, model caches or private benchmarks may enter an RC artifact.
+7. OCR/Paddle and semantic/BGE remain outside the first base RC unless a separate verified bundle variant is intentionally approved.
+8. DeepSeek/Kimi credentials remain user-supplied at runtime.
+9. `CURATED_EXCERPT` legal coverage warning must remain visible and unchanged.
+10. Stage 1–10 regressions, Stage 11B quality gates, Stage 11C diagnostics and Stage 11D Windows bundle smoke must remain green.
 
-## 11D-1 — Packaging decision record
+## 11E-1 — RC identity and portable artifact
 
-Before adding a packaging dependency, verify current primary documentation and record:
+Define a clear RC identity without pretending it is a final production release.
 
-- candidate packaging approaches and current Windows/Python support;
-- whether they support the FastAPI backend and required binary wheels cleanly;
-- folder bundle vs one-file tradeoffs;
-- startup-time/debuggability implications;
-- license/redistribution implications;
-- impact of optional PaddleOCR/PaddlePaddle and sentence-transformers/PyTorch stacks;
-- how frontend static assets are produced and served/launched;
-- whether external Node.js is still required in the release bundle.
-
-Choose one minimal approach for the first release bundle. Document rejected alternatives briefly.
-
-## 11D-2 — Release dependency inventory
-
-Create a machine-readable or reviewable inventory for:
+Target first candidate:
 
 ```text
-base Python runtime dependencies
-frontend production assets
-PDF/PDFium binaries
-legal seed/retrieval generated assets
-optional OCR stack
-optional semantic stack
-external DeepSeek/Kimi configuration
+Law-Rag 0.8.0-rc1
+Windows x64
+portable onedir ZIP
 ```
 
-For each release-relevant dependency record at least:
-
-- package/component name;
-- pinned/resolved version used by the bundle build;
-- source/package manager;
-- whether bundled or external/optional;
-- license/redistribution note where relevant;
-- runtime role.
-
-Do not claim license compliance unless the actual notices/requirements have been checked.
-
-## 11D-3 — Reproducible base bundle
-
-Build the smallest useful Windows bundle first, targeting the base/native-PDF + deterministic/legal/retrieval/workstation path.
-
-Preferred first milestone:
+Generate alongside the ZIP:
 
 ```text
-Law-Rag/
-  app / launcher
-  backend runtime
-  frontend production assets
-  public legal/retrieval assets or deterministic rebuild path
-  config template
-  diagnostics command
-  THIRD_PARTY_NOTICES / dependency inventory as required
-  README / first-run guide
-  runtime/   (created locally at first use; empty/not shipped with private data)
+SHA256SUMS.txt
+RC-MANIFEST.json
 ```
 
-The exact layout depends on the verified packaging approach.
+The manifest should contain only safe reproducibility/distribution metadata, including source commit, application version, artifact filename/hash/size, target, toolchain summary, bundled public legal/retrieval fingerprints and notice/report fingerprints.
 
-The bundle must not contain:
+Do not put absolute local paths, usernames, secrets or private data in the manifest.
+
+## 11E-2 — Independent RC artifact verification
+
+Validation must operate on the **final zipped/unzipped RC artifact**, not only on the pre-archive build directory.
+
+Verify at minimum:
+
+- ZIP extraction succeeds on Windows;
+- expected top-level executable/README/config template exist;
+- release metadata and SHA match the source/build record;
+- no banned private/runtime files are present;
+- `Law-Rag.exe --diagnose --json` succeeds after extraction;
+- backend/API/frontend start from the extracted RC;
+- native PDF upload and packaged PDFium page rendering still pass;
+- public `legal.db` + lexical `retrieval.db` are readable and fingerprint-matched;
+- no provider key is required for base startup;
+- OCR/BGE absence remains an explicit nonfatal optional state.
+
+## 11E-3 — Manual Windows user-acceptance checklist
+
+Create a short human checklist for testing the actual RC on a normal Windows 10/11 desktop outside GitHub Actions.
+
+It should cover the user-visible path, not developer internals:
 
 ```text
-API keys
-.env with real values
-private uploads/jobs
-private benchmark data
-logs
-model caches
-hidden reasoning
-user-specific human-review data
+extract ZIP
+launch Law-Rag.exe
+browser opens
+upload native-text PDF
+open workspace/source page
+run deterministic structure/rules
+inspect legal evidence/retrieval
+verify missing OCR/BGE is explained rather than crashing
+configure provider keys only if intentionally testing AI stages
+close/reopen and confirm local job persistence
+run --diagnose for a controlled failure/missing optional component
 ```
 
-## 11D-4 — Frontend/runtime launch
+Do not require real private contracts for acceptance. Use fictional/public documents first.
 
-Remove unnecessary development-only startup requirements from the release path.
+## 11E-4 — Distribution/licence review packet
 
-In particular, determine whether the production frontend can be served as built static assets by the local application/runtime so end users do not need a separate Node/Vite dev server.
+Prepare a release-review packet that points to the actual generated notice evidence rather than restating headline licenses.
 
-Development scripts may remain for contributors, but the release bundle should have one clear launch path and one diagnostics path.
+Review items include:
 
-## 11D-5 — Optional OCR / semantic policy
+- CPython licensing material;
+- PyInstaller bundling exception/bootloader boundary;
+- exact Python distribution notices;
+- pypdfium2/PDFium dependency license material;
+- Vite generated frontend dependency licenses;
+- public legal-source provenance;
+- explicit statement that PaddleOCR/PaddlePaddle, PyTorch/BGE weights are not bundled in the base RC;
+- repository itself still has no general reuse/open-source license selected.
 
-Do not force the largest optional ML stacks into the first bundle without evidence.
+If an obligation is uncertain, mark it `REVIEW_REQUIRED` instead of inventing a compliance conclusion.
 
-Document one of these explicit policies for each optional stack:
+## 11E-5 — Installer decision
+
+After portable RC validation, record one explicit decision:
 
 ```text
-bundled and verified
-external optional install
-first-use local download after explicit user action
-deferred from first release
+PORTABLE_ZIP_SUFFICIENT
+or
+INSTALLER_JUSTIFIED
 ```
 
-The base app must continue to explain the supported fallback when OCR or semantic retrieval is absent.
+Installer is justified only if manual RC testing shows concrete friction such as:
 
-## 11D-6 — Windows validation
+- users cannot reliably choose a writable install/runtime location;
+- shortcuts/uninstall handling materially improve usability;
+- optional components need a controlled installation path;
+- distribution/update requirements genuinely need an installer.
 
-Add a reproducible Windows CI/smoke path that validates the selected base bundle on a clean runner as far as practical without external paid providers.
+If the portable ZIP works reliably, prefer it for the first personal-use release and defer MSI/Inno/NSIS.
 
-At minimum validate:
+## 11E-6 — Publication boundary
 
-- bundle/build command completes;
-- expected files exist;
-- no banned private/secret paths are present;
-- runtime diagnostics execute;
-- backend starts or imports from the bundled environment;
-- native PDF path has required binaries;
-- public legal/retrieval path can be built/read;
-- frontend production surface is present/reachable by the selected launch design;
-- no DeepSeek/Kimi key is required for base startup;
-- Stage 11B quality gate remains independent and green.
+Stage 11E may prepare release files and a release-note draft, but must not silently publish/tag a public release.
 
-Do not run paid model calls in ordinary bundle CI.
+A publication-ready set should include:
 
-## 11D-7 — Reproducibility metadata
+```text
+Law-Rag-0.8.0-rc1-windows-x64.zip
+SHA256SUMS.txt
+RC-MANIFEST.json
+release notes / known limitations
+```
 
-Generate release-build metadata containing safe values such as:
+Known limitations must explicitly mention at least:
 
-- application/release version;
-- source commit SHA;
-- Python version;
-- frontend build version/toolchain;
-- selected packaging-tool version;
-- legal seed manifest/source fingerprint;
-- retrieval schema/index version;
-- dependency inventory fingerprint;
-- build timestamp if needed, while keeping reproducible-content semantics explicit.
+- base RC excludes OCR and semantic ML stacks;
+- DeepSeek/Kimi require user-supplied keys and external transmission;
+- bundled legal corpus is a curated excerpt, not complete law;
+- the software is an audit/review aid, not a replacement for professional legal judgment.
 
-Never include secrets or private paths in release metadata.
+## Validation before 11E completion
 
-## Validation before 11D completion
+1. a named RC portable ZIP is produced by a committed deterministic path;
+2. final ZIP hash and manifest are generated and internally consistent;
+3. the extracted RC passes independent Windows smoke, including native PDF/PDFium;
+4. the final RC is scanned for private/runtime/secret files;
+5. a normal-user Windows acceptance checklist exists;
+6. release/notice review packet exists with unresolved items explicit;
+7. installer decision is recorded with evidence rather than aesthetics;
+8. no automatic public publication occurs;
+9. backend regressions and Stage 11B quality gates remain green;
+10. frontend locked production build remains green;
+11. Stage 11D bundle path remains reproducible and green;
+12. release notes accurately state optional-stack/legal-corpus/provider limitations.
 
-1. packaging approach is chosen from current official information rather than assumption;
-2. dependency/license inventory exists and distinguishes bundled vs optional/external components;
-3. reproducible base Windows bundle is generated by a committed build path;
-4. no secrets/private runtime artifacts are present in the bundle;
-5. production frontend no longer requires a Vite development server in the release path, unless a documented blocker is accepted;
-6. diagnostics work from the release layout;
-7. native PDF/base local workflow is validated on Windows;
-8. legal/retrieval public assets have a deterministic release strategy;
-9. optional OCR/semantic policy is explicit;
-10. provider keys remain user-supplied at runtime;
-11. Windows bundle smoke is green;
-12. backend regressions, Stage 11B quality gates, and frontend production build remain green;
-13. release instructions reflect the actual bundle rather than development setup.
+## Out of scope unless 11E explicitly concludes `INSTALLER_JUSTIFIED`
 
-## Out of scope
-
-Do not implement in 11D:
-
-- MSI/Inno/NSIS installer;
-- automatic system-wide registration;
-- auto-updater;
+- MSI/Inno/NSIS implementation;
 - code-signing purchase/setup;
-- single-file executable as a goal in itself;
-- bundled real API keys;
-- cloud deployment/authentication;
-- new LLM/OCR/embedding model families;
-- legal-corpus expansion/crawling;
-- destructive migration of existing user runtime data.
-
-Stage 11E may begin only after a clean Windows release-bundle smoke succeeds and the release contents/licensing boundaries are understood.
+- Windows SmartScreen reputation work;
+- auto-updater;
+- system-wide service/background daemon;
+- file associations;
+- automatic registry/PATH mutation;
+- bundled OCR/BGE heavyweight variants;
+- automatic public GitHub Release publication;
+- cloud deployment/authentication.
