@@ -126,7 +126,7 @@ h1 {
 }
 .selected-file strong { display: block; margin-top: 3px; overflow-wrap: anywhere; }
 .file-size { color: #657168; white-space: nowrap; }
-.meta-label {
+.meta-label, .section-label {
   color: #819087;
   font-size: 11px;
   font-weight: 700;
@@ -168,15 +168,32 @@ h1 {
   margin-bottom: 16px;
 }
 .result-heading h2 { margin: 3px 0 0; font-size: 24px; }
-.success-pill {
+.route-pill {
   padding: 7px 9px;
   border-radius: 999px;
-  background: #e4efe7;
-  color: #2d6640;
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
 }
+.route-native_text { background: #e4efe7; color: #2d6640; }
+.route-mixed { background: #f5eedb; color: #745d19; }
+.route-ocr_required { background: #f3e8e5; color: #81483f; }
+
+.route-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.route-metrics > div {
+  padding: 14px;
+  border: 1px solid #e3e7e2;
+  border-radius: 12px;
+  background: #fafbf9;
+}
+.route-metrics span { display: block; color: #78847b; font-size: 12px; }
+.route-metrics strong { display: block; margin-top: 5px; font-size: 24px; }
 
 dl { margin: 0; }
 dl > div {
@@ -190,6 +207,26 @@ dt { color: #78847b; }
 dd { margin: 0; overflow-wrap: anywhere; }
 .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 13px; }
 
+.page-routes {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #e6eae5;
+}
+.page-routes .section-label { margin-bottom: 8px; }
+.page-route {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf0ec;
+}
+.page-route:last-child { border-bottom: 0; }
+.page-route strong, .page-route span { display: block; }
+.page-route .mono { margin-top: 4px; color: #8a938c; font-size: 11px; }
+.page-route-detail { text-align: right; }
+.page-route-detail span { font-weight: 700; }
+.page-route-detail small { display: block; margin-top: 3px; color: #88918a; }
+
 footer {
   margin-top: 22px;
   color: #7c877f;
@@ -202,5 +239,7 @@ footer {
   .page-shell { width: min(100% - 20px, 920px); padding-top: 38px; }
   .workspace, .result-card { border-radius: 14px; padding: 14px; }
   .drop-zone { min-height: 230px; padding: 20px; text-align: center; }
+  .route-metrics { grid-template-columns: 1fr; }
   dl > div { grid-template-columns: 1fr; gap: 4px; }
+  .page-route { align-items: flex-start; }
 }
