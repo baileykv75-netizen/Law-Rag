@@ -47,6 +47,16 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _safe_lock_label(lock_path: Path) -> str:
+    resolved = lock_path.resolve()
+    try:
+        return str(resolved.relative_to(REPO_ROOT)).replace("\\", "/")
+    except ValueError:
+        # Tests/custom builds may supply a lock outside the repository. Keep the
+        # report useful without embedding an operator's absolute local path.
+        return resolved.name
+
+
 def collect_python_notices(lock_path: Path, output_dir: Path) -> dict[str, object]:
     locked = _parse_lock(lock_path.resolve())
     output_dir = output_dir.resolve()
@@ -115,7 +125,7 @@ def collect_python_notices(lock_path: Path, output_dir: Path) -> dict[str, objec
 
     report: dict[str, object] = {
         "schema_version": "1.0.0",
-        "source_lock": str(lock_path.resolve().relative_to(REPO_ROOT)).replace("\\", "/"),
+        "source_lock": _safe_lock_label(lock_path),
         "distribution_count": len(records),
         "distributions": records,
         "warning": "Collected files are evidence for notice review, not an automatic declaration of license compliance.",
