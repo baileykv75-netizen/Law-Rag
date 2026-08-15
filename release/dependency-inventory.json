@@ -1,58 +1,61 @@
 {
   "schema_version": "1.0.0",
   "stage": "11D",
-  "inventory_status": "DRAFT_REQUIRES_RESOLVED_TRANSITIVE_NOTICE_SCAN",
+  "inventory_status": "LOCKED_BASE_BUNDLE_NOTICE_COLLECTION_AUTOMATED_REVIEW_PENDING",
   "target": {
     "os": "Windows 10/11 x64",
-    "python": "3.12",
+    "python": "3.12.10",
+    "node_build": "22.23.2",
+    "npm_build": "10.9.8",
     "packaging_mode": "pyinstaller-onedir",
     "runtime_node_required": false
   },
   "notes": [
-    "Direct/base versions below are pinned from the versions resolved in successful CI run 31884357245 on 2026-08-15 unless otherwise stated.",
-    "This file is a planning/review inventory, not a declaration of complete license compliance.",
-    "A release build must generate a complete resolved package inventory and collect actual wheel/binary license files before Stage 11D can complete.",
-    "The frontend currently lacks package-lock.json; frontend dependency reproducibility remains a Stage 11D blocker."
+    "The Windows release build uses an isolated virtual environment and installs backend/requirements-release-lock-windows.txt with --no-deps.",
+    "frontend/package-lock.json is committed (lockfileVersion 3) and release/CI frontend installs use npm ci.",
+    "A clean Windows Server 2025 runner has built and smoke-run the pinned onedir bundle with CPython 3.12.10, Node 22.23.2 and npm 10.9.8.",
+    "The release build now extracts license/NOTICE material from the exact installed Python distributions and Vite emits bundled frontend license metadata.",
+    "This inventory remains review evidence, not a declaration that every redistribution obligation is automatically satisfied."
   ],
   "components": [
     {
       "name": "CPython",
-      "version": "3.12.x (release build will pin exact patch)",
+      "version": "3.12.10",
       "source": "python.org / GitHub Actions setup-python",
       "scope": "bundled-runtime",
       "runtime_role": "Python interpreter collected into the Windows bundle",
       "license": "PSF license stack",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED",
-      "redistribution_note": "Include the applicable Python license/copyright material in release notices."
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_RELEASE_NOTICE_REVIEW_PENDING",
+      "redistribution_note": "Include applicable Python license/copyright material in release notices."
     },
     {
       "name": "PyInstaller",
       "version": "6.22.0",
       "source": "PyPI / pyinstaller.org",
-      "scope": "build-only",
+      "scope": "build-only-with-bootloader-in-output",
       "runtime_role": "Builds the inspectable Windows onedir bundle",
       "license": "GPL-2.0 with PyInstaller bundling exception; selected files Apache-2.0",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED",
-      "redistribution_note": "Generated bundles may use the application's terms subject to bundled dependency licenses; PyInstaller is not a Law-Rag runtime dependency by itself."
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED",
+      "redistribution_note": "Generated bundles may use the application's terms subject to bundled dependency licenses; the exact build environment is captured in the notice report."
     },
     {
       "name": "FastAPI",
       "version": "0.141.1",
       "source": "PyPI",
       "scope": "bundled-runtime",
-      "runtime_role": "Local HTTP API and future production-static frontend host",
+      "runtime_role": "Local HTTP API and production-static frontend host",
       "license": "MIT",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED"
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED"
     },
     {
       "name": "Uvicorn",
       "version": "0.52.3",
       "source": "PyPI",
       "scope": "bundled-runtime",
-      "runtime_role": "Local ASGI server",
+      "runtime_role": "Local loopback ASGI server",
       "license": "BSD-3-Clause",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED",
-      "redistribution_note": "Release base should use core Uvicorn rather than development-only standard extras unless a Windows bundle test demonstrates a need."
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED",
+      "redistribution_note": "Base release uses core Uvicorn, not development-only standard extras."
     },
     {
       "name": "python-multipart",
@@ -61,7 +64,7 @@
       "scope": "bundled-runtime",
       "runtime_role": "Contract upload multipart parsing",
       "license": "Apache-2.0",
-      "license_review_state": "PACKAGE_METADATA_TO_REVERIFY_DURING_NOTICE_SCAN",
+      "license_review_state": "EXACT_NOTICE_COLLECTION_ENABLED",
       "security_note": "0.0.32 is newer than the 0.0.31 fix for the 2026 negative Content-Length advisory."
     },
     {
@@ -71,74 +74,75 @@
       "scope": "bundled-runtime",
       "runtime_role": "Native PDF text/page inspection",
       "license": "BSD-3-Clause",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED"
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED"
     },
     {
       "name": "pypdfium2",
       "version": "5.12.1",
-      "source": "PyPI platform wheel",
+      "source": "PyPI Windows x64 platform wheel",
       "scope": "bundled-runtime",
       "runtime_role": "PDFium-based local PDF page rendering",
       "license": "Apache-2.0 OR BSD-3-Clause plus PDFium/dependency licenses",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED_REQUIRES_WHEEL_NOTICE_COPY",
-      "redistribution_note": "pypdfium2 explicitly requires PDFium and relevant third-party dependency licenses to accompany binary distributions; collect notices from the exact Windows wheel."
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_WHEEL_NOTICE_EXTRACTION_REQUIRED_AND_AUTOMATED",
+      "redistribution_note": "The release build fails if pypdfium2/PDFium dependency license material cannot be found in the exact installed wheel."
     },
     {
       "name": "Pillow",
       "version": "12.3.0",
-      "source": "PyPI platform wheel",
+      "source": "PyPI Windows x64 platform wheel",
       "scope": "bundled-runtime",
       "runtime_role": "Image handling used by the local document pipeline",
       "license": "MIT-CMU",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED"
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED"
     },
     {
       "name": "httpx",
       "version": "0.28.1",
       "source": "PyPI",
       "scope": "bundled-runtime",
-      "runtime_role": "Explicit external-provider HTTP calls and tests/runtime support",
+      "runtime_role": "Explicit external-provider HTTP calls",
       "license": "BSD-3-Clause",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED"
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED"
     },
     {
       "name": "React / react-dom",
-      "version": "UNLOCKED (^19.0.0 in package.json)",
-      "source": "npm",
+      "version": "19.2.8 / 19.2.8",
+      "source": "npm package-lock v3",
       "scope": "compiled-frontend-runtime-code",
       "runtime_role": "Workstation UI compiled into frontend/dist assets",
       "license": "MIT",
-      "license_review_state": "PRIMARY_SOURCE_CHECKED",
-      "reproducibility_state": "BLOCKED_UNTIL_PACKAGE_LOCK"
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_VITE_BUNDLE_LICENSE_METADATA_ENABLED",
+      "reproducibility_state": "LOCKED_PACKAGE_LOCK_V3"
     },
     {
       "name": "Vite",
-      "version": "UNLOCKED (^8.0.0); CI observed 8.2.1",
-      "source": "npm",
+      "version": "8.2.1",
+      "source": "npm package-lock v3",
       "scope": "build-only",
       "runtime_role": "Builds production frontend assets; not required on end-user machine",
       "license": "MIT",
       "license_review_state": "PRIMARY_SOURCE_CHECKED",
-      "reproducibility_state": "BLOCKED_UNTIL_PACKAGE_LOCK"
+      "reproducibility_state": "LOCKED_PACKAGE_LOCK_V3"
     },
     {
       "name": "TypeScript",
-      "version": "UNLOCKED (^5.9.0)",
-      "source": "npm",
+      "version": "5.9.3",
+      "source": "npm package-lock v3",
       "scope": "build-only",
       "runtime_role": "Frontend type checking/build input only",
       "license": "Apache-2.0",
       "license_review_state": "PRIMARY_SOURCE_CHECKED",
-      "reproducibility_state": "BLOCKED_UNTIL_PACKAGE_LOCK"
+      "reproducibility_state": "LOCKED_PACKAGE_LOCK_V3"
     },
     {
       "name": "Node.js / npm",
-      "version": "CI observed Node 22.23.2 / npm 10.9.8",
-      "source": "GitHub Actions setup-node",
+      "version": "Node 22.23.2 / npm 10.9.8",
+      "source": "GitHub Actions setup-node / local release-build prerequisite",
       "scope": "build-only",
       "runtime_role": "Builds frontend/dist; absent from end-user release bundle",
-      "license": "TRANSITIVE_BUILD_TOOL_LICENSES_TO_CAPTURE_WITH_LOCKED_BUILD",
-      "license_review_state": "BUILD_TOOL_ONLY_NOT_YET_FULLY_REVIEWED"
+      "license": "BUILD_TOOL_ONLY",
+      "license_review_state": "NOT_BUNDLED_END_USER_RUNTIME",
+      "reproducibility_state": "EXACT_BUILD_TOOL_VERSION_ENFORCED"
     },
     {
       "name": "PaddlePaddle CPU",
