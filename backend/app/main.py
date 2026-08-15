@@ -3,14 +3,15 @@ from __future__ import annotations
 import mimetypes
 from pathlib import Path
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .document_ingestion import DocumentProcessingError, inspect_document
-from .models import IngestResponse, PageEvidenceSummary
+from .models import IngestResponse, OcrRunResult, PageEvidenceSummary
+from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
 from .storage import job_upload_dir
 
 APP_NAME = "Law-Rag Local API"
@@ -25,7 +26,7 @@ EXPECTED_MEDIA_TYPES = {
     ".png": {"image/png", "application/octet-stream"},
 }
 
-app = FastAPI(title=APP_NAME, version="0.2.0")
+app = FastAPI(title=APP_NAME, version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -179,3 +180,26 @@ async def ingest_document(
             for page in inspection.pages
         ],
     )
+
+
+@app.post("/api/documents/{job_id}/ocr", response_model=OcrRunResult)
+def ocr_document(job_id: UUID) -> OcrRunResult:
+    """Run local OCR only for pages Stage 2 marked OCR_REQUIRED."""
+
+    try:
+        return run_ocr_for_job(job_id)
+    except OcrProviderUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except OcrProcessingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
