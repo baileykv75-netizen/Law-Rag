@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+import os
 from datetime import date
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
-from app.legal.embeddings import EmbeddingProvider
+from app.legal.embeddings import BgeSmallZhProvider, EmbeddingProvider
 from app.legal.importer import import_manifest
 from app.legal.retrieval import (
     build_retrieval_index,
@@ -171,6 +174,70 @@ def test_exact_lookup_still_works_when_retrieval_index_is_absent(tmp_path: Path)
     )
     assert response.candidates[0].exact_hit is True
     assert response.channels_executed == [RetrievalChannel.EXACT]
+
+
+def test_public_lexical_retrieval_benchmark_meets_stage7_gate(tmp_path: Path) -> None:
+    legal_db, index_db = _seed(tmp_path)
+    repo_root = Path(__file__).resolve().parents[2]
+    benchmark = json.loads(
+        (repo_root / "legal_data" / "fixtures" / "retrieval_benchmark.json").read_text(encoding="utf-8")
+    )
+    hits = 0
+    reciprocal_rank_sum = 0.0
+    for case in benchmark["cases"]:
+        response = retrieve_legal_evidence(
+            legal_db,
+            index_db,
+            RetrievalRequest(
+                query=case["query"],
+                as_of=date.fromisoformat(case["as_of"]),
+                top_k=case["top_k"],
+                authority_id_hint=case.get("authority_id_hint"),
+                article_token_hint=case.get("article_token_hint"),
+                use_semantic=False,
+            ),
+        )
+        returned = [candidate.legal_evidence_id for candidate in response.candidates]
+        first_rank = next(
+            (rank for rank, evidence_id in enumerate(returned, start=1) if evidence_id in case["expected_evidence_ids"]),
+            None,
+        )
+        if first_rank is not None:
+            hits += 1
+            reciprocal_rank_sum += 1.0 / first_rank
+
+    case_count = len(benchmark["cases"])
+    recall_at_5 = hits / case_count
+    mrr = reciprocal_rank_sum / case_count
+    assert recall_at_5 >= 0.90
+    assert mrr >= 0.80
+
+
+@pytest.mark.rag_semantic_smoke
+def test_real_bge_small_zh_semantic_retrieval_smoke(tmp_path: Path) -> None:
+    if os.getenv("LAW_RAG_RAG_SEMANTIC_SMOKE") != "1":
+        pytest.skip("Set LAW_RAG_RAG_SEMANTIC_SMOKE=1 after setup-rag-semantic-cpu.bat to run this test.")
+    repo_root = Path(__file__).resolve().parents[2]
+    manifest = repo_root / "legal_data" / "seed" / "manifest.json"
+    legal_db = tmp_path / "legal.db"
+    index_db = tmp_path / "retrieval.db"
+    import_manifest(manifest, legal_db, rebuild=True)
+    provider = BgeSmallZhProvider()
+    build_retrieval_index(legal_db, index_db, semantic_provider=provider)
+    response = retrieve_legal_evidence(
+        legal_db,
+        index_db,
+        RetrievalRequest(
+            query="合同中约定的违约金明显过高时法院如何调整",
+            as_of=date(2026, 8, 15),
+            top_k=5,
+            use_semantic=True,
+        ),
+        embedding_provider=provider,
+    )
+    assert RetrievalChannel.SEMANTIC in response.channels_executed
+    assert response.semantic_model == "BAAI/bge-small-zh-v1.5"
+    assert any(candidate.legal_evidence_id.endswith(":article-585") for candidate in response.candidates)
 
 
 def test_retrieval_api_summary_and_query(tmp_path: Path, monkeypatch) -> None:
