@@ -10,25 +10,38 @@ The project goal is not to build a generic legal chatbot. The target product is 
 Start Law-Rag locally
   -> open local web UI
   -> upload PDF / JPG / PNG contract
-  -> parse native PDF text when reliable
-  -> use OCR only when needed
+  -> preserve reliable native PDF text
+  -> OCR only pages that actually require OCR
   -> reconstruct clauses / tables / parties / dates / amounts
   -> run deterministic audit rules
   -> retrieve current legal authorities
-  -> perform LLM-assisted risk analysis
+  -> perform evidence-grounded LLM-assisted risk analysis
   -> invoke secondary review only when needed
   -> show risk + contract evidence + legal evidence + review state
 ```
 
-The intended final form is a downloadable local application. The browser is only the user interface; the contract processing backend runs locally unless a configured external model API is explicitly called.
+The intended final form is a downloadable local application. The browser is only the user interface; contract processing runs locally unless a later, explicitly configured external model API is called.
 
 ## Current status
 
-**Stage 2 complete. Stage 3 active: OCR and layout evidence layer.**
+**Stage 3 complete. Stage 4 active: Canonical Contract Structure.**
 
-Stage 1 established the runnable React/Vite + FastAPI local shell. Stage 2 now adds page-aware document ingestion and PDF native-text routing. Backend tests and the frontend production build have passed in GitHub Actions for the Stage 2 implementation.
+Completed foundations now include:
 
-The next implementation scope is strictly defined in [`CURRENT_TASK.md`](CURRENT_TASK.md). Stage 3 is the first stage allowed to introduce PaddleOCR, and it must do so behind a replaceable OCR provider boundary rather than embedding OCR logic into the API layer.
+- local React/Vite + FastAPI application shell;
+- validated local file ingestion;
+- page-aware PDF native-text extraction;
+- native/OCR/mixed routing;
+- local PDF page rendering for OCR-required pages;
+- provider-neutral OCR interface;
+- local PaddleOCR adapter;
+- OCR block text, coordinates, confidence and provider provenance;
+- explicit low-confidence/no-text/failure states;
+- mixed native/OCR evidence preservation;
+- Windows-oriented setup/start paths;
+- deterministic backend regression tests and frontend production-build CI.
+
+The next implementation scope is strictly defined in [`CURRENT_TASK.md`](CURRENT_TASK.md). Stage 4 will reconstruct source evidence into a canonical contract model without adding legal RAG, LLM reasoning, audit rules, or Agent behavior.
 
 ## Quick start on Windows
 
@@ -41,7 +54,7 @@ Install:
 
 No DeepSeek/Kimi/Qwen API key is required yet.
 
-### First setup
+### Base setup
 
 Download/clone the repository, then double-click:
 
@@ -49,7 +62,37 @@ Download/clone the repository, then double-click:
 setup-dev.bat
 ```
 
-This creates a local Python virtual environment and installs the backend/frontend dependencies.
+This creates the local Python virtual environment and installs the base backend/frontend dependencies.
+
+### Optional local OCR setup
+
+If you want to process scanned PDFs or JPG/PNG contract images, then also run:
+
+```text
+setup-ocr-cpu.bat
+```
+
+This installs the pinned local CPU OCR runtime:
+
+- PaddlePaddle CPU 3.3.0;
+- PaddleOCR 3.7.0.
+
+The default OCR model pair is accuracy-oriented:
+
+```text
+PP-OCRv6_medium_det
+PP-OCRv6_medium_rec
+```
+
+OCR dependencies are deliberately separate from the base install. A native-text-only PDF workflow does not need to import PaddleOCR or download OCR models.
+
+PaddleOCR models are downloaded locally on first OCR use. If the default model source is inaccessible, you may set:
+
+```text
+PADDLE_PDX_MODEL_SOURCE=BOS
+```
+
+before starting Law-Rag.
 
 ### Start Law-Rag
 
@@ -66,73 +109,132 @@ Backend:  http://127.0.0.1:8000
 Frontend: http://127.0.0.1:5173
 ```
 
-The frontend should open automatically. Closing the backend/frontend terminal windows stops the local application.
+The frontend opens in the browser. Closing the backend/frontend terminal windows stops the local application.
 
-## Verified Stage 2 behavior
+## Verified document and OCR behavior
 
 The UI accepts one `.pdf`, `.jpg`, `.jpeg`, or `.png` file up to 50 MiB.
 
-After upload, the source remains under ignored local runtime storage:
+### Local source and evidence storage
+
+Uploaded and generated artifacts remain under ignored local runtime paths:
 
 ```text
 runtime/uploads/<job-id>/source.<ext>
-```
-
-Document inspection outputs are persisted separately:
-
-```text
 runtime/jobs/<job-id>/document.json
 runtime/jobs/<job-id>/evidence.json
+runtime/jobs/<job-id>/ocr.json
+runtime/rendered/<job-id>/page-0001.png   # only PDF pages routed to OCR
 ```
 
-### PDFs
+These runtime paths are excluded from Git.
+
+### PDF routing
 
 Each PDF is inspected page by page with `pypdf`.
 
-For every page, Law-Rag preserves a stable evidence ID, page number, native text (when extractable), routing metrics, route reason, and source locator.
+A page with usable native text remains native evidence. A page with absent/sparse/suspicious native text becomes `OCR_REQUIRED`.
 
-The deterministic Stage 2 heuristic routes a page as:
-
-- `NATIVE_TEXT_USABLE` when its native text is sufficiently substantial and not suspicious;
-- `OCR_REQUIRED` when native text is absent, too sparse, or suspicious.
-
-The document-level route is therefore one of:
+Document routing can therefore be:
 
 - `NATIVE_TEXT`;
 - `OCR_REQUIRED`;
 - `MIXED`.
 
-The routing heuristic is deliberately conservative. It decides whether to trust the native text path; it does not claim that the text is legally correct.
+Law-Rag does **not** convert every PDF page to images and OCR everything.
 
-### Images
+### OCR routing
 
-JPG/JPEG/PNG inputs are preserved and explicitly marked `OCR_REQUIRED`. Stage 2 does not pretend that image text was extracted.
+```text
+NATIVE_TEXT_USABLE page
+  -> preserve original native evidence
+  -> do not OCR by default
 
-### Failures
+OCR_REQUIRED PDF page
+  -> render only that page with pypdfium2/PDFium
+  -> OCR locally
 
-A file with the wrong signature is rejected. A PDF that has a PDF signature but cannot be parsed returns an explicit processing failure rather than an empty successful result.
+JPG/JPEG/PNG
+  -> OCR original image
+```
+
+The PDF renderer uses `pypdfium2==5.12.1` and currently renders at scale `2.0` (roughly 144 DPI for standard PDF points).
+
+### OCR evidence
+
+Each recognized OCR block retains:
+
+- stable OCR evidence ID;
+- 1-based page number;
+- recognized text;
+- recognition confidence when available;
+- bounding box and polygon when available;
+- OCR provider/model/version provenance;
+- pixel source locator;
+- explicit low-confidence flag/reason.
+
+The current low-confidence review threshold is `0.85`. This is a routing threshold for human review, not a calibrated probability that the OCR text is correct.
+
+Pages can end in explicit states such as:
+
+- `OCR_COMPLETE`;
+- `OCR_LOW_CONFIDENCE`;
+- `OCR_NO_TEXT`;
+- `OCR_FAILED`;
+- `NATIVE_RETAINED`.
 
 ### UI
 
-The local interface now shows:
+After document inspection, the local interface shows page counts and route decisions. If OCR is required and the local OCR runtime is installed, the UI can run OCR and display:
 
-- document kind;
-- total page count;
-- native-text page count;
-- OCR-required page count;
-- overall route;
-- per-page Evidence ID and route.
+- pages attempted;
+- pages with recognized text;
+- low-confidence page count;
+- failed page count;
+- no-text page count;
+- per-page source method/state;
+- OCR provider/model/version.
 
-OCR itself begins only in Stage 3.
+This is still an evidence-processing tool at this stage. **Legal audit has not started yet.**
+
+## Validation status
+
+Stage 3 deterministic CI covers synthetic/fictional cases including:
+
+- native PDF routing;
+- blank/scanned-style PDF routing;
+- mixed native/OCR PDF routing;
+- real PDFium page rendering;
+- image OCR orchestration through a fake deterministic provider;
+- stable OCR evidence IDs;
+- coordinate/confidence persistence;
+- low-confidence results;
+- no-text results;
+- provider failures;
+- PaddleOCR result-field normalization;
+- all earlier Stage 1/2 regressions.
+
+A GitHub Actions Windows smoke run has also verified that Python 3.11 can install PaddlePaddle CPU 3.3.0 and PaddleOCR 3.7.0 and pass the Paddle runtime/import check.
+
+Normal CI deliberately does **not** download the OCR model weights. A local opt-in real-model smoke test exists under `backend/tests/test_ocr_smoke.py`; it should be run with a fictional/local image after OCR setup when validating a specific machine and downloaded model set.
 
 ## Developer validation
 
-Backend:
+Backend deterministic tests:
 
 ```bat
 cd backend
 set PYTHONPATH=.
 ..\.venv\Scripts\python.exe -m pytest -q
+```
+
+Optional real PaddleOCR smoke test:
+
+```bat
+cd backend
+set PYTHONPATH=.
+set LAW_RAG_OCR_SMOKE_IMAGE=C:\path\to\fictional-test-image.png
+..\.venv\Scripts\python.exe -m pytest -q -m ocr_smoke
 ```
 
 Frontend:
@@ -143,7 +245,7 @@ npm run typecheck
 npm run build
 ```
 
-GitHub Actions runs backend tests and the frontend production build on pushes and pull requests to `main`.
+GitHub Actions runs deterministic backend tests and the frontend production build on pushes and pull requests to `main`.
 
 ## Core engineering principles
 
@@ -152,7 +254,7 @@ GitHub Actions runs backend tests and the frontend production build on pushes an
 3. **No fabricated legal authority.** A model may not invent a statute, article number, judicial interpretation, or legal source. Legal citations must originate from the legal knowledge layer.
 4. **Uncertainty is allowed.** `NEEDS_HUMAN_REVIEW` is preferable to a confident but unsupported answer.
 5. **Local-first data handling.** Real contracts, private benchmarks, uploads, OCR outputs, logs containing contract content, vector stores, model caches, and API keys must never be committed to this repository.
-6. **Constrained Agent.** Mandatory audit stages are fixed by the system. The Agent may decide when to retry, retrieve more evidence, invoke a visual reviewer, or request a second model review, but it may not skip required evidence checks.
+6. **Constrained Agent.** Mandatory audit stages are fixed by the system. The Agent may decide when to retry, retrieve more evidence, invoke a visual reviewer, or request a second-model review, but it may not skip required evidence checks.
 7. **One verifiable stage per iteration.** Do not implement many half-finished subsystems in a single round.
 
 ## Planned architecture
@@ -165,7 +267,7 @@ FastAPI backend
   |
   +-- document ingestion
   +-- PDF text extraction
-  +-- OCR / document layout parsing
+  +-- OCR / source evidence
   +-- canonical contract document model
   +-- deterministic rule engine
   +-- legal knowledge base + hybrid retrieval
@@ -180,13 +282,13 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the detailed system boundaries.
 
 This repository is currently public. Treat every committed file as public information.
 
-Never commit real contracts, re-identifiable pseudonymized contracts, private legal test sets, API keys, `.env` files, private outputs/logs, local indexes, or model caches. Use only fully fictional public fixtures.
+Never commit real contracts, re-identifiable pseudonymized contracts, private legal test sets, API keys, `.env` files, private outputs/logs, local indexes, model weights/caches, or OCR outputs containing private contract content. Use only fully fictional public fixtures.
 
 See [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
 
 ## Legal-use boundary
 
-Law-Rag is an audit-assistance and research tool. Model output may be incomplete or wrong and must not be treated as a substitute for professional legal judgment. High-impact findings should remain reviewable by a qualified human.
+Law-Rag is an audit-assistance and research tool. Future model output may be incomplete or wrong and must not be treated as a substitute for professional legal judgment. High-impact findings should remain reviewable by a qualified human.
 
 ## Development documents
 
@@ -201,7 +303,7 @@ Law-Rag is an audit-assistance and research tool. Model output may be incomplete
 
 Secrets will be supplied through a local `.env` file in later stages. Only `.env.example` belongs in Git.
 
-Model providers and OCR engines must be replaceable behind explicit interfaces so that changing DeepSeek, Kimi, Qwen, PaddleOCR, or another provider does not require rewriting the audit domain logic.
+Model providers and OCR engines must remain replaceable behind explicit interfaces so that changing DeepSeek, Kimi, Qwen, PaddleOCR, or another provider does not require rewriting the audit domain logic.
 
 ## License
 
