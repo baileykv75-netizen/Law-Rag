@@ -26,13 +26,11 @@ The intended final form is a downloadable local application. The browser is only
 
 ## Current status
 
-**Stage 1 implementation: local application shell.**
+**Stage 1 complete. Stage 2 active: document ingestion and native PDF text path.**
 
-The repository now contains a React/Vite local UI, FastAPI local backend, local-only file ingestion, Windows development setup/start scripts, backend tests, and GitHub Actions validation.
+Stage 1 established the runnable local shell: React/Vite UI, FastAPI backend, validated local-only file ingestion, Windows development setup/start scripts, regression tests, and GitHub Actions CI. Backend tests and the frontend production build have passed in GitHub Actions.
 
-Stage 1 deliberately does **not** contain OCR, PDF text extraction, legal RAG, LLM calls, audit reasoning, or Agent behavior.
-
-The current acceptance criteria remain defined in [`CURRENT_TASK.md`](CURRENT_TASK.md) until CI and run instructions are verified.
+The next implementation scope is strictly defined in [`CURRENT_TASK.md`](CURRENT_TASK.md). Stage 2 will decide when PDF native text is reliable enough to preserve directly and when a page/document must later be routed to OCR. PaddleOCR itself is still out of scope until Stage 3.
 
 ## Stage 1 quick start on Windows
 
@@ -72,7 +70,7 @@ Frontend: http://127.0.0.1:5173
 
 The frontend should open automatically in the browser. Two terminal windows remain open while Law-Rag is running; closing them stops the local application.
 
-### Current behavior
+### Current Stage 1 behavior
 
 You can select or drag one:
 
@@ -89,7 +87,7 @@ runtime/uploads/<job-id>/source.<ext>
 
 `runtime/` is ignored by Git.
 
-At this stage the application only returns file metadata. It does not inspect contract contents or give legal conclusions.
+At the Stage 1 boundary the application returns file metadata only. Stage 2 will add document inspection; legal conclusions remain much later in the roadmap.
 
 ## Developer validation
 
