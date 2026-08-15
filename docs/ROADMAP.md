@@ -48,7 +48,7 @@ Validated deliverables:
 - stable page Evidence IDs and page-number linkage;
 - local `document.json` and `evidence.json` persistence;
 - explicit corrupt-PDF failure;
-- PDF page-rendering interface boundary without prematurely selecting a renderer;
+- PDF page-rendering interface boundary;
 - UI page/route summary;
 - regression coverage for native, blank, mixed, image, invalid, and corrupt inputs;
 - GitHub Actions validation for backend tests and frontend production build.
@@ -57,48 +57,59 @@ Key risk addressed: unnecessary OCR can reduce accuracy and destroy already reli
 
 ## Stage 3 — OCR and layout evidence layer
 
-Status: active.
+Status: complete.
 
-Goal: convert scanned/image contracts into traceable evidence while preserving Stage 2 native-text pages unchanged.
+Validated deliverables:
 
-Deliverables:
+- provider-neutral OCR interface;
+- PaddleOCR 3.7.0 local adapter with lazy loading;
+- accuracy-first `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec` default;
+- optional PaddlePaddle 3.3.0 CPU installation path for Windows;
+- pypdfium2/PDFium page renderer with packaging/licensing decision recorded;
+- rendering only for PDF pages already classified `OCR_REQUIRED`;
+- original image OCR path for JPG/JPEG/PNG;
+- stable OCR block evidence IDs;
+- page number, text, bbox/polygon, recognition confidence, provider/model/version provenance;
+- explicit `OCR_COMPLETE`, `OCR_LOW_CONFIDENCE`, `OCR_NO_TEXT`, and `OCR_FAILED` states;
+- mixed native/OCR evidence in correct page order;
+- local `ocr.json` and rendered-page persistence under ignored runtime paths;
+- UI OCR status and uncertainty summary;
+- deterministic regression coverage using synthetic/fake-provider inputs;
+- real PDFium rendering exercised by tests;
+- opt-in local real-PaddleOCR smoke test;
+- GitHub Actions Windows smoke verification of Python 3.11 + PaddlePaddle CPU 3.3.0 + PaddleOCR 3.7.0 installation/runtime imports;
+- normal CI green for backend tests and frontend production build.
 
-- OCR provider interface;
-- PaddleOCR adapter if official dependency verification succeeds;
-- concrete PDF page renderer selected after licensing/packaging review;
-- text recognition with page/bounding-box metadata;
-- confidence preservation;
-- low-confidence/no-text/failure states;
-- OCR regression fixtures;
-- mixed native/OCR evidence preservation.
+Known limitations intentionally carried forward:
 
-Key risks addressed:
+- normal CI does not download OCR model weights or claim real-model accuracy;
+- automatic rotation/unwarping/text-line orientation is disabled until coordinate remapping is designed;
+- OCR accuracy thresholds/model choice still require later benchmark validation on legal-document samples;
+- table/semantic structure is not reconstructed in Stage 3.
 
-- numeric OCR errors;
-- page skew/rotation;
-- multi-column/layout order;
-- tables;
-- seals/signatures as document elements;
-- cross-page source traceability.
+Key risk addressed: scanned/image text is now traceable and uncertain OCR is explicit rather than silently treated as truth.
 
 ## Stage 4 — Canonical contract structure
+
+Status: active.
 
 Goal: reconstruct contract concepts without losing evidence links.
 
 Deliverables:
 
 - typed canonical schemas;
-- clause/section hierarchy;
+- unified source evidence stream from native and OCR pages;
+- section/clause hierarchy;
 - cross-page clause stitching;
-- parties;
-- dates;
-- amounts;
-- tables;
-- attachment references;
+- party mentions/roles;
+- dates and amounts as extracted values with evidence links;
+- table representation when recoverable from source evidence;
+- attachment and cross-reference relationships;
+- extraction confidence/uncertainty and explicit unresolved states;
 - source evidence IDs on every derived object;
-- schema validation tests.
+- schema validation and regression tests.
 
-Key risk addressed: downstream components must not each invent a different representation.
+Key risk addressed: downstream rule/RAG/LLM components must consume one evidence-grounded contract representation instead of inventing incompatible interpretations.
 
 ## Stage 5 — Deterministic audit rules
 
