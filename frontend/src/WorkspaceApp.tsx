@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import AuditQueuePane from './AuditQueuePane'
+import HumanDecisionPanel from './HumanDecisionPanel'
 import ReviewContextPane from './ReviewContextPane'
 import SourceViewerPane from './SourceViewerPane'
 import type { SelectedAuditItem } from './workstation-review-types'
@@ -165,7 +166,7 @@ export default function WorkspaceApp() {
           </div>
         </div>
         <div className="workstation-top-actions">
-          <span className="local-only-chip">LOCAL · READ ONLY</span>
+          <span className="local-only-chip">LOCAL · REVIEW WORKSPACE</span>
           <a href="/">返回开发控制台</a>
         </div>
       </header>
@@ -209,7 +210,7 @@ export default function WorkspaceApp() {
               </div>
             </div>
             <div className={`overall-state ${stateClass(summary.overall_state)}`}>
-              <span>最终状态</span>
+              <span>Stage 9 最终状态</span>
               <strong>{overallLabel(summary.overall_state)}</strong>
               <small>{summary.review.final_review_state ?? '尚无 Stage 9 最终状态'}</small>
             </div>
@@ -332,6 +333,12 @@ export default function WorkspaceApp() {
                 onLegalEvidence={handleLegalEvidence}
                 finalReviewState={summary.review.final_review_state}
                 agentActionCount={summary.review.agent_action_count}
+              />
+
+              <HumanDecisionPanel
+                jobId={summary.job_id}
+                reportAvailable={summary.review.comparison_available}
+                selectedItem={selectedAuditItem}
               />
 
               {summary.warnings.length > 0 && (
