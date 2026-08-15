@@ -25,6 +25,11 @@ jobs:
         env:
           PYTHONPATH: .
         run: pytest -q
+      - name: Run public deterministic quality gates
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m app.quality_cli --repo-root .. --profile ../benchmarks/public/stage11b_quality_gates.json
 
   frontend:
     runs-on: ubuntu-latest
