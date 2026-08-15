@@ -22,7 +22,7 @@ from app.review_comparison_models import (
 from app.review_report import ReviewReport
 from app.review_workflow import Stage9cWorkflowState
 from app.secondary_review_models import SecondaryAssessment, SecondaryFindingReview
-from app.storage import job_human_review_path, job_review_report_path
+from app.storage import job_review_report_path
 
 
 client = TestClient(app)
@@ -121,7 +121,7 @@ def test_get_human_review_starts_empty_without_creating_model_activity(tmp_path:
     assert response.status_code == 200
     assert response.json()["revisions"] == []
     assert response.json()["latest_by_target"] == {}
-    assert not job_human_review_path(uuid4()).exists()
+    assert not (tmp_path / "jobs" / job_id / "human-review.json").exists()
 
 
 def test_decision_appends_revision_and_server_snapshots_evidence(tmp_path: Path, monkeypatch) -> None:
