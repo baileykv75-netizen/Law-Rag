@@ -10,6 +10,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"
+if errorlevel 1 (
+  echo [ERROR] The Python on PATH is older than 3.11.
+  echo Install Python 3.11 or newer, then run this script again.
+  exit /b 1
+)
+
 where node >nul 2>nul
 if errorlevel 1 (
   echo [ERROR] Node.js was not found in PATH.
@@ -27,6 +34,13 @@ if not exist "%ROOT%.venv\Scripts\python.exe" (
   echo [Law-Rag] Creating Python virtual environment...
   python -m venv "%ROOT%.venv"
   if errorlevel 1 exit /b 1
+)
+
+"%ROOT%.venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"
+if errorlevel 1 (
+  echo [ERROR] Existing .venv uses Python older than 3.11.
+  echo Preserve any local data, remove/recreate only the .venv environment, then rerun setup-dev.bat.
+  exit /b 1
 )
 
 echo [Law-Rag] Installing backend dependencies...
@@ -47,4 +61,4 @@ popd
 echo.
 echo [Law-Rag] Development setup complete.
 echo Run start-dev.bat to start the local application.
-endlocal
+endlocal & exit /b 0
