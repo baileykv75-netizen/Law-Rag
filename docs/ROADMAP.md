@@ -17,21 +17,25 @@ Deliverables:
 
 ## Stage 1 — Local application shell
 
-Goal: prove the local Windows-oriented UI/backend runtime.
+Status: complete.
 
-Deliverables:
+Validated deliverables:
 
 - React/Vite local UI;
 - FastAPI backend;
 - supported file selection/upload;
 - local ignored runtime storage;
 - health endpoint;
-- minimal backend tests;
-- developer startup documentation.
+- backend regression tests;
+- Windows-oriented `setup-dev.bat` and `start-dev.bat`;
+- developer startup documentation;
+- GitHub Actions validation for backend tests and frontend production build.
 
-No OCR or LLM work yet.
+No OCR or LLM work was added in this stage.
 
 ## Stage 2 — Document ingestion and native PDF path
+
+Status: active.
 
 Goal: distinguish files that can be parsed directly from files that require OCR.
 
