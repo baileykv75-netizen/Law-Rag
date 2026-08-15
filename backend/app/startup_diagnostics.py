@@ -9,6 +9,7 @@ from .runtime_health_models import (
     RuntimeHealthSeverity,
     RuntimeHealthState,
 )
+from .storage import runtime_dir
 
 
 def _native_pdf_check() -> RuntimeHealthCheck:
@@ -35,12 +36,63 @@ def _native_pdf_check() -> RuntimeHealthCheck:
     )
 
 
+def _temporary_residue_check() -> RuntimeHealthCheck:
+    root = runtime_dir()
+    if not root.exists() or not root.is_dir():
+        return RuntimeHealthCheck(
+            check_id="temporary-artifact-residue",
+            label="Interrupted-write temporary artifacts",
+            state=RuntimeHealthState.OK,
+            severity=RuntimeHealthSeverity.INFO,
+            required_for_base_app=False,
+            detail="No runtime directory exists yet, so no temporary artifact residue is present.",
+            metadata={"count": 0},
+        )
+    try:
+        residues = [path for path in root.rglob("*.tmp") if path.is_file()]
+    except OSError:
+        return RuntimeHealthCheck(
+            check_id="temporary-artifact-residue",
+            label="Interrupted-write temporary artifacts",
+            state=RuntimeHealthState.UNAVAILABLE,
+            severity=RuntimeHealthSeverity.WARNING,
+            required_for_base_app=False,
+            detail="The runtime directory could not be scanned completely for temporary artifacts.",
+            action="Inspect local filesystem permissions before relying on cleanup/recovery decisions.",
+        )
+    if not residues:
+        return RuntimeHealthCheck(
+            check_id="temporary-artifact-residue",
+            label="Interrupted-write temporary artifacts",
+            state=RuntimeHealthState.OK,
+            severity=RuntimeHealthSeverity.INFO,
+            required_for_base_app=False,
+            detail="No *.tmp artifact residue was found under the local runtime directory.",
+            metadata={"count": 0},
+        )
+    return RuntimeHealthCheck(
+        check_id="temporary-artifact-residue",
+        label="Interrupted-write temporary artifacts",
+        state=RuntimeHealthState.ACTION_REQUIRED,
+        severity=RuntimeHealthSeverity.WARNING,
+        required_for_base_app=False,
+        detail=f"Found {len(residues)} temporary artifact file(s), consistent with an interrupted or failed write.",
+        action="Do not auto-delete them. Verify the corresponding canonical target files first, preserve evidence needed for diagnosis, then remove stale temp files manually if appropriate.",
+        metadata={"count": len(residues)},
+    )
+
+
 def inspect_startup_health() -> RuntimeHealthReport:
     report = inspect_runtime_health()
     native_pdf = _native_pdf_check()
-    checks = [report.checks[0], native_pdf, *report.checks[1:]] if report.checks else [native_pdf]
+    residue = _temporary_residue_check()
+    checks = [report.checks[0], native_pdf, residue, *report.checks[1:]] if report.checks else [native_pdf, residue]
     base_ready = report.base_app_ready and native_pdf.state == RuntimeHealthState.OK
-    action_required = report.action_required or native_pdf.state != RuntimeHealthState.OK
+    action_required = (
+        report.action_required
+        or native_pdf.state != RuntimeHealthState.OK
+        or residue.state == RuntimeHealthState.ACTION_REQUIRED
+    )
     return report.model_copy(
         update={
             "checks": checks,
