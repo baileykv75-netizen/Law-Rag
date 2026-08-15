@@ -1,0 +1,71 @@
+.queue-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+}
+
+.agent-pill {
+  padding: 3px 5px;
+  border-radius: 3px;
+  background: #e5eef7;
+  color: #496887;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.agent-trace-detail {
+  display: grid;
+  gap: 7px;
+  padding: 11px;
+  border: 1px solid #dbe2eb;
+  background: #f8fafc;
+}
+.agent-trace-detail article {
+  padding: 8px;
+  border-left: 3px solid #6c829b;
+  background: #fff;
+}
+.agent-trace-detail article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.agent-trace-detail strong { color: #314158; font-size: 9px; }
+.agent-trace-detail span { color: #647286; font-size: 8px; font-weight: 800; }
+.agent-trace-detail p { margin: 5px 0; color: #647186; font-size: 9px; line-height: 1.5; }
+.agent-trace-detail small { display: block; margin-top: 3px; color: #8490a1; font-size: 8px; }
+.agent-trace-detail em { display: block; margin-top: 4px; color: #9a5b38; font-size: 8px; font-style: normal; }
+
+.stage9-boundary-card {
+  padding: 11px;
+  border: 1px dashed #cbd4df;
+  background: #f8fafb;
+}
+.stage9-boundary-card strong { display: block; margin: 5px 0; color: #334159; font-size: 10px; }
+.stage9-boundary-card p { margin: 0; color: #748095; font-size: 9px; line-height: 1.55; }
+
+.workstation-shell button:focus-visible,
+.workstation-shell input:focus-visible,
+.workstation-shell select:focus-visible,
+.workstation-shell textarea:focus-visible,
+.workstation-shell a:focus-visible,
+.queue-card:focus-visible {
+  outline: 2px solid #496f9c;
+  outline-offset: 2px;
+}
+.queue-card:focus-visible {
+  border-left-color: #355b83;
+  box-shadow: 0 0 0 2px rgba(53, 91, 131, .15);
+}
+
+@media (max-width: 980px) {
+  .queue-toolbar {
+    grid-template-columns: minmax(0, 1fr) 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .queue-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
