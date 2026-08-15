@@ -27,6 +27,12 @@ from .legal.models import (
     LegalEvidenceRecord,
     LegalStoreSummary,
 )
+from .legal.retrieval import (
+    RetrievalIndexError,
+    get_retrieval_index_summary,
+    retrieve_legal_evidence,
+)
+from .legal.retrieval_models import RetrievalIndexSummary, RetrievalRequest, RetrievalResponse
 from .legal.store import (
     LegalStoreError,
     get_article_for_version,
@@ -38,7 +44,7 @@ from .legal.store import (
 )
 from .models import IngestResponse, OcrRunResult, PageEvidenceSummary
 from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
-from .storage import job_upload_dir, legal_db_path
+from .storage import job_upload_dir, legal_db_path, legal_retrieval_index_path
 
 APP_NAME = "Law-Rag Local API"
 CHUNK_SIZE = 1024 * 1024
@@ -52,7 +58,7 @@ EXPECTED_MEDIA_TYPES = {
     ".png": {"image/png", "application/octet-stream"},
 }
 
-app = FastAPI(title=APP_NAME, version="0.6.0")
+app = FastAPI(title=APP_NAME, version="0.7.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -163,6 +169,28 @@ def legal_resolve(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except LegalStoreError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.get("/api/legal/retrieval/summary", response_model=RetrievalIndexSummary)
+def legal_retrieval_summary() -> RetrievalIndexSummary:
+    try:
+        return get_retrieval_index_summary(legal_retrieval_index_path(), legal_db_path())
+    except RetrievalIndexError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.post("/api/legal/retrieve", response_model=RetrievalResponse)
+def legal_retrieve(request: RetrievalRequest) -> RetrievalResponse:
+    try:
+        return retrieve_legal_evidence(
+            legal_db_path(),
+            legal_retrieval_index_path(),
+            request,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (LegalStoreError, RetrievalIndexError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
