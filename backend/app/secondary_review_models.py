@@ -39,6 +39,7 @@ class DisagreementCategory(str, Enum):
 
 class SecondaryReviewRunRequest(BaseModel):
     provider: str = Field(default="fake", min_length=1, max_length=64)
+    use_semantic: bool = False
 
 
 class SecondaryReviewContext(BaseModel):
