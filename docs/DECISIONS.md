@@ -251,3 +251,16 @@ The second model remains independent: it must validate/cite only supplied canoni
 Only the later Agent/tool follow-up remains conditional. Bounded tools are invoked after the two fixed model calls when disagreement, missing context, OCR uncertainty or evidence insufficiency requires additional evidence. No automatic third-model voting is introduced.
 
 Both external transmissions must remain explicit to the user, and provider-specific privacy/data-handling terms must be considered before real sensitive contracts are sent.
+
+## D-032 — Kimi K3 is the default Stage 9 secondary provider
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+The secondary provider is Moonshot AI Kimi. The official Kimi model/API documentation was re-verified during Stage 9B. The default model is `kimi-k3`, with the domestic API base `https://api.moonshot.cn/v1` and local secret `MOONSHOT_API_KEY`.
+
+Kimi K3 is used as an independent contract-level reviewer after a validated Stage 8 DeepSeek report. The provider receives only the bounded secondary-review context reconstructed from the same Stage 8 evidence package; it does not reread the raw PDF or receive unrestricted file access.
+
+The initial provider request uses JSON Mode (`response_format={"type":"json_object"}`), `reasoning_effort="max"`, non-streaming output and `max_completion_tokens`. Law-Rag deliberately keeps deterministic Pydantic/evidence/version validation as the authoritative output boundary rather than relying on provider-side formatting alone. Kimi `reasoning_content` is not persisted or exposed in the normalized review result.
+
+The provider remains behind `SecondaryReviewProvider`; no Kimi-specific SDK objects are allowed in domain logic, and there is no hidden fallback to another reviewer. Normal CI uses fake providers plus an intercepted HTTP contract test, while real Kimi calls remain explicit opt-in network/paid tests using synthetic/public data only.
