@@ -1,200 +1,209 @@
 # CURRENT_TASK.md
 
-# Stage 2 — Document Ingestion and Native PDF Path
+# Stage 3 — OCR and Layout Evidence Layer
 
 ## Goal
 
-Build the document-ingestion layer that decides whether a document already contains a usable native text layer or should be routed toward the later OCR path.
+Add a replaceable OCR layer for pages that Stage 2 has already classified as `OCR_REQUIRED`, while preserving page/evidence traceability and avoiding changes to pages whose native PDF text is already trusted.
 
-At the end of this stage, Law-Rag should be able to ingest a supported document, inspect PDF structure when applicable, extract page-level native text when reliable, preserve page-level source evidence, and clearly classify documents/pages that require OCR later.
+At the end of this stage, image documents and OCR-required PDF pages should produce traceable OCR evidence with text, page number, source coordinates when available, confidence information, and explicit failure/low-confidence states.
 
-This stage still does **not** implement PaddleOCR, legal RAG, LLM calls, audit reasoning, or Agent behavior.
+This stage does **not** implement contract clause semantics, legal RAG, LLM legal reasoning, audit rules, or Agent behavior.
 
-## Why this stage comes before OCR
+## Core routing rule
 
-Electronic PDFs often already contain accurate text. Converting every PDF to images and OCRing it would add avoidable recognition errors, especially for contract amounts, dates, percentages, names, and article numbers.
-
-The system therefore needs a reliable routing decision:
+Stage 3 must respect Stage 2 decisions:
 
 ```text
-PDF with usable native text -> preserve native text evidence
-PDF/page without usable native text -> mark OCR_REQUIRED
-JPG/JPEG/PNG -> mark OCR_REQUIRED
+NATIVE_TEXT_USABLE page
+    -> keep native evidence
+    -> do not OCR by default
+
+OCR_REQUIRED PDF page
+    -> render only that page
+    -> OCR it
+    -> preserve page linkage
+
+JPG/JPEG/PNG document
+    -> OCR source image
 ```
 
-## Dependency rule
+Do not regress to "convert every PDF page to an image and OCR everything".
 
-Before adding a PDF library, check both technical suitability and license compatibility with the repository's future distribution goals. Do not introduce a copyleft dependency with material redistribution implications without recording the decision in `docs/DECISIONS.md`.
+## Dependency and licensing rule
 
-Prefer a small, well-maintained library stack with permissive licensing and Windows support.
+Before introducing PaddleOCR/PaddlePaddle or a PDF renderer:
+
+1. verify the current official installation path and supported Python/Windows combinations;
+2. verify licenses from primary project sources;
+3. record the adopted versions and distribution implications in `docs/DECISIONS.md`;
+4. avoid adding an unnecessary GPU dependency for the first CPU-capable local implementation;
+5. keep model downloads/caches outside Git.
+
+If a renderer introduces problematic redistribution/licensing constraints, evaluate alternatives instead of silently accepting it.
 
 ## In scope
 
-### 1. Document domain model
+### 1. OCR provider abstraction
 
-Create typed backend schemas/models for at least:
+Define a provider-neutral OCR interface under the document/OCR tool layer.
 
-- document/job identifier;
-- original filename;
-- media type;
-- source file path reference (internal only; do not expose arbitrary local paths to the UI);
-- document kind (`pdf` / `image`);
-- page count when known;
-- processing route/status;
-- per-page evidence records.
+The application layer should depend on an interface such as:
 
-A first page evidence record should preserve at least:
+- OCR request containing source image/page identity;
+- OCR result containing blocks/lines;
+- provider/model/version provenance;
+- success/partial/failure status.
 
-- stable evidence ID;
+PaddleOCR should be the first concrete provider unless technical verification reveals a blocker.
+
+Do not import Paddle-specific SDK objects directly into FastAPI endpoint/domain code.
+
+### 2. PDF page rendering implementation
+
+Implement the Stage 2 `PdfPageRenderer` boundary with a concrete renderer suitable for Windows local use.
+
+Requirements:
+
+- render only pages routed to OCR;
+- stable 1-based page linkage;
+- deterministic output filename such as `page-0001.png`;
+- configurable/render-quality setting documented;
+- rendered files only under ignored runtime storage;
+- clear errors for failed rendering;
+- no silent page-number shifts.
+
+Target runtime layout:
+
+```text
+runtime/rendered/<job-id>/page-0001.png
+```
+
+### 3. OCR evidence schema
+
+Extend source evidence so OCR blocks preserve at least:
+
+- stable evidence/block ID;
+- document/job ID linkage;
 - page number;
-- source method (`native_pdf_text` or later-compatible equivalent);
-- extracted text;
-- character count;
-- reliability/route state;
-- source location sufficient to return to that page later.
+- recognized text;
+- bounding box/polygon when provider supplies it;
+- recognition confidence when provider supplies it;
+- OCR provider/model/version;
+- source method (`ocr` or more specific value);
+- low-confidence flag/reason;
+- source image/render path reference internally only.
 
-Do not design clause/legal schemas yet; this is source evidence only.
+Do not discard coordinates after concatenating text.
 
-### 2. PDF native text extraction
+### 4. OCR processing
 
-For PDFs:
+For image inputs:
 
-- read page count;
-- extract text separately for each page;
-- preserve page boundaries;
-- normalize only harmless whitespace required for downstream use;
-- never silently join pages into one anonymous text blob;
-- store extracted evidence under the ignored runtime job directory.
+- OCR the original image;
+- preserve the original file as source evidence.
 
-### 3. Native-text reliability heuristic
+For PDF inputs:
 
-Implement an explicit, testable heuristic that classifies each PDF page as one of at least:
+- process only `OCR_REQUIRED` pages;
+- preserve existing `NATIVE_TEXT_USABLE` page evidence unchanged;
+- combine native and OCR evidence in page order without losing provenance.
 
-- `NATIVE_TEXT_USABLE`;
-- `OCR_REQUIRED`;
-- `EMPTY_OR_UNSUPPORTED` if needed.
+### 5. Confidence and uncertainty
 
-The heuristic must be deterministic and documented. It may initially consider signals such as:
+Do not convert OCR confidence into fake certainty.
 
-- non-whitespace character count;
-- proportion of printable/meaningful characters;
-- suspicious replacement/control characters;
-- whether the page contains enough textual content to be plausibly useful.
+Define explicit thresholds/flags for:
 
-Do not claim the heuristic proves OCR accuracy. It only decides routing.
+- low-confidence OCR blocks;
+- pages with no recognized text;
+- OCR/provider failures.
 
-A mixed PDF must be supported: some pages may use native text while other pages are marked for OCR.
-
-### 4. Image routing
-
-For JPG/JPEG/PNG documents:
-
-- preserve the Stage 1 upload;
-- identify them as image documents;
-- mark them `OCR_REQUIRED` without attempting OCR in this stage.
-
-### 5. Page rendering boundary
-
-Define a page-rendering interface/path for later OCR processing. If the chosen PDF library can safely render pages, a minimal implementation may be added, but Stage 2 must not perform OCR.
-
-Any rendered page artifacts must remain under ignored runtime storage and retain page-number linkage.
+Amounts, dates, percentages, article numbers, and identifiers are especially sensitive, but semantic legal validation of those values belongs to later stages.
 
 ### 6. API integration
 
-Extend the current local backend so the UI can obtain document inspection results after ingestion.
+Extend document processing/status so the UI can distinguish:
 
-A reasonable Stage 2 response includes:
+- native-text page complete;
+- OCR page complete;
+- OCR low confidence;
+- OCR failed;
+- processing incomplete.
 
-- job/document ID;
-- document kind;
-- page count;
-- overall route summary;
-- number of native-text pages;
-- number of OCR-required pages;
-- page-level status/evidence metadata.
-
-Do not return huge full-document payloads if a separate detail endpoint is cleaner.
+Failures on one page should remain visible and should not silently turn into a successful empty document.
 
 ### 7. UI integration
 
-Extend the Stage 1 interface only enough to show document-inspection status, for example:
+Only extend the current interface enough to show OCR processing state:
 
-- PDF page count;
-- `native text usable` vs `OCR required` summary;
-- per-page route counts;
-- clear notice that OCR is not implemented yet.
+- pages processed n/N;
+- native vs OCR source method;
+- OCR low-confidence warning count;
+- OCR failure count;
+- clear statement that legal audit has not started yet.
 
-Do not build the final audit workstation or PDF evidence highlighter yet.
+Do not build the final PDF highlighter/workstation UI yet.
 
-### 8. Tests
+### 8. Regression fixtures/tests
 
-Add deterministic regression coverage for at least:
+Use synthetic/fictional fixtures only.
 
-- native-text PDF classified correctly;
-- image input classified as OCR-required;
-- PDF with no usable text classified as OCR-required;
-- mixed-page PDF routing if test-fixture generation is practical;
-- evidence IDs/page numbers remain stable within persisted job output;
-- invalid/corrupt PDF failure is explicit and does not crash the service;
-- Stage 1 upload/health tests continue to pass.
+Add coverage for at least:
 
-Use only synthetic or fully fictional fixtures.
+- image OCR returns text evidence;
+- scanned PDF page is rendered and OCRed;
+- mixed PDF preserves native page while OCRing only required page;
+- page number remains correct after rendering/OCR;
+- OCR coordinates/confidence survive persistence;
+- no-text OCR result is explicit;
+- OCR failure is explicit;
+- low-confidence block is flagged;
+- Stage 2 native-text tests continue passing;
+- source/render/OCR artifacts remain under ignored runtime paths.
+
+Provider-heavy tests may use a fake OCR provider for deterministic unit tests, while at least one opt-in/local integration smoke test should verify the real PaddleOCR adapter when dependencies/models are present.
 
 ## Out of scope
 
-Do **not** add any of the following in Stage 2:
+Do **not** add any of the following in Stage 3:
 
-- PaddleOCR or another OCR engine;
-- OCR text recognition;
-- layout/table recognition;
-- clause parsing/stitching;
-- parties/dates/amount semantic extraction;
-- legal corpus;
+- clause/section reconstruction;
+- party/date/amount semantic extraction;
+- deterministic legal/business audit rules;
+- legal statutes/corpus ingestion;
 - embeddings/vector database;
 - DeepSeek/Kimi/Qwen API calls;
+- legal risk conclusions;
 - Agent framework;
-- audit rules;
-- legal-risk conclusions;
-- real contracts or private benchmark data;
+- second-model review;
+- real/private contract fixtures;
 - public deployment;
 - Windows `.exe` packaging.
 
-If implementation reaches one of these areas, stop and leave it for its later stage.
-
-## Suggested runtime layout
-
-```text
-runtime/uploads/<job-id>/source.pdf
-runtime/jobs/<job-id>/document.json
-runtime/jobs/<job-id>/evidence.json
-runtime/rendered/<job-id>/page-0001.png   # only if rendering is implemented
-```
-
-Exact filenames may evolve, but persistence must remain local, ignored, deterministic, and traceable.
-
 ## Acceptance criteria
 
-Stage 2 is complete only when all of the following are true:
+Stage 3 is complete only when all of the following are true:
 
-1. Stage 1 health/upload behavior remains functional.
-2. A valid native-text PDF can be inspected page by page.
-3. PDF page count is returned and persisted.
-4. Native text is preserved per page with stable evidence IDs.
-5. A deterministic reliability heuristic routes pages to native-text use or future OCR.
-6. Image uploads are explicitly marked `OCR_REQUIRED` without OCR being run.
-7. A scan/image-only PDF is explicitly marked for OCR rather than producing a misleading empty success.
-8. Mixed native/OCR-required page routing is represented correctly when applicable.
-9. Corrupt PDF handling returns a clear failure state.
-10. Runtime-derived evidence stays only in ignored local paths.
-11. No API key is required.
-12. No OCR/model dependency is introduced.
-13. Backend tests pass.
+1. Stage 2 native-text routing remains intact.
+2. OCR is behind a provider-neutral interface.
+3. A real PaddleOCR adapter is implemented or an explicit verified blocker is documented before choosing another provider.
+4. A suitable PDF page renderer is selected with its license/packaging decision recorded.
+5. Only `OCR_REQUIRED` PDF pages are rendered/OCRed by default.
+6. Image files are OCRed without changing their original source file.
+7. OCR text remains linked to page number and stable evidence IDs.
+8. Coordinates/polygons and confidence are preserved when available.
+9. Low-confidence/no-text/failure states are explicit.
+10. Mixed native/OCR evidence can coexist in one document in correct page order.
+11. Runtime OCR/render artifacts remain ignored and local.
+12. No external LLM API key is required.
+13. Backend deterministic tests pass.
 14. Frontend build/typecheck passes.
-15. CI remains green.
-16. `README.md` documents the verified Stage 2 behavior before the stage is declared complete.
+15. CI remains green for tests that do not require downloading heavyweight OCR models.
+16. README documents verified Stage 3 setup/behavior before completion.
 
 ## Completion rule
 
-Do not change this file to Stage 3 until the criteria above are actually verified.
+Do not change this file to Stage 4 until the above criteria are verified.
 
-When Stage 2 is complete, the next task should become **Stage 3 — OCR and layout evidence layer**, where PaddleOCR is introduced behind an OCR provider interface rather than embedded directly into unrelated application code.
+When Stage 3 is complete, the next task becomes **Stage 4 — Canonical Contract Structure**, where page evidence is reconstructed into clauses, parties, dates, amounts, tables, and attachment relationships without losing source evidence links.
