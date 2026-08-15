@@ -198,4 +198,33 @@ Rationale:
 - Law-Rag's first priority is reliable legal-document evidence rather than minimum CPU latency;
 - provider construction accepts explicit detection/recognition model names, so later benchmark data may justify switching to v6 small/tiny or another model without changing OCR-domain code.
 
-This is still a hypothesis to be validated against Law-Rag's private legal-document benchmark. Model selection must ultimately be driven by measured OCR accuracy on amounts, dates, percentages, party names, article numbers, tables, and difficult scans, not by vendor benchmark claims alone.
+This remains a hypothesis to validate against Law-Rag's private legal-document benchmark. Model selection must ultimately be driven by measured OCR accuracy on amounts, dates, percentages, party names, article numbers, tables, and difficult scans, not vendor benchmark claims alone.
+
+## D-018 — Canonical contract structure is deterministic and evidence-grounded
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 4 introduces a dedicated versioned canonical contract boundary before any audit rules, legal RAG, LLM reasoning, or Agent behavior.
+
+The first schema version is `1.0.0`, persisted as:
+
+```text
+runtime/jobs/<job-id>/contract.json
+```
+
+Key rules:
+
+- native PDF lines and OCR blocks are consumed through one ordered evidence abstraction;
+- every derived object retains reusable source spans and Evidence IDs;
+- native page character offsets are kept when available;
+- OCR bbox/polygon/confidence is kept when available;
+- canonical structure never silently replaces source evidence;
+- missing/failed/no-text OCR pages block complete structure generation;
+- ambiguous facts/references remain explicit rather than being guessed;
+- Stage 4 uses deterministic extraction only and does not call an LLM;
+- unchanged persisted evidence produces deterministic/idempotent canonical output and a source fingerprint.
+
+Rationale: deterministic audit rules, legal retrieval and future models must consume the same source-grounded contract representation. Allowing each later subsystem to reinterpret raw PDFs independently would create hidden inconsistencies and make audit findings difficult to reproduce or verify.
+
+The canonical schema may evolve in future versioned revisions, but downstream code must not bypass it merely to obtain a more convenient interpretation of the raw document.
