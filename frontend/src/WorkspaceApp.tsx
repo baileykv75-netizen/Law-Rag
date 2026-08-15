@@ -1,5 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useState } from 'react'
+import AuditQueuePane from './AuditQueuePane'
+import ReviewContextPane from './ReviewContextPane'
 import SourceViewerPane from './SourceViewerPane'
+import type { SelectedAuditItem } from './workstation-review-types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
@@ -88,6 +91,21 @@ export default function WorkspaceApp() {
   const [state, setState] = useState<LoadState>('idle')
   const [message, setMessage] = useState('输入一个本机 Job ID，工作台只读取既有审计产物，不会触发 OCR、检索或模型调用。')
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
+  const [selectedAuditItem, setSelectedAuditItem] = useState<SelectedAuditItem | null>(null)
+  const [selectedContractEvidenceId, setSelectedContractEvidenceId] = useState<string | null>(null)
+  const [selectedLegalEvidenceId, setSelectedLegalEvidenceId] = useState<string | null>(null)
+
+  const handleAuditSelection = useCallback((item: SelectedAuditItem | null) => {
+    setSelectedAuditItem(item)
+  }, [])
+
+  const handleContractEvidence = useCallback((evidenceId: string) => {
+    setSelectedContractEvidenceId(evidenceId)
+  }, [])
+
+  const handleLegalEvidence = useCallback((evidenceId: string) => {
+    setSelectedLegalEvidenceId(evidenceId)
+  }, [])
 
   const loadWorkspace = async (requestedJobId: string) => {
     const normalized = requestedJobId.trim()
@@ -105,6 +123,9 @@ export default function WorkspaceApp() {
       const next = body as WorkspaceSummary
       setSummary(next)
       setJobId(next.job_id)
+      setSelectedAuditItem(null)
+      setSelectedContractEvidenceId(null)
+      setSelectedLegalEvidenceId(null)
       setState('ready')
       setMessage('已读取本机 Stage 2–9 产物摘要；本次操作没有触发外部模型调用。')
       const url = new URL(window.location.href)
@@ -113,6 +134,9 @@ export default function WorkspaceApp() {
       window.history.replaceState({}, '', url)
     } catch (error) {
       setSummary(null)
+      setSelectedAuditItem(null)
+      setSelectedContractEvidenceId(null)
+      setSelectedLegalEvidenceId(null)
       setState('error')
       setMessage(error instanceof Error ? error.message : '无法读取工作台。')
     }
@@ -129,11 +153,6 @@ export default function WorkspaceApp() {
     event.preventDefault()
     void loadWorkspace(jobId)
   }
-
-  const attentionStages = useMemo(
-    () => summary?.stages.filter((item) => item.state === 'MISSING' || item.state === 'INVALID') ?? [],
-    [summary],
-  )
 
   return (
     <main className="workstation-shell">
@@ -211,6 +230,7 @@ export default function WorkspaceApp() {
                   jobId={summary.job_id}
                   pageCount={summary.document.page_count}
                   sourceAvailable={summary.source_available}
+                  requestedEvidenceId={selectedContractEvidenceId}
                 />
               ) : (
                 <div className="source-viewer-error">
@@ -243,7 +263,7 @@ export default function WorkspaceApp() {
               </div>
             </aside>
 
-            <section className="workstation-pane findings-pane" aria-label="审计结果概览">
+            <section className="workstation-pane findings-pane" aria-label="审计结果队列">
               <div className="pane-heading">
                 <div>
                   <span className="eyebrow">AUDIT QUEUE</span>
@@ -266,48 +286,25 @@ export default function WorkspaceApp() {
                 <article className={summary.review.possible_omission_count > 0 ? 'needs-attention' : ''}>
                   <span>可能漏审项</span>
                   <strong>{summary.review.possible_omission_count}</strong>
-                  <small>仍保持独立复核项</small>
+                  <small>独立保留，不自动并入主审</small>
                 </article>
                 <article className={summary.review.agent_action_count > 0 ? 'needs-attention' : ''}>
                   <span>Agent 动作</span>
                   <strong>{summary.review.agent_action_count}</strong>
-                  <small>最多 2 个白名单动作</small>
+                  <small>Stage 9 白名单补证据</small>
                 </article>
               </div>
 
-              <div className="attention-block">
-                <div className="subheading">当前需要关注</div>
-                {attentionStages.length === 0 && summary.source_uncertainty.length === 0 ? (
-                  <div className="quiet-state">Stage 2–9 摘要未发现缺失或损坏产物。</div>
-                ) : (
-                  <div className="attention-list">
-                    {attentionStages.map((item) => (
-                      <div className="attention-item" key={`attention-${item.stage}-${item.label}`}>
-                        <span className={stateClass(item.state)}>{item.state}</span>
-                        <div>
-                          <strong>{item.label}</strong>
-                          <p>{item.detail}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {summary.source_uncertainty.map((item) => (
-                      <div className="attention-item" key={item}>
-                        <span className="is-review">SOURCE</span>
-                        <div><strong>来源不确定性</strong><p>{item}</p></div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="next-stage-placeholder">
-                <span className="eyebrow">10C</span>
-                <strong>统一风险列表将在这里接入</strong>
-                <p>下一步会把主审 finding、Kimi assessment、Comparison、漏审项和 Agent trace 合成可筛选的审计队列，但不会修改原始报告。</p>
-              </div>
+              <AuditQueuePane
+                jobId={summary.job_id}
+                reportAvailable={summary.review.comparison_available}
+                onSelectionChange={handleAuditSelection}
+                onContractEvidence={handleContractEvidence}
+                onLegalEvidence={handleLegalEvidence}
+              />
             </section>
 
-            <aside className="workstation-pane evidence-pane" aria-label="证据与复核上下文">
+            <aside className="workstation-pane evidence-pane" aria-label="证据、法律与双模型复核上下文">
               <div className="pane-heading">
                 <div>
                   <span className="eyebrow">REVIEW CONTEXT</span>
@@ -315,43 +312,34 @@ export default function WorkspaceApp() {
                 </div>
               </div>
 
-              <div className="provider-card">
-                <span>PRIMARY</span>
-                <strong>{summary.review.primary_provider ?? '未生成'}</strong>
-                <small>{summary.review.primary_model ?? '—'}</small>
-              </div>
-              <div className="provider-card">
-                <span>SECONDARY</span>
-                <strong>{summary.review.secondary_provider ?? '未生成'}</strong>
-                <small>{summary.review.secondary_model ?? '—'}</small>
-              </div>
-
-              <div className={`final-review-card ${stateClass(summary.overall_state)}`}>
-                <span>Stage 9 Final</span>
-                <strong>{summary.review.final_review_state ?? '尚无最终比较报告'}</strong>
-                <p>
-                  {summary.review.comparison_available
-                    ? '比较结果已持久化；打开工作台本身不会重新执行 Agent 或模型。'
-                    : '需要先完成既有审计链，工作台不会自动替你补跑。'}
-                </p>
+              <div className="provider-summary-row">
+                <div className="provider-card">
+                  <span>PRIMARY</span>
+                  <strong>{summary.review.primary_provider ?? '未生成'}</strong>
+                  <small>{summary.review.primary_model ?? '—'}</small>
+                </div>
+                <div className="provider-card">
+                  <span>SECONDARY</span>
+                  <strong>{summary.review.secondary_provider ?? '未生成'}</strong>
+                  <small>{summary.review.secondary_model ?? '—'}</small>
+                </div>
               </div>
 
-              <div className="warning-panel">
-                <div className="subheading">完整性与警告</div>
-                {summary.warnings.length === 0 ? (
-                  <p className="quiet-state">暂无已持久化警告。</p>
-                ) : (
-                  <ul>
-                    {summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-                  </ul>
-                )}
-              </div>
+              <ReviewContextPane
+                selectedItem={selectedAuditItem}
+                legalEvidenceId={selectedLegalEvidenceId}
+                onContractEvidence={handleContractEvidence}
+                onLegalEvidence={handleLegalEvidence}
+                finalReviewState={summary.review.final_review_state}
+                agentActionCount={summary.review.agent_action_count}
+              />
 
-              <div className="next-stage-placeholder compact">
-                <span className="eyebrow">10C / 10D</span>
-                <strong>法条、双模型比较与人工决定</strong>
-                <p>源页和合同 Evidence 已在左侧接入；后续在此处加入 Legal Evidence、结构化分歧和人工确认/驳回/待复核记录。</p>
-              </div>
+              {summary.warnings.length > 0 && (
+                <div className="warning-panel">
+                  <div className="subheading">任务级警告</div>
+                  <ul>{summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+                </div>
+              )}
             </aside>
           </section>
         </>
