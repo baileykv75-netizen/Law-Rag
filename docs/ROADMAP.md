@@ -31,8 +31,6 @@ Validated deliverables:
 - developer startup documentation;
 - GitHub Actions validation for backend tests and frontend production build.
 
-No OCR or LLM work was added in this stage.
-
 ## Stage 2 — Document ingestion and native PDF path
 
 Status: complete.
@@ -43,17 +41,12 @@ Validated deliverables:
 - stable local job IDs;
 - page-level native PDF text extraction using pypdf;
 - explicit deterministic native-text reliability heuristic;
-- `NATIVE_TEXT`, `OCR_REQUIRED`, and `MIXED` document routing;
-- image documents routed to future OCR without pretending text was extracted;
+- `NATIVE_TEXT`, `OCR_REQUIRED`, and `MIXED` routing;
 - stable page Evidence IDs and page-number linkage;
 - local `document.json` and `evidence.json` persistence;
 - explicit corrupt-PDF failure;
-- PDF page-rendering interface boundary;
 - UI page/route summary;
-- regression coverage for native, blank, mixed, image, invalid, and corrupt inputs;
-- GitHub Actions validation for backend tests and frontend production build.
-
-Key risk addressed: unnecessary OCR can reduce accuracy and destroy already reliable text.
+- regression coverage and CI.
 
 ## Stage 3 — OCR and layout evidence layer
 
@@ -63,70 +56,71 @@ Validated deliverables:
 
 - provider-neutral OCR interface;
 - PaddleOCR 3.7.0 local adapter with lazy loading;
-- accuracy-first `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec` default;
+- accuracy-first PP-OCRv6 medium default;
 - optional PaddlePaddle 3.3.0 CPU installation path for Windows;
-- pypdfium2/PDFium page renderer with packaging/licensing decision recorded;
-- rendering only for PDF pages already classified `OCR_REQUIRED`;
-- original image OCR path for JPG/JPEG/PNG;
-- stable OCR block evidence IDs;
-- page number, text, bbox/polygon, recognition confidence, provider/model/version provenance;
-- explicit `OCR_COMPLETE`, `OCR_LOW_CONFIDENCE`, `OCR_NO_TEXT`, and `OCR_FAILED` states;
-- mixed native/OCR evidence in correct page order;
-- local `ocr.json` and rendered-page persistence under ignored runtime paths;
-- UI OCR status and uncertainty summary;
-- deterministic regression coverage using synthetic/fake-provider inputs;
-- real PDFium rendering exercised by tests;
-- opt-in local real-PaddleOCR smoke test;
-- GitHub Actions Windows smoke verification of Python 3.11 + PaddlePaddle CPU 3.3.0 + PaddleOCR 3.7.0 installation/runtime imports;
-- normal CI green for backend tests and frontend production build.
-
-Known limitations intentionally carried forward:
-
-- normal CI does not download OCR model weights or claim real-model accuracy;
-- automatic rotation/unwarping/text-line orientation is disabled until coordinate remapping is designed;
-- OCR accuracy thresholds/model choice still require later benchmark validation on legal-document samples;
-- table/semantic structure is not reconstructed in Stage 3.
-
-Key risk addressed: scanned/image text is now traceable and uncertain OCR is explicit rather than silently treated as truth.
+- pypdfium2/PDFium page renderer;
+- OCR only for `OCR_REQUIRED` PDF pages;
+- original-image OCR for JPG/JPEG/PNG;
+- stable OCR block IDs, page, bbox/polygon, confidence and provider provenance;
+- explicit complete/low-confidence/no-text/failure states;
+- mixed native/OCR evidence preservation;
+- Windows dependency smoke verification;
+- deterministic regression coverage and CI.
 
 ## Stage 4 — Canonical contract structure
 
-Status: active.
+Status: complete.
 
-Goal: reconstruct contract concepts without losing evidence links.
+Validated deliverables:
 
-Deliverables:
+- dedicated versioned canonical contract schema (`1.0.0`);
+- one ordered evidence abstraction over native PDF lines and OCR blocks;
+- native character offsets plus OCR coordinate/confidence provenance retained in reusable source spans;
+- conservative Chinese/Arabic clause parsing for `第X条`, `一、`, `（一）`, `1.`, `1.1`, `1.1.1`, `（1）` and related forms;
+- deterministic parent/child clause relationships and cross-page clause continuation;
+- party-role/name mentions without entity-equivalence judgment;
+- explicit Chinese/ISO-style dates with safe normalization and invalid-date states;
+- explicit money and percentage mentions with deterministic normalization when possible;
+- labelled contract/project/agreement identifiers;
+- attachment and clause-reference mentions with resolved/unresolved/ambiguous states;
+- conservative table-candidate representation only when source delimiters support it;
+- extraction provenance and warnings rather than invented certainty;
+- `runtime/jobs/<job-id>/contract.json` persistence with source fingerprint;
+- idempotent structure generation for unchanged evidence;
+- explicit refusal to structure incomplete OCR pages;
+- local POST/GET structure APIs;
+- minimal UI title/count/party/fact/clause-outline inspection;
+- regression coverage for hierarchy, cross-page continuation, mixed native/OCR evidence, facts, references, malformed inputs and idempotence;
+- backend tests and frontend production build green in GitHub Actions.
 
-- typed canonical schemas;
-- unified source evidence stream from native and OCR pages;
-- section/clause hierarchy;
-- cross-page clause stitching;
-- party mentions/roles;
-- dates and amounts as extracted values with evidence links;
-- table representation when recoverable from source evidence;
-- attachment and cross-reference relationships;
-- extraction confidence/uncertainty and explicit unresolved states;
-- source evidence IDs on every derived object;
-- schema validation and regression tests.
+Known limitations intentionally carried forward:
 
-Key risk addressed: downstream rule/RAG/LLM components must consume one evidence-grounded contract representation instead of inventing incompatible interpretations.
+- Stage 4 is deterministic and conservative; it does not use an LLM to recover ambiguous structure;
+- entity-name equivalence is not decided yet;
+- Chinese uppercase monetary text is not yet used for arithmetic comparison;
+- table reconstruction remains candidate-only unless evidence is sufficiently explicit;
+- structure correctness still requires later expert benchmark validation.
+
+Key risk addressed: downstream rule/RAG/LLM components now have one evidence-grounded representation instead of inventing incompatible contract interpretations.
 
 ## Stage 5 — Deterministic audit rules
+
+Status: active.
 
 Goal: detect explainable hard inconsistencies before LLM analysis.
 
 Initial rule families:
 
 - payment-percentage totals;
-- amount arithmetic;
-- uppercase/lowercase amount consistency where applicable;
-- party-name consistency;
-- contract identifier consistency;
+- amount arithmetic and explicit numeric conflicts;
+- uppercase/lowercase amount consistency where reliably parseable;
+- party-name consistency without silently merging entities;
+- contract/document identifier consistency;
 - date-order anomalies;
-- required-field presence;
+- required-field presence by explicitly selected audit profile;
 - duplicate/conflicting values.
 
-Each rule result must include rule ID, severity, explanation, and evidence IDs.
+Each rule result must include rule ID/version, severity, explanation, canonical evidence/source spans, and explicit pass/fail/not-applicable/review state.
 
 ## Stage 6 — Versioned legal knowledge base
 
