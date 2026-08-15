@@ -23,6 +23,7 @@ datas = [
     (str(REPO_ROOT / "frontend" / "dist"), "frontend-dist"),
     (str(BUILD_ASSETS / "public-assets"), "public-assets"),
     (str(BUILD_ASSETS / "public-assets-metadata.json"), "release"),
+    (str(BUILD_ASSETS / "release-metadata.json"), "release"),
     (str(BUILD_ASSETS / "THIRD-PARTY-NOTICES"), "THIRD-PARTY-NOTICES"),
     (str(REPO_ROOT / "release" / "dependency-inventory.json"), "release"),
     (str(REPO_ROOT / "docs" / "WINDOWS_PACKAGING.md"), "docs"),
