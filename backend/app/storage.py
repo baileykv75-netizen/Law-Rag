@@ -26,9 +26,27 @@ def job_output_dir(job_id: UUID) -> Path:
     return path
 
 
+def job_rendered_dir(job_id: UUID) -> Path:
+    path = runtime_dir() / "rendered" / str(job_id)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def job_document_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "document.json"
 
 
 def job_evidence_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "evidence.json"
+
+
+def job_ocr_path(job_id: UUID) -> Path:
+    return job_output_dir(job_id) / "ocr.json"
+
+
+def find_source_path(job_id: UUID) -> Path:
+    upload_dir = runtime_dir() / "uploads" / str(job_id)
+    candidates = sorted(upload_dir.glob("source.*"))
+    if len(candidates) != 1:
+        raise FileNotFoundError(f"Expected one source file for job {job_id}.")
+    return candidates[0]
