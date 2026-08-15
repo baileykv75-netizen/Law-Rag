@@ -61,7 +61,11 @@ def build_public_release_assets(output_dir: Path, manifest: Path = DEFAULT_MANIF
             "semantic_ready": retrieval.semantic_ready,
             "sha256": _sha256(retrieval_db),
         },
-        "import_state": import_report.state.value,
+        "import_summary": {
+            "imported_records": import_report.imported_records,
+            "rejected_records": import_report.rejected_records,
+            "no_change_records": import_report.no_change_records,
+        },
     }
     metadata_path = output_dir / "public-assets-metadata.json"
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
