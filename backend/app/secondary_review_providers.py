@@ -3,9 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from abc import ABC, abstractmethod
 
-from .ai_audit_models import ProviderAuditResult, ProviderHealth
+import httpx
+
+from .ai_audit_models import ProviderAuditResult, ProviderHealth, ProviderUsage
 from .secondary_review_models import (
     DisagreementCategory,
     ModelSecondaryEnvelope,
@@ -13,6 +16,12 @@ from .secondary_review_models import (
     SecondaryAssessment,
     SecondaryReviewContext,
 )
+
+DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1"
+DEFAULT_KIMI_MODEL = "kimi-k3"
+DEFAULT_KIMI_MAX_COMPLETION_TOKENS = 12000
+DEFAULT_KIMI_TIMEOUT_SECONDS = 120.0
+KIMI_MAX_ATTEMPTS = 2
 
 
 class SecondaryReviewProviderError(RuntimeError):
@@ -79,6 +88,103 @@ def build_secondary_messages(context: SecondaryReviewContext) -> list[dict[str, 
     ]
 
 
+class KimiSecondaryReviewProvider(SecondaryReviewProvider):
+    provider_name = "kimi"
+
+    def __init__(self) -> None:
+        self.api_key = os.getenv("MOONSHOT_API_KEY", "").strip()
+        self.base_url = os.getenv("MOONSHOT_BASE_URL", DEFAULT_KIMI_BASE_URL).rstrip("/")
+        self.model_name = os.getenv("MOONSHOT_MODEL", DEFAULT_KIMI_MODEL).strip() or DEFAULT_KIMI_MODEL
+
+    def health(self) -> ProviderHealth:
+        if not self.api_key:
+            return ProviderHealth(
+                provider=self.provider_name,
+                configured=False,
+                model=self.model_name,
+                base_url=self.base_url,
+                detail="MOONSHOT_API_KEY is not configured in the local environment.",
+            )
+        return ProviderHealth(
+            provider=self.provider_name,
+            configured=True,
+            model=self.model_name,
+            base_url=self.base_url,
+            detail="Kimi secondary-provider configuration is present. This health check made no paid/network request.",
+        )
+
+    def generate(self, context: SecondaryReviewContext) -> ProviderAuditResult:
+        if not self.api_key:
+            raise SecondaryReviewProviderError("MOONSHOT_API_KEY is not configured.")
+
+        payload = {
+            "model": self.model_name,
+            "messages": build_secondary_messages(context),
+            "response_format": {"type": "json_object"},
+            "reasoning_effort": "max",
+            "max_completion_tokens": DEFAULT_KIMI_MAX_COMPLETION_TOKENS,
+            "stream": False,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        timeout = httpx.Timeout(DEFAULT_KIMI_TIMEOUT_SECONDS, connect=15.0)
+        last_error: Exception | None = None
+
+        for attempt in range(1, KIMI_MAX_ATTEMPTS + 1):
+            try:
+                with httpx.Client(timeout=timeout) as client:
+                    response = client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
+                if response.status_code == 429 or response.status_code >= 500:
+                    if attempt < KIMI_MAX_ATTEMPTS:
+                        time.sleep(1.0)
+                        continue
+                response.raise_for_status()
+                raw_text = response.text
+                body = response.json()
+                choices = body.get("choices") or []
+                if not choices:
+                    raise SecondaryReviewProviderError("Kimi returned no completion choices.")
+                choice = choices[0]
+                message = choice.get("message") or {}
+                content = message.get("content")
+                finish_reason = choice.get("finish_reason")
+                if finish_reason == "length":
+                    raise SecondaryReviewProviderError("Kimi JSON output was truncated by the completion-token limit.")
+                if not isinstance(content, str) or not content.strip():
+                    if attempt < KIMI_MAX_ATTEMPTS:
+                        time.sleep(1.0)
+                        continue
+                    raise SecondaryReviewProviderError("Kimi returned empty JSON content.")
+                usage = body.get("usage") or {}
+                return ProviderAuditResult(
+                    provider=self.provider_name,
+                    model=str(body.get("model") or self.model_name),
+                    base_url=self.base_url,
+                    request_id=str(body.get("id")) if body.get("id") is not None else None,
+                    finish_reason=str(finish_reason) if finish_reason is not None else None,
+                    content=content,
+                    raw_response_hash=_raw_hash(raw_text),
+                    usage=ProviderUsage(
+                        prompt_tokens=usage.get("prompt_tokens"),
+                        completion_tokens=usage.get("completion_tokens"),
+                        total_tokens=usage.get("total_tokens"),
+                    ),
+                )
+            except SecondaryReviewProviderError:
+                raise
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                last_error = exc
+                if attempt < KIMI_MAX_ATTEMPTS:
+                    time.sleep(1.0)
+                    continue
+                break
+        raise SecondaryReviewProviderError(
+            f"Kimi request failed after {KIMI_MAX_ATTEMPTS} attempts: {last_error}"
+        )
+
+
 class FakeSecondaryReviewProvider(SecondaryReviewProvider):
     provider_name = "fake"
     model_name = "deterministic-stage9a-secondary-v1"
@@ -140,6 +246,8 @@ class FakeSecondaryReviewProvider(SecondaryReviewProvider):
 
 def secondary_provider_from_name(name: str) -> SecondaryReviewProvider:
     normalized = name.strip().lower()
+    if normalized == "kimi":
+        return KimiSecondaryReviewProvider()
     if normalized == "fake":
         return FakeSecondaryReviewProvider()
     raise SecondaryReviewProviderError(f"Unknown secondary review provider: {name}")
