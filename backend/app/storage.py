@@ -82,6 +82,10 @@ def job_audit_rules_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "audit-rules.json"
 
 
+def job_ai_audit_path(job_id: UUID) -> Path:
+    return job_output_dir(job_id) / "ai-audit.json"
+
+
 def find_source_path(job_id: UUID) -> Path:
     upload_dir = runtime_dir() / "uploads" / str(job_id)
     candidates = sorted(upload_dir.glob("source.*"))
