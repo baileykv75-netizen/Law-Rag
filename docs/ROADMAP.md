@@ -81,52 +81,58 @@ Validated:
 - dedicated AI-audit/context schemas `1.0.0` and engine `stage8-1.0.0`;
 - provider-neutral `PrimaryAuditProvider` boundary;
 - DeepSeek V4-Pro adapter re-verified against current official API documentation on 2026-08-15;
-- OpenAI-compatible HTTP integration with JSON Output, thinking enabled, high reasoning effort and bounded retry/timeout;
-- deterministic fake/static providers for normal CI with no external-model credits;
+- JSON Output, thinking enabled, high reasoning effort and bounded retry/timeout;
 - deterministic bounded legal-topic/context builder over canonical clauses, non-PASS rules and Stage 7 retrieval;
-- raw PDF is not independently reread by the model and the whole contract is not dumped by default;
-- contract/legal text is marked untrusted data and prompt-injection-like clauses are regression-tested;
-- strict JSON/Pydantic output validation;
-- invented issue IDs, canonical object IDs, contract Evidence IDs and Legal Evidence IDs are rejected;
-- a Legal Evidence ID must belong to the cited issue package;
-- `SUPPORTED_FINDING` must cite both contract and legal evidence;
-- legal-version applicability is rechecked after model output against `as_of`;
-- an intentionally injected stale historical legal version is rejected by regression test;
-- corpus/version/OCR uncertainty propagates into evidence-sufficiency/review state;
-- `NO_FINDING` cannot become a confident negative conclusion when evidence coverage is incomplete;
-- atomic local `runtime/jobs/<job-id>/ai-audit.json` persistence only after validation;
-- provider/model failures and invalid responses cannot overwrite a previous valid report;
-- DeepSeek `reasoning_content` is not persisted;
-- provider configuration health plus POST/GET AI-audit APIs;
-- minimal primary-audit UI with explicit external-transmission warning;
-- mocked DeepSeek HTTP request-contract regression test;
-- opt-in paid/network DeepSeek smoke using synthetic empty context only, skipped by default;
-- normal backend CI requires no model key and frontend `build` includes TypeScript `tsc --noEmit`;
-- all Stage 1–7 regressions and frontend production build green.
+- raw PDF is not independently reread by the model;
+- contract/legal text is untrusted data and prompt-injection-like clauses are regression-tested;
+- strict structured output and evidence/version validation;
+- atomic local `ai-audit.json` persistence;
+- provider failure cannot overwrite a previous valid report;
+- hidden reasoning is not persisted;
+- API/UI plus mocked request-contract and opt-in real-provider smoke paths;
+- all prior regressions/builds green.
 
-Key boundary: prompt wording is not the trust mechanism. Deterministic post-model evidence/version validation is authoritative. Stage 8 uses one primary model only.
+Key boundary: prompt wording is not the trust mechanism. Deterministic post-model evidence/version validation is authoritative.
 
-## Stage 9 — Constrained Agent and secondary review
+## Stage 9 — Universal secondary review + constrained Agent
 
-Status: active.
+Status: complete.
 
-Goal: add bounded adaptive actions and one secondary-review provider without surrendering control of the mandatory audit pipeline.
+Validated:
 
-Planned scope includes:
+- reliability-first universal dual-call policy: one DeepSeek primary call + one contract-level Kimi secondary call for every completed audited contract;
+- no per-finding second-model call explosion;
+- provider-neutral `SecondaryReviewProvider` boundary and real Kimi K3 adapter;
+- current Moonshot/Kimi API configuration via `MOONSHOT_API_KEY`, `kimi-k3`, JSON mode and max reasoning effort;
+- deterministic fake provider for ordinary CI and opt-in real Kimi smoke path;
+- reproducible Stage 8 context fingerprint before secondary review;
+- Kimi must review every primary finding exactly once;
+- independent rejection of invented/stale contract or Legal Evidence IDs;
+- validated possible-primary-omission representation;
+- deterministic primary/secondary comparison over risk state, severity rank, contract Evidence sets and Legal Evidence sets;
+- natural-language reasoning summaries are not used to fabricate an agreement probability;
+- comparison states: agreement, minor disagreement, agreement-with-review, more-evidence-required and material disagreement;
+- explicit `POSSIBLE_PRIMARY_OMISSION` follow-up path;
+- application-owned Agent policy and hard maximum of two follow-up cycles;
+- allowlist: contract evidence inspection, clause context, legal evidence inspection, local legal retrieval, canonical reference lookup and explicit OCR retry request;
+- arbitrary shell/filesystem commands, unrestricted web research, corpus mutation and open-ended loops are unavailable;
+- local contract/legal/retrieval tool execution with provenance and no hidden external transmission;
+- OCR retry currently fails explicitly as unavailable after verifying OCR-derived evidence rather than silently reprocessing the document;
+- material unresolved disagreement remains `HUMAN_REVIEW_REQUIRED`; local evidence gathering does not automatically make one model win;
+- versioned `review-report.json` with primary/secondary metadata, comparison, omission list, action trace and final state;
+- explicit API boundary separating the Kimi external call from local comparison/Agent execution;
+- minimal Stage 9 UI showing Kimi review, structured comparison, action trace and final human-review state;
+- all Stage 1–9 backend regressions and frontend TypeScript/production build green.
 
-- explicit secondary-review provider boundary (Kimi/Qwen/local provider may be evaluated; no implicit provider choice);
-- selective review triggers for high-risk, low-evidence, source uncertainty, retrieval ambiguity or primary/reviewer disagreement;
-- bounded tool allowlist for extra retrieval, referenced clause/attachment lookup, source-evidence inspection and explicit OCR retry requests;
-- application-controlled state machine; the Agent may choose among allowed follow-up actions but may not skip mandatory extraction/rule/retrieval/validation stages;
-- primary/reviewer disagreement representation and human escalation;
-- strict evidence/citation validation applied independently to reviewer output;
-- cost/privacy controls so second-model calls are conditional rather than universal;
-- deterministic fake-agent/provider tests and opt-in real-provider smoke paths;
-- no final professional workstation redesign yet.
+Key boundary: two-model agreement is not proof of legal correctness, and Agent evidence gathering is not an automatic third-model arbitration step.
+
+See [`SECONDARY_REVIEW.md`](SECONDARY_REVIEW.md).
 
 ## Stage 10 — Professional audit workstation UI
 
-Goal: document/page viewer, exact evidence highlighting, risk filters, legal-authority panel, source/version display, provenance, uncertainty, human confirm/reject/review states, and processing history. Chat remains secondary to the audit workstation.
+Status: active.
+
+Goal: turn the validated Stage 1–9 pipeline into a professional review workspace: document/page viewer, exact evidence highlighting, risk filters, linked legal-authority panel, source/version display, provenance/uncertainty, human confirm/reject/review actions, processing history and review ergonomics. Chat remains secondary to the audit workstation.
 
 ## Stage 11 — Benchmark, hardening, and Windows release
 
@@ -147,4 +153,6 @@ Every stage must preserve:
 - automated regression coverage for deterministic behavior;
 - no legal conclusion without traceable legal authority once legal reasoning begins;
 - post-model evidence/version validation before persistence;
-- mandatory pipeline stages remain application-controlled.
+- mandatory pipeline stages remain application-controlled;
+- two-model agreement must not be presented as a correctness probability;
+- unresolved material disagreement must remain visible to a human reviewer.
