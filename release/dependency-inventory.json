@@ -1,0 +1,228 @@
+{
+  "schema_version": "1.0.0",
+  "stage": "11D",
+  "inventory_status": "DRAFT_REQUIRES_RESOLVED_TRANSITIVE_NOTICE_SCAN",
+  "target": {
+    "os": "Windows 10/11 x64",
+    "python": "3.12",
+    "packaging_mode": "pyinstaller-onedir",
+    "runtime_node_required": false
+  },
+  "notes": [
+    "Direct/base versions below are pinned from the versions resolved in successful CI run 31884357245 on 2026-08-15 unless otherwise stated.",
+    "This file is a planning/review inventory, not a declaration of complete license compliance.",
+    "A release build must generate a complete resolved package inventory and collect actual wheel/binary license files before Stage 11D can complete.",
+    "The frontend currently lacks package-lock.json; frontend dependency reproducibility remains a Stage 11D blocker."
+  ],
+  "components": [
+    {
+      "name": "CPython",
+      "version": "3.12.x (release build will pin exact patch)",
+      "source": "python.org / GitHub Actions setup-python",
+      "scope": "bundled-runtime",
+      "runtime_role": "Python interpreter collected into the Windows bundle",
+      "license": "PSF license stack",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED",
+      "redistribution_note": "Include the applicable Python license/copyright material in release notices."
+    },
+    {
+      "name": "PyInstaller",
+      "version": "6.22.0",
+      "source": "PyPI / pyinstaller.org",
+      "scope": "build-only",
+      "runtime_role": "Builds the inspectable Windows onedir bundle",
+      "license": "GPL-2.0 with PyInstaller bundling exception; selected files Apache-2.0",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED",
+      "redistribution_note": "Generated bundles may use the application's terms subject to bundled dependency licenses; PyInstaller is not a Law-Rag runtime dependency by itself."
+    },
+    {
+      "name": "FastAPI",
+      "version": "0.141.1",
+      "source": "PyPI",
+      "scope": "bundled-runtime",
+      "runtime_role": "Local HTTP API and future production-static frontend host",
+      "license": "MIT",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "name": "Uvicorn",
+      "version": "0.52.3",
+      "source": "PyPI",
+      "scope": "bundled-runtime",
+      "runtime_role": "Local ASGI server",
+      "license": "BSD-3-Clause",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED",
+      "redistribution_note": "Release base should use core Uvicorn rather than development-only standard extras unless a Windows bundle test demonstrates a need."
+    },
+    {
+      "name": "python-multipart",
+      "version": "0.0.32",
+      "source": "PyPI",
+      "scope": "bundled-runtime",
+      "runtime_role": "Contract upload multipart parsing",
+      "license": "Apache-2.0",
+      "license_review_state": "PACKAGE_METADATA_TO_REVERIFY_DURING_NOTICE_SCAN",
+      "security_note": "0.0.32 is newer than the 0.0.31 fix for the 2026 negative Content-Length advisory."
+    },
+    {
+      "name": "pypdf",
+      "version": "6.16.1",
+      "source": "PyPI",
+      "scope": "bundled-runtime",
+      "runtime_role": "Native PDF text/page inspection",
+      "license": "BSD-3-Clause",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "name": "pypdfium2",
+      "version": "5.12.1",
+      "source": "PyPI platform wheel",
+      "scope": "bundled-runtime",
+      "runtime_role": "PDFium-based local PDF page rendering",
+      "license": "Apache-2.0 OR BSD-3-Clause plus PDFium/dependency licenses",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_REQUIRES_WHEEL_NOTICE_COPY",
+      "redistribution_note": "pypdfium2 explicitly requires PDFium and relevant third-party dependency licenses to accompany binary distributions; collect notices from the exact Windows wheel."
+    },
+    {
+      "name": "Pillow",
+      "version": "12.3.0",
+      "source": "PyPI platform wheel",
+      "scope": "bundled-runtime",
+      "runtime_role": "Image handling used by the local document pipeline",
+      "license": "MIT-CMU",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "name": "httpx",
+      "version": "0.28.1",
+      "source": "PyPI",
+      "scope": "bundled-runtime",
+      "runtime_role": "Explicit external-provider HTTP calls and tests/runtime support",
+      "license": "BSD-3-Clause",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "name": "React / react-dom",
+      "version": "UNLOCKED (^19.0.0 in package.json)",
+      "source": "npm",
+      "scope": "compiled-frontend-runtime-code",
+      "runtime_role": "Workstation UI compiled into frontend/dist assets",
+      "license": "MIT",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED",
+      "reproducibility_state": "BLOCKED_UNTIL_PACKAGE_LOCK"
+    },
+    {
+      "name": "Vite",
+      "version": "UNLOCKED (^8.0.0); CI observed 8.2.1",
+      "source": "npm",
+      "scope": "build-only",
+      "runtime_role": "Builds production frontend assets; not required on end-user machine",
+      "license": "MIT",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED",
+      "reproducibility_state": "BLOCKED_UNTIL_PACKAGE_LOCK"
+    },
+    {
+      "name": "TypeScript",
+      "version": "UNLOCKED (^5.9.0)",
+      "source": "npm",
+      "scope": "build-only",
+      "runtime_role": "Frontend type checking/build input only",
+      "license": "Apache-2.0",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED",
+      "reproducibility_state": "BLOCKED_UNTIL_PACKAGE_LOCK"
+    },
+    {
+      "name": "Node.js / npm",
+      "version": "CI observed Node 22.23.2 / npm 10.9.8",
+      "source": "GitHub Actions setup-node",
+      "scope": "build-only",
+      "runtime_role": "Builds frontend/dist; absent from end-user release bundle",
+      "license": "TRANSITIVE_BUILD_TOOL_LICENSES_TO_CAPTURE_WITH_LOCKED_BUILD",
+      "license_review_state": "BUILD_TOOL_ONLY_NOT_YET_FULLY_REVIEWED"
+    },
+    {
+      "name": "PaddlePaddle CPU",
+      "version": "3.3.0",
+      "source": "official PaddlePaddle CPU wheel index",
+      "scope": "external-optional",
+      "runtime_role": "Optional local OCR runtime",
+      "license": "TO_REVERIFY_FOR_EXACT_WHEEL_BEFORE_ANY_REDISTRIBUTION",
+      "license_review_state": "NOT_BUNDLED_FIRST_RELEASE"
+    },
+    {
+      "name": "PaddleOCR",
+      "version": "3.7.0",
+      "source": "PyPI / PaddlePaddle repository",
+      "scope": "external-optional",
+      "runtime_role": "Optional local OCR provider",
+      "license": "Apache-2.0",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_NOT_BUNDLED_FIRST_RELEASE"
+    },
+    {
+      "name": "sentence-transformers",
+      "version": "5.6.1",
+      "source": "PyPI / Hugging Face repository",
+      "scope": "external-optional",
+      "runtime_role": "Optional local semantic embedding provider",
+      "license": "Apache-2.0",
+      "license_review_state": "PRIMARY_SOURCE_CHECKED_NOT_BUNDLED_FIRST_RELEASE"
+    },
+    {
+      "name": "PyTorch and semantic transitive stack",
+      "version": "resolved by sentence-transformers optional install",
+      "source": "PyPI / pytorch.org",
+      "scope": "external-optional",
+      "runtime_role": "Optional BGE tensor runtime",
+      "license": "PyTorch main project BSD-style; installed distribution contains multiple third-party licenses",
+      "license_review_state": "NOT_BUNDLED_FIRST_RELEASE",
+      "redistribution_note": "If later bundled, collect the exact wheel's LICENSE/NOTICE/third-party license set rather than relying on the project headline license."
+    },
+    {
+      "name": "BAAI/bge-small-zh-v1.5 weights",
+      "version": "model-id pinned by Stage 7 provider configuration",
+      "source": "model provider/cache",
+      "scope": "external-optional-user-cache",
+      "runtime_role": "Optional semantic retrieval weights",
+      "license": "MODEL_LICENSE_MUST_BE_REVIEWED_BEFORE_ANY_REDISTRIBUTION",
+      "license_review_state": "NOT_REDISTRIBUTED"
+    },
+    {
+      "name": "Law-Rag public legal seed",
+      "version": "Stage 6 checked-in manifest",
+      "source": "legal_data/seed/manifest.json + verified public source snapshots",
+      "scope": "bundle-generated-public-asset",
+      "runtime_role": "Deterministically builds public legal.db",
+      "license": "PUBLIC_LEGAL_SOURCE_PROVENANCE_NOT_SOFTWARE_LICENSE",
+      "license_review_state": "SOURCE_PROVENANCE_TRACKED"
+    },
+    {
+      "name": "Law-Rag lexical retrieval database",
+      "version": "Stage 7 retrieval schema/index version",
+      "source": "generated from public legal.db",
+      "scope": "bundle-generated-public-asset",
+      "runtime_role": "Exact + FTS5/BM25 retrieval without semantic dependency",
+      "license": "DERIVATIVE_GENERATED_PROJECT_DATA",
+      "license_review_state": "GENERATED_FROM_CHECKED_IN_PUBLIC_SEED"
+    },
+    {
+      "name": "DeepSeek provider",
+      "version": "external API configuration",
+      "source": "user-supplied runtime configuration",
+      "scope": "external-network-optional",
+      "runtime_role": "Primary AI audit",
+      "license": "NOT_A_BUNDLED_SOFTWARE_DEPENDENCY",
+      "license_review_state": "NOT_BUNDLED",
+      "secret_policy": "DEEPSEEK_API_KEY is never embedded"
+    },
+    {
+      "name": "Kimi/Moonshot provider",
+      "version": "external API configuration",
+      "source": "user-supplied runtime configuration",
+      "scope": "external-network-optional",
+      "runtime_role": "Secondary model review",
+      "license": "NOT_A_BUNDLED_SOFTWARE_DEPENDENCY",
+      "license_review_state": "NOT_BUNDLED",
+      "secret_policy": "MOONSHOT_API_KEY is never embedded"
+    }
+  ]
+}
