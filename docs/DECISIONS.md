@@ -200,3 +200,40 @@ Absence from a `CURATED_EXCERPT` corpus can never support a conclusion that a le
 Real checked-in seed records require curated authoritative public sources, expected source hashes, expected article counts, effective/version metadata and an explicit verification date/note. Stage 6 seed uses official National Laws and Regulations Database / official government publication sources for the Civil Code and official Supreme People's Court sources for the contract-general judicial interpretation.
 
 Commercial legal databases, blogs, search snippets, copied law sites and model memory are not sources of record. Tests may use fictional source hosts only through an explicit test override.
+
+## D-024 — Stage 7 Chinese lexical retrieval uses SQLite FTS5 trigram + BM25
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 7 builds a derivative local `runtime/legal/retrieval.db` from canonical Stage 6 articles. The lexical channel uses SQLite FTS5 with the `trigram` tokenizer and `bm25()` ranking rather than assuming whitespace/Unicode word tokenization works well for continuous Chinese legal text.
+
+The FTS index stores/references canonical Legal Evidence IDs. Authority title, article token, structural heading context and article text are indexed with deterministic field weights. Exact citation lookup remains a separate deterministic channel and does not depend on the FTS index.
+
+## D-025 — Semantic retrieval is optional, local and provider-neutral
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 7 defines a replaceable `EmbeddingProvider`. The initial real local CPU provider is `BAAI/bge-small-zh-v1.5` through Sentence Transformers. It is installed separately and lazily; exact + BM25 retrieval remain usable without the semantic stack.
+
+The derivative index records embedding provider/model/dimension. Vectors are never accepted under mismatched metadata. A deterministic fake embedding provider is used by normal CI, while an opt-in Windows integration job has verified the real BGE path end-to-end on the public seed.
+
+Model/provider choice remains benchmarkable and replaceable; BGE is not part of canonical legal identity.
+
+## D-026 — Retrieval fusion cannot hide explicit evidence absence or version uncertainty
+
+**Date:** 2026-08-15  
+**Status:** accepted
+
+Stage 7 uses deterministic weighted reciprocal-rank fusion across exact, lexical and semantic candidates, while pinning applicable exact citation hits ahead of probabilistic matches.
+
+Ranking is subordinate to evidence-state semantics:
+
+- final candidates must pass Stage 6 `as_of` version applicability;
+- `VERSION_AMBIGUOUS` and `NO_APPLICABLE_VERSION` cannot be hidden by similar text from another version;
+- when a caller explicitly requests an article/Legal Evidence ID that is absent from a `CURATED_EXCERPT`, the overall state is `INSUFFICIENT_CORPUS` even if BM25/vector search can suggest nearby similar articles;
+- per-channel rank/raw score/contribution remains visible;
+- fused score is a ranking signal, not a calibrated legal-correctness probability.
+
+This prevents a superficially relevant result from being mistaken for proof that the requested legal authority exists in the stored corpus.
