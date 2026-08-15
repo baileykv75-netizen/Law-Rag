@@ -98,7 +98,8 @@ def parse_chinese_articles(text: str, *, authority_id: str, version_id: str) -> 
 
     References such as "依据民法典第五百八十四条" inside prose are therefore not
     mistaken for new articles. Structural headings are retained as context instead
-    of being discarded.
+    of being discarded. Article text preserves snapshot line content except for
+    normalized newline encoding and outer-document whitespace normalization.
     """
 
     normalized = normalize_snapshot_text(text)
@@ -142,13 +143,10 @@ def parse_chinese_articles(text: str, *, authority_id: str, version_id: str) -> 
         article_match = ARTICLE_RE.match(line)
         if article_match:
             flush()
-            token = article_match.group(1)
-            ordinal = chinese_integer(article_match.group("number"))
-            rest = (article_match.group("rest") or "").strip()
-            current_token = token
-            current_ordinal = ordinal
+            current_token = article_match.group(1)
+            current_ordinal = chinese_integer(article_match.group("number"))
             current_context = list(headings)
-            current_lines = [f"{token}　{rest}".rstrip()]
+            current_lines = [line]
             continue
 
         if CHAPTER_RE.match(line) or SECTION_RE.match(line):
