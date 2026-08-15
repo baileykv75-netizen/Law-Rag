@@ -2,58 +2,56 @@
 
 Law-Rag is a local-first intelligent contract audit assistant for personal research, testing, and professional review workflows.
 
-The target product is a Windows-friendly local application rather than a generic legal chatbot. Contracts are ingested locally, source evidence is preserved, deterministic checks run before probabilistic reasoning, and future legal/LLM conclusions must remain traceable to supporting contract and legal evidence.
+The target product is a Windows-friendly local application rather than a generic legal chatbot. Private contract processing remains local by default; external model APIs are introduced only in explicit later stages.
 
 ## Product flow
 
 ```text
-local browser UI
-  -> upload PDF / JPG / PNG
-  -> preserve reliable native PDF text
-  -> OCR only pages that actually require OCR
-  -> reconstruct evidence-grounded canonical contract
-  -> run deterministic audit rules
-  -> resolve/retrieve versioned legal authorities
-  -> perform evidence-grounded LLM reasoning
-  -> invoke bounded secondary review when needed
-  -> show findings + contract evidence + legal evidence + review state
+PDF / JPG / PNG
+  -> native PDF text when reliable
+  -> PaddleOCR only where needed
+  -> evidence-grounded Canonical Contract
+  -> deterministic audit rules
+  -> versioned legal evidence store
+  -> exact + BM25 + optional semantic legal retrieval
+  -> primary evidence-grounded LLM audit
+  -> bounded secondary review / Agent
+  -> professional human-review workstation
 ```
-
-The browser is only the interface. Processing runs in the local FastAPI backend unless a later stage explicitly calls an external model API.
 
 ## Current status
 
-**Stage 6 complete. Stage 7 active: Hybrid Legal RAG.**
+**Stage 7 complete. Stage 8 active: Primary LLM Audit Reasoning.**
 
-Completed foundations now include:
+Completed foundations include:
 
 - React/Vite + FastAPI local application shell;
 - validated PDF/JPG/PNG ingestion;
-- page-aware PDF native-text extraction;
-- native/OCR/mixed routing;
-- PDFium rendering only for OCR-required PDF pages;
-- provider-neutral local OCR layer and PaddleOCR PP-OCRv6 medium default;
-- OCR text, page, bbox/polygon, confidence and provider provenance;
-- explicit OCR low-confidence/no-text/failure states;
-- unified evidence abstraction over native PDF lines and OCR blocks;
-- versioned canonical contract schema (`1.0.0`);
-- deterministic clause/party/date/money/percentage/identifier reconstruction;
-- source-grounded `contract.json`;
-- versioned deterministic rule engine and explicit `basic-bilateral-v1` profile;
-- `PASS`, `FAIL`, `REVIEW`, `NOT_APPLICABLE` rule states with OCR uncertainty propagation;
-- local `audit-rules.json` persistence and rule inspection UI;
-- dedicated versioned legal-evidence schema (`1.0.0`);
-- local SQLite legal store with authority → version → article identity;
-- deterministic legal Evidence IDs and per-source/per-article SHA-256 hashes;
-- deterministic Chinese article segmentation with inline-reference protection;
-- historical version retention and explicit `as_of` resolution;
-- explicit `RESOLVED`, `NO_APPLICABLE_VERSION`, and `AMBIGUOUS` version states;
-- atomic manifest rebuild/import and machine-readable validation reports;
-- small verified contract-relevant legal seed with explicit `CURATED_EXCERPT` coverage;
-- legal summary/authority/evidence/version-resolution APIs and local health UI;
-- automated backend regression tests and frontend production-build CI.
+- native PDF text / OCR-required / mixed page routing;
+- PaddleOCR local CPU path with PP-OCRv6 medium default;
+- page/Evidence IDs, OCR coordinates/confidence and provenance;
+- canonical contract schema `1.0.0` with clauses, parties, dates, money, percentages, identifiers and source spans;
+- deterministic audit rules with `PASS`, `FAIL`, `REVIEW`, `NOT_APPLICABLE` states;
+- local `contract.json` and `audit-rules.json` job artifacts;
+- canonical versioned legal schema `1.0.0` in local SQLite;
+- authority -> version -> article / Legal Evidence ID identity;
+- source/article SHA-256 hashes and official-source provenance;
+- historical legal-version retention and explicit `as_of` resolution;
+- `CURATED_EXCERPT` coverage semantics;
+- Stage 6 verified public contract-relevant seed: 2 authorities / 2 versions / 15 articles;
+- deterministic exact article/citation retrieval;
+- SQLite FTS5 trigram + `bm25()` lexical retrieval for Chinese legal text;
+- provider-neutral embedding interface;
+- optional local `BAAI/bge-small-zh-v1.5` semantic retrieval;
+- deterministic weighted reciprocal-rank fusion with exact-hit priority;
+- stale retrieval-index detection through canonical legal-source fingerprint;
+- coverage-aware states such as `INSUFFICIENT_CORPUS`, `NO_APPLICABLE_VERSION`, and `VERSION_AMBIGUOUS`;
+- legal knowledge and hybrid retrieval inspection panels in the local UI;
+- public retrieval benchmark enforced in backend CI;
+- real Windows BGE semantic smoke verified through opt-in GitHub Actions;
+- all prior backend regressions and frontend production build green.
 
-The next implementation scope is strictly defined in [`CURRENT_TASK.md`](CURRENT_TASK.md). Stage 7 adds retrieval over this canonical legal evidence without yet adding DeepSeek/Kimi/Qwen audit reasoning.
+The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md). Stage 8 introduces one primary LLM provider and strict post-model evidence/citation validation; it does **not** introduce a second reviewer model or free-form Agent.
 
 ## Quick start on Windows
 
@@ -64,55 +62,81 @@ Install:
 - Python 3.11 or newer;
 - Node.js 22 LTS recommended.
 
-No DeepSeek/Kimi/Qwen API key is required through Stage 7 retrieval foundation work.
-
-### Base setup
-
-Download/clone the repository, then double-click:
+### 1. Base setup
 
 ```text
 setup-dev.bat
 ```
 
-This creates the local Python virtual environment and installs the base backend/frontend dependencies.
+This creates the local Python environment and installs the base backend/frontend dependencies.
 
-### Build the local legal seed database
-
-Run:
+### 2. Build the verified legal seed database
 
 ```text
 rebuild-legal-seed.bat
 ```
 
-This validates the curated manifest/snapshots and atomically builds:
+Generated local artifacts:
 
 ```text
 runtime/legal/legal.db
 runtime/legal/import_reports/last-import-report.json
 ```
 
-A failed rebuild does not replace a previously valid database.
+A failed rebuild does not replace a previously valid legal database.
 
-### Optional OCR setup
+### 3. Build the exact + BM25 retrieval index
 
-For scanned PDFs or JPG/PNG contracts, also run:
+```text
+build-retrieval-index.bat
+```
+
+This creates:
+
+```text
+runtime/legal/retrieval.db
+```
+
+Exact lookup itself does not require this derivative index, but BM25 retrieval does.
+
+### 4. Optional local semantic retrieval
+
+Install the optional semantic runtime:
+
+```text
+setup-rag-semantic-cpu.bat
+```
+
+Then rebuild the retrieval index with local BGE vectors:
+
+```text
+build-retrieval-index-semantic.bat
+```
+
+The initial real provider is:
+
+```text
+BAAI/bge-small-zh-v1.5
+```
+
+Exact + BM25 remain usable without installing this optional semantic stack.
+
+### 5. Optional OCR runtime
+
+For scanned PDFs/images:
 
 ```text
 setup-ocr-cpu.bat
 ```
 
-The pinned local CPU OCR path uses:
+Pinned OCR path:
 
 - PaddlePaddle CPU 3.3.0;
 - PaddleOCR 3.7.0;
 - `PP-OCRv6_medium_det`;
 - `PP-OCRv6_medium_rec`.
 
-OCR model files are downloaded locally on first use and remain outside Git.
-
-### Start Law-Rag
-
-Double-click:
+### 6. Start Law-Rag
 
 ```text
 start-dev.bat
@@ -125,11 +149,9 @@ Backend:  http://127.0.0.1:8000
 Frontend: http://127.0.0.1:5173
 ```
 
-The UI includes a Stage 6 legal-knowledge health panel. If the legal database has not been built, the panel tells you to run `rebuild-legal-seed.bat`.
-
 ## Local runtime artifacts
 
-Generated/private processing artifacts remain under ignored runtime paths:
+Private/generated artifacts stay under ignored runtime paths:
 
 ```text
 runtime/uploads/<job-id>/source.<ext>
@@ -140,57 +162,36 @@ runtime/jobs/<job-id>/contract.json
 runtime/jobs/<job-id>/audit-rules.json
 runtime/rendered/<job-id>/page-0001.png
 runtime/legal/legal.db
+runtime/legal/retrieval.db
 runtime/legal/import_reports/last-import-report.json
 ```
 
-Generated legal databases, live snapshots/indexes, contract data, logs and other private runtime artifacts are not committed to Git.
+Stage 8 will add a validated local primary-model audit artifact only after the provider/citation-validation boundary is implemented.
 
-## Stage 5 deterministic audit rules
+## Stage 5 deterministic audit semantics
 
-After `contract.json` exists, the local UI/API can run the Stage 5 deterministic rule engine.
-
-API:
-
-```text
-POST /api/documents/{job_id}/audit-rules?profile=basic-bilateral-v1
-GET  /api/documents/{job_id}/audit-rules
-```
-
-The first rule families include:
-
-- required-field checks driven by an explicit audit profile;
-- repeated party-name consistency grouped by the same explicit role;
-- repeated identifier consistency grouped by the same explicit label;
-- repeated explicit date-field consistency;
-- signing/effective date chronology review;
-- conservative same-context payment-percentage totals;
-- repeated supported labelled contract-amount consistency;
-- Chinese uppercase RMB detection routed to manual review instead of using a weak conversion parser.
-
-### Rule-state semantics
+Rule states are intentionally narrow:
 
 ```text
 PASS
-  configured deterministic condition holds
+  configured machine condition holds
 
 FAIL
-  configured deterministic condition does not hold
+  configured machine condition does not hold
   != illegal / invalid / unenforceable
 
 REVIEW
-  source, grouping, parser, chronology intent, or OCR uncertainty needs verification
+  ambiguity, parser/source/OCR uncertainty, or intent requires verification
 
 NOT_APPLICABLE
-  explicit inputs/context are insufficient to run the rule safely
+  explicit context is insufficient to run the rule safely
 ```
 
-Every result retains stable rule ID/version, reason code, observed values, canonical object IDs, source spans and Evidence IDs.
+Machine-checkable issues remain deterministic code rather than being delegated to an LLM.
 
 ## Stage 6 versioned legal evidence
 
-Stage 6 creates a canonical legal-evidence layer before RAG or LLM reasoning.
-
-SQLite stores three explicit identities:
+Canonical legal evidence uses:
 
 ```text
 authority
@@ -198,74 +199,124 @@ authority
        -> exact article / Legal Evidence ID
 ```
 
-Legal article Evidence IDs are deterministic, for example:
+Example:
 
 ```text
 legal:prc-civil-code:effective-2021-01-01:article-585
 ```
 
-Each version retains official source references, issuing body/type, publication/effective interval metadata, coverage type, source SHA-256, schema/importer version, and verification notes. Each article retains its original token/text, article SHA-256 and structural heading context.
-
-### Version resolution
-
-The resolver uses explicit half-open effective intervals:
+Applicability uses explicit half-open version intervals:
 
 ```text
 effective_date <= as_of < end_date_exclusive
 ```
 
-It returns an explicit state rather than guessing:
+Resolution states include:
 
 - `RESOLVED`;
 - `NO_APPLICABLE_VERSION`;
-- `AMBIGUOUS` when stored version intervals overlap.
+- `AMBIGUOUS`.
 
-The requested `as_of` date remains visible in the result. The database does not bake the current wall-clock date into legal evidence.
+The checked-in public seed is deliberately small and explicitly marked `CURATED_EXCERPT`:
 
-### Local legal APIs
+- Civil Code: selected articles 469, 496, 497, 502, 509, 577, 585, 586;
+- SPC Civil Code contract-general interpretation: selected articles 1, 3, 9, 10, 16, 65, 69.
+
+**Absence from this seed is never evidence that no legal rule exists.**
+
+## Stage 7 hybrid legal retrieval
+
+### Retrieval channels
 
 ```text
-GET /api/legal/summary
-GET /api/legal/authorities
-GET /api/legal/authorities/{authority_id}
-GET /api/legal/evidence/{legal_evidence_id}
-GET /api/legal/resolve/{authority_id}?as_of=YYYY-MM-DD&article_token=第...条
+query + as_of
+      ↓
+legal version resolution
+      ↓
+EXACT
++ FTS5 trigram / BM25
++ optional local BGE semantic vectors
+      ↓
+weighted reciprocal-rank fusion
+      ↓
+versioned Legal Evidence IDs
++ per-channel provenance
++ corpus/version warnings
 ```
 
-These are identity/version inspection endpoints only. They are not RAG ranking or semantic search.
+Hard rules:
 
-### Curated Stage 6 seed
+- exact authority/article citations are deterministic and remain ahead of probabilistic candidates;
+- final candidates must be applicable on the requested `as_of` date;
+- historical/not-yet-effective versions are not silently mixed into current results;
+- duplicate Evidence IDs from several channels are fused rather than duplicated;
+- every candidate keeps per-channel rank/raw score/contribution and final fused score;
+- an explicitly requested article missing from `CURATED_EXCERPT` returns `INSUFFICIENT_CORPUS`, even if BM25 finds similar neighboring articles;
+- retrieval score is not a legal correctness probability or legal conclusion.
 
-The checked-in seed intentionally contains **two CURATED_EXCERPT versions, not complete authorities**:
+### Retrieval APIs
 
-- `中华人民共和国民法典`: 8 contract-core articles — 469, 496, 497, 502, 509, 577, 585, 586;
-- `最高人民法院关于适用《中华人民共和国民法典》合同编通则若干问题的解释`: 7 selected articles — 1, 3, 9, 10, 16, 65, 69.
+```text
+GET  /api/legal/retrieval/summary
+POST /api/legal/retrieve
+```
 
-The seed is deliberately small so Stage 6 validates provenance/version architecture before corpus expansion. **Absence from this seed is never evidence that a legal rule does not exist.** Coverage metadata must remain visible in Stage 7 retrieval to avoid false-negative legal conclusions.
+Example request:
 
-See [`legal_data/README.md`](legal_data/README.md) and [`legal_data/seed/manifest.json`](legal_data/seed/manifest.json).
+```json
+{
+  "query": "民法典第五百八十五条违约金",
+  "as_of": "2026-08-15",
+  "top_k": 8,
+  "use_semantic": false
+}
+```
 
-### Known Stage 6 limitation
+See [`docs/RETRIEVAL.md`](docs/RETRIEVAL.md) for implementation/validation details.
 
-If a multi-record non-rebuild import transaction later rolls back after an identity conflict, the SQLite transaction is correctly rolled back, but an intermediate validation entry may still describe a record as `IMPORTED` in the failure report. The database remains authoritative and unmodified; report-state refinement is recorded as a hardening item and should be fixed before release packaging.
+### Retrieval benchmark
 
-## Stage 7 boundary
+Checked-in public fixture:
 
-Stage 7 adds hybrid retrieval over canonical legal evidence:
+```text
+legal_data/fixtures/retrieval_benchmark.json
+```
 
-- exact authority/article citation lookup;
-- lexical/BM25 retrieval;
-- semantic/vector retrieval behind a replaceable embedding boundary;
-- fusion/reranking;
-- `as_of` version filtering before legal evidence can be returned;
-- coverage-aware retrieval states;
-- labeled retrieval evaluation such as Recall@K.
+Normal backend CI rebuilds the legal store/index and enforces the current baseline gate:
 
-Stage 7 still does **not** add DeepSeek/Kimi/Qwen audit reasoning. Model-assisted legal reasoning remains Stage 8.
+```text
+Recall@5 >= 0.90
+MRR      >= 0.80
+```
+
+This tiny benchmark measures retrieval mechanics on the 15-article public seed. It does not represent production legal-corpus recall. Broader expert-labeled testing remains a later requirement.
+
+### Real semantic smoke
+
+The optional Windows integration path has been verified with real `BAAI/bge-small-zh-v1.5` embeddings: the job installs the semantic stack, downloads/loads the model, embeds the verified seed and performs a Chinese liquidated-damages retrieval assertion.
+
+Normal CI does not repeatedly download the model. The opt-in job is triggered only when intentionally requested.
+
+## Stage 8 boundary
+
+Stage 8 will add one primary generative audit provider, DeepSeek planned first after current official API verification.
+
+The model will receive only a deterministic package built from:
+
+```text
+contract.json
++ audit-rules.json
++ Stage 7 retrieval results / Legal Evidence
++ explicit as_of and uncertainty metadata
+```
+
+It may not invent contract Evidence IDs, Legal Evidence IDs, law versions or source text. Model output must pass strict schema and citation validation before being persisted as a finding.
+
+Second-model review and Agent behavior remain Stage 9.
 
 ## Developer validation
 
-Backend deterministic tests:
+Backend:
 
 ```bat
 cd backend
@@ -281,7 +332,7 @@ npm run typecheck
 npm run build
 ```
 
-Optional real PaddleOCR smoke test:
+Optional real OCR smoke:
 
 ```bat
 cd backend
@@ -290,41 +341,61 @@ set LAW_RAG_OCR_SMOKE_IMAGE=C:\path\to\fictional-test-image.png
 ..\.venv\Scripts\python.exe -m pytest -q -m ocr_smoke
 ```
 
-GitHub Actions runs deterministic backend tests and the frontend production build on pushes and pull requests to `main`.
+Optional real semantic smoke:
+
+```bat
+cd backend
+set PYTHONPATH=.
+set LAW_RAG_RAG_SEMANTIC_SMOKE=1
+..\.venv\Scripts\python.exe -m pytest -q -m rag_semantic_smoke
+```
 
 ## Core engineering principles
 
-1. **Evidence first.** Material findings must be traceable to exact source evidence.
-2. **Native text before OCR.** Do not degrade reliable PDF text through unnecessary OCR.
-3. **Deterministic before probabilistic.** Machine-checkable inconsistencies are ordinary code before LLM reasoning.
-4. **One canonical contract model.** Downstream rules/RAG/LLMs do not independently reinterpret raw PDFs.
-5. **Versioned canonical legal evidence.** Legal retrieval must preserve authority/version/article/source identity and coverage.
-6. **No fabricated legal authority.** Future legal citations must originate from the legal knowledge layer.
-7. **Uncertainty is allowed.** Review/insufficient-evidence/ambiguity states are preferable to forced certainty.
-8. **Local-first data handling.** Private contracts, outputs, logs, indexes, model caches and secrets remain outside Git.
-9. **Constrained Agent.** Mandatory audit stages remain application-controlled.
-10. **One verifiable stage per iteration.** Avoid many half-finished subsystems in one round.
+1. **Evidence first.** Material findings must trace to exact source evidence.
+2. **Native text before OCR.** Do not degrade reliable PDF text unnecessarily.
+3. **Deterministic before probabilistic.** Machine-checkable conditions stay in code.
+4. **One canonical contract model.** Downstream systems do not independently reinterpret raw PDFs.
+5. **Versioned canonical legal evidence.** Legal identity/source/version/coverage survive retrieval.
+6. **Hybrid retrieval, not vector-only.** Exact, lexical and semantic channels are complementary.
+7. **No fabricated legal authority.** Future citations must originate from canonical Legal Evidence.
+8. **Uncertainty is first-class.** Insufficient corpus/version ambiguity/source uncertainty stay visible.
+9. **Local-first private data.** Contracts, outputs, indexes, model caches and secrets remain outside Git.
+10. **Constrained Agent.** Mandatory stages remain application-controlled.
+11. **One verifiable stage per iteration.** No broad half-finished rewrites.
 
 ## Repository safety
 
-This repository is currently public. Treat every committed file as public information.
+This repository is public. Treat every committed file as public information.
 
-Never commit real contracts, re-identifiable pseudonymized contracts, private legal test sets, API keys, `.env` files, private outputs/logs, generated legal databases, local indexes, model weights/caches, or OCR outputs containing private contract content. Use only fully fictional public fixtures unless a public legal source has been intentionally verified and curated under the legal-data policy.
+Never commit:
+
+- real contracts;
+- re-identifiable pseudonymized contracts;
+- private expert benchmark labels;
+- API keys or `.env` files;
+- private outputs/logs;
+- generated SQLite/index files;
+- model weights/caches;
+- OCR output containing private contract data.
+
+Use only fictional public fixtures unless a public legal source has been intentionally verified and curated.
 
 See [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
 
 ## Legal-use boundary
 
-Law-Rag is an audit-assistance and research tool. A deterministic rule `FAIL` is not a legal conclusion, absence from a partial legal seed is not evidence that no law exists, and future model output may also be incomplete or wrong. High-impact findings must remain reviewable by a qualified professional.
+Law-Rag is an audit-assistance/research tool. Rule failures, retrieval scores and future model findings are not automatically final legal opinions. High-impact findings must remain reviewable by a qualified professional.
 
 ## Development documents
 
 - [`AGENTS.md`](AGENTS.md) — long-term development rules.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — system boundaries and target architecture.
-- [`CURRENT_TASK.md`](CURRENT_TASK.md) — the only implementation scope for the current iteration.
+- [`CURRENT_TASK.md`](CURRENT_TASK.md) — only active implementation scope.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — staged delivery plan.
-- [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md) — public-repository and local-data rules.
+- [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md) — public-repository/private-data rules.
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architecture decisions.
+- [`docs/RETRIEVAL.md`](docs/RETRIEVAL.md) — Stage 7 retrieval design and validation.
 - [`legal_data/README.md`](legal_data/README.md) — legal provenance/coverage policy.
 
 ## License
