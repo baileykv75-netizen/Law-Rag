@@ -17,6 +17,7 @@ from .audit_plan_models import (
     ContractType,
     ModelAuditPlanDraft,
     PlannerContractItem,
+    PlannerGlobalFact,
     PlannerRuleHint,
     PlannerTopicHint,
     ReviewPriority,
@@ -138,6 +139,10 @@ def _unique(values: Iterable[str]) -> list[str]:
     return output
 
 
+def _evidence_ids(spans) -> list[str]:
+    return _unique(eid for span in spans for eid in span.evidence_ids)
+
+
 def _object_text(contract: CanonicalContract) -> list[PlannerContractItem]:
     items: list[PlannerContractItem] = []
     for clause in contract.clauses:
@@ -147,7 +152,7 @@ def _object_text(contract: CanonicalContract) -> list[PlannerContractItem]:
                 canonical_object_id=clause.clause_id,
                 object_type="CLAUSE",
                 text=text,
-                evidence_ids=_unique(eid for span in clause.source_spans for eid in span.evidence_ids),
+                evidence_ids=_evidence_ids(clause.source_spans),
             )
         )
     for block in contract.unnumbered_blocks:
@@ -156,10 +161,85 @@ def _object_text(contract: CanonicalContract) -> list[PlannerContractItem]:
                 canonical_object_id=block.block_id,
                 object_type="UNNUMBERED_BLOCK",
                 text=block.text,
-                evidence_ids=_unique(eid for span in block.source_spans for eid in span.evidence_ids),
+                evidence_ids=_evidence_ids(block.source_spans),
             )
         )
     return items
+
+
+def _global_facts(contract: CanonicalContract) -> list[PlannerGlobalFact]:
+    facts: list[PlannerGlobalFact] = []
+    for title in contract.title_candidates:
+        facts.append(
+            PlannerGlobalFact(
+                fact_id=title.candidate_id,
+                fact_type="TITLE",
+                label="contract_title",
+                value=title.text,
+                evidence_ids=_evidence_ids(title.source_spans),
+            )
+        )
+    for item in contract.parties:
+        facts.append(
+            PlannerGlobalFact(
+                fact_id=item.mention_id,
+                fact_type="PARTY",
+                label=item.role_label,
+                value=item.normalized_name or item.raw_name or "<unresolved>",
+                evidence_ids=_evidence_ids(item.source_spans),
+            )
+        )
+    for item in contract.dates:
+        facts.append(
+            PlannerGlobalFact(
+                fact_id=item.mention_id,
+                fact_type="DATE",
+                label=item.field_label or "date",
+                value=item.iso_date or item.raw_text,
+                evidence_ids=_evidence_ids(item.source_spans),
+            )
+        )
+    for item in contract.money_mentions:
+        facts.append(
+            PlannerGlobalFact(
+                fact_id=item.mention_id,
+                fact_type="MONEY",
+                label=item.currency or item.unit or "amount",
+                value=item.numeric_value or item.raw_text,
+                evidence_ids=_evidence_ids(item.source_spans),
+            )
+        )
+    for item in contract.percentages:
+        facts.append(
+            PlannerGlobalFact(
+                fact_id=item.mention_id,
+                fact_type="PERCENTAGE",
+                label="percentage",
+                value=item.numeric_value or item.raw_text,
+                evidence_ids=_evidence_ids(item.source_spans),
+            )
+        )
+    for item in contract.identifiers:
+        facts.append(
+            PlannerGlobalFact(
+                fact_id=item.mention_id,
+                fact_type="IDENTIFIER",
+                label=item.label,
+                value=item.raw_value,
+                evidence_ids=_evidence_ids(item.source_spans),
+            )
+        )
+    for item in contract.references:
+        facts.append(
+            PlannerGlobalFact(
+                fact_id=item.reference_id,
+                fact_type="REFERENCE",
+                label=item.reference_type.value,
+                value=item.raw_text,
+                evidence_ids=_evidence_ids(item.source_spans),
+            )
+        )
+    return facts
 
 
 def _legacy_hints(items: list[PlannerContractItem]) -> list[PlannerTopicHint]:
@@ -212,7 +292,8 @@ def build_planner_input(job_id: UUID) -> AuditPlannerInput:
         raise AuditPlannerError("Deterministic audit-rules.json is required before Audit Planner.") from exc
 
     items = _object_text(contract)
-    total_text_chars = sum(len(item.text) for item in items)
+    facts = _global_facts(contract)
+    total_text_chars = sum(len(item.text) for item in items) + sum(len(item.label) + len(item.value) for item in facts)
     if total_text_chars > DIRECT_PLANNER_TEXT_CHAR_LIMIT:
         raise AuditPlannerSizeError(total_text_chars)
 
@@ -224,6 +305,7 @@ def build_planner_input(job_id: UUID) -> AuditPlannerInput:
         "contract_source_fingerprint": contract.source_fingerprint,
         "contract_content_fingerprint": rules.contract_content_fingerprint,
         "contract_items": [item.model_dump(mode="json") for item in items],
+        "global_facts": [item.model_dump(mode="json") for item in facts],
         "deterministic_rule_hints": [item.model_dump(mode="json") for item in rule_hints],
         "legacy_topic_hints": [item.model_dump(mode="json") for item in topic_hints],
         "total_text_chars": total_text_chars,
@@ -416,9 +498,6 @@ def run_audit_planner(
     planner_input = build_planner_input(job_id)
     selected = provider or planner_provider_from_name(provider_name)
 
-    # Planner is the first external model step in the new architecture. New jobs
-    # without explicit control fail closed to REQUIRE_APPROVAL; existing explicit
-    # AUTO/LOCAL policies remain authoritative.
     ensure_pipeline_control(job_id, ProviderExecutionMode.REQUIRE_APPROVAL)
     boundary_name = f"{selected.provider_name}-planner"
     begin_provider_call(job_id, boundary_name)

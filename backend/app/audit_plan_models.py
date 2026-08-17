@@ -50,6 +50,14 @@ class PlannerContractItem(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class PlannerGlobalFact(BaseModel):
+    fact_id: str
+    fact_type: str
+    label: str
+    value: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class PlannerRuleHint(BaseModel):
     result_id: str
     rule_id: str
@@ -72,6 +80,7 @@ class AuditPlannerInput(BaseModel):
     contract_source_fingerprint: str
     contract_content_fingerprint: str
     contract_items: list[PlannerContractItem] = Field(default_factory=list)
+    global_facts: list[PlannerGlobalFact] = Field(default_factory=list)
     deterministic_rule_hints: list[PlannerRuleHint] = Field(default_factory=list)
     legacy_topic_hints: list[PlannerTopicHint] = Field(default_factory=list)
     total_text_chars: int = Field(ge=0)
