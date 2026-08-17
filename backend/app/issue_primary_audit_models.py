@@ -42,7 +42,7 @@ class IssuePrimaryContractItem(BaseModel):
     canonical_object_id: str
     object_type: str
     relation: IssueContextRelation
-    text: str = Field(max_length=12000)
+    text: str = Field(max_length=60000)
     evidence_ids: list[str] = Field(default_factory=list)
     source_uncertain: bool = False
 
@@ -51,7 +51,7 @@ class IssuePrimaryGlobalFact(BaseModel):
     fact_id: str
     fact_type: str
     label: str
-    value: str = Field(max_length=2000)
+    value: str = Field(max_length=4000)
     evidence_ids: list[str] = Field(default_factory=list)
 
 
