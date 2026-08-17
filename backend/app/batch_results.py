@@ -18,7 +18,7 @@ from .models import DocumentInspection
 from .pipeline import PipelineError, load_pipeline_report
 from .review_report import ReviewReportError, load_review_report
 from .safe_persistence import atomic_write_text
-from .storage import job_document_path, runtime_dir
+from .storage import runtime_dir
 
 
 class BatchResultError(RuntimeError):
@@ -45,19 +45,22 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _persist_manifest(manifest: BatchManifest) -> None:
+def _persist_manifest(manifest: BatchManifest, *, mark_latest: bool) -> None:
     root = _batch_dir()
     root.mkdir(parents=True, exist_ok=True)
     atomic_write_text(_batch_path(manifest.batch_id), manifest.model_dump_json(indent=2))
-    atomic_write_text(
-        _latest_path(),
-        json.dumps({"batch_id": str(manifest.batch_id)}, ensure_ascii=False, indent=2),
-    )
+    # Creating an empty batch must not hide the most recent useful batch. Only
+    # a batch that actually owns at least one persisted Job becomes "recent".
+    if mark_latest:
+        atomic_write_text(
+            _latest_path(),
+            json.dumps({"batch_id": str(manifest.batch_id)}, ensure_ascii=False, indent=2),
+        )
 
 
 def create_batch() -> BatchManifest:
     manifest = BatchManifest(batch_id=uuid4(), created_at=_now(), job_ids=[])
-    _persist_manifest(manifest)
+    _persist_manifest(manifest, mark_latest=False)
     return manifest
 
 
@@ -77,7 +80,8 @@ def latest_batch() -> BatchManifest | None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        return load_batch(UUID(str(payload["batch_id"])))
+        manifest = load_batch(UUID(str(payload["batch_id"])))
+        return manifest if manifest.job_ids else None
     except (OSError, ValueError, TypeError, KeyError, BatchResultError):
         return None
 
@@ -89,18 +93,21 @@ def register_batch_job(batch_id: UUID, job_id: UUID) -> BatchManifest:
         raise FileNotFoundError(f"Document job {job_id} does not exist.")
     if job_id not in manifest.job_ids:
         manifest.job_ids.append(job_id)
-        _persist_manifest(manifest)
+    # Registration is idempotent, but every successful registration refreshes
+    # the recent pointer so an older/empty batch can never displace real work.
+    _persist_manifest(manifest, mark_latest=True)
     return manifest
 
 
 def _document(job_id: UUID) -> DocumentInspection:
+    # Batch/result reads are strictly non-mutating. Do not call storage helpers
+    # that mkdir job directories while inspecting a corrupted/stale manifest.
+    job_dir = runtime_dir() / "jobs" / str(job_id)
+    document_path = job_dir / "document.json"
+    evidence_path = job_dir / "evidence.json"
     try:
-        payload = json.loads(job_document_path(job_id).read_text(encoding="utf-8"))
-        # Results only require top-level metadata, while DocumentInspection also
-        # expects page evidence. Supply the separately persisted page list only
-        # if present to keep this reader compatible with Stage 2 storage.
-        evidence_path = runtime_dir() / "jobs" / str(job_id) / "evidence.json"
-        pages = json.loads(evidence_path.read_text(encoding="utf-8")) if evidence_path.exists() else []
+        payload = json.loads(document_path.read_text(encoding="utf-8"))
+        pages = json.loads(evidence_path.read_text(encoding="utf-8"))
         return DocumentInspection.model_validate({**payload, "pages": pages})
     except Exception as exc:
         raise BatchResultError(f"Document metadata is invalid for job {job_id}.") from exc
@@ -151,6 +158,10 @@ def _summarize_job(job_id: UUID) -> BatchJobResult:
             state=BatchJobState.PROCESSING,
             progress_percent=0,
             pipeline_status=None,
+            failure_code="PIPELINE_NOT_STARTED",
+            failure_detail="文件已接收，但后台审计尚未启动或上次启动未留下有效状态。可从结果页重新启动。",
+            needs_attention=True,
+            priority_rank=2500,
         )
 
     status = pipeline.status.value
