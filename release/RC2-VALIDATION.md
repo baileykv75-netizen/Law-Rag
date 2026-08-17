@@ -2,7 +2,7 @@
 
 This file defines the final Stage 12F portable Windows RC2 acceptance boundary.
 
-The clean Windows runner must build the current `main` source into the deterministic onedir ZIP and validate the **extracted final ZIP**, not only the pre-archive folder.
+The clean Windows runner must build the current `main` source into the deterministic onedir ZIP and validate the **extracted final ZIP**, not only the pre-archive folder. The ZIP must also contain the RC2-updated `README-WINDOWS.md`; release documentation and executable behavior are treated as one acceptance surface.
 
 Required checks:
 
