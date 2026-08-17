@@ -66,7 +66,12 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
+    # Keep a console-enabled executable so PowerShell/CMD diagnostics still
+    # receive stdout/stderr, but hide the console automatically when Law-Rag
+    # owns it (the normal double-click launch path). This prevents users from
+    # accidentally closing the local server by closing a visible console.
     console=True,
+    hide_console="hide-early",
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
