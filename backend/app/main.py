@@ -45,6 +45,7 @@ from .legal.store import (
 )
 from .models import IngestResponse, OcrRunResult, PageEvidenceSummary
 from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
+from .pipeline_api import router as pipeline_router
 from .release_frontend import router as release_frontend_router
 from .runtime_health_api import router as runtime_health_router
 from .storage import job_upload_dir, legal_db_path, legal_retrieval_index_path
@@ -72,6 +73,7 @@ app.add_middleware(
 )
 app.include_router(ai_audit_router)
 app.include_router(runtime_health_router)
+app.include_router(pipeline_router)
 
 
 class HealthResponse(BaseModel):
