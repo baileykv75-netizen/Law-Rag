@@ -24,6 +24,21 @@ from .contract_structure import (
 )
 from .models import DocumentInspection, OcrRunResult
 from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
+from .pipeline_control import (
+    PipelineCancellationRequested,
+    ProviderBoundaryPaused,
+    approve_provider_phase,
+    assert_pipeline_not_cancelled,
+    assert_provider_allowed,
+    begin_provider_call,
+    clear_pipeline_cancel,
+    ensure_pipeline_control,
+    finish_provider_call,
+    get_pipeline_control,
+    request_pipeline_cancel,
+    set_provider_mode,
+)
+from .pipeline_control_models import PipelineControl, ProviderExecutionMode
 from .pipeline_models import (
     PipelineReport,
     PipelineStage,
@@ -238,6 +253,69 @@ def _mark_failed(report: PipelineReport, stage: PipelineStage, code: str, detail
     _persist(report)
 
 
+def _next_incomplete_stage(report: PipelineReport) -> PipelineStageRecord | None:
+    return next(
+        (
+            item
+            for item in report.stages
+            if item.state not in {PipelineStageState.COMPLETE, PipelineStageState.SKIPPED}
+        ),
+        None,
+    )
+
+
+def _mark_cancel_requested(report: PipelineReport, *, provider_in_flight: bool) -> None:
+    report.status = PipelineStatus.CANCEL_REQUESTED
+    report.failure_code = "PIPELINE_CANCEL_REQUESTED"
+    report.failure_detail = (
+        "已记录取消请求；当前已经发出的外部模型请求无法撤回，返回后不会继续后续阶段。"
+        if provider_in_flight
+        else "已记录取消请求；Law-Rag 将在当前安全检查点停止，不再启动新的外部模型调用。"
+    )
+    _persist(report)
+
+
+def _mark_cancelled(report: PipelineReport) -> None:
+    target = _next_incomplete_stage(report)
+    if target is not None:
+        target.state = PipelineStageState.CANCELLED
+        target.detail = "审计已由用户取消；已有本地产物保留，不会自动继续外部模型调用。"
+        target.finished_at = _now()
+        report.current_stage = target.stage
+    report.status = PipelineStatus.CANCELLED
+    report.failure_code = "PIPELINE_CANCELLED"
+    report.failure_detail = "审计已取消。已完成的本地/模型产物保持不变；重新开始需要用户显式操作。"
+    report.completed_at = None
+    _persist(report)
+
+
+def _checkpoint_cancel(report: PipelineReport) -> bool:
+    try:
+        assert_pipeline_not_cancelled(report.job_id)
+        return True
+    except PipelineCancellationRequested:
+        _mark_cancelled(report)
+        return False
+
+
+def _provider_boundary(report: PipelineReport, stage: PipelineStage) -> bool:
+    try:
+        assert_provider_allowed(report.job_id)
+        return True
+    except PipelineCancellationRequested:
+        _mark_cancelled(report)
+        return False
+    except ProviderBoundaryPaused as exc:
+        _mark_waiting(
+            report,
+            stage,
+            status=PipelineStatus.PAUSED_BEFORE_PROVIDER,
+            code=exc.code,
+            detail=exc.detail,
+        )
+        return False
+
+
 def _load_document(job_id: UUID) -> DocumentInspection:
     try:
         document_payload = json.loads(job_document_path(job_id).read_text(encoding="utf-8"))
@@ -343,14 +421,19 @@ def _run_primary_stage(report: PipelineReport) -> None:
         _EXTERNAL_PROVIDER_SEMAPHORE,
         "等待外部模型调用名额。",
     )
+    provider_started = False
     try:
-        _mark_running(report, PipelineStage.PRIMARY_AUDIT, "正在检索法律依据并进行 DeepSeek 主审。")
+        _mark_running(report, PipelineStage.PRIMARY_AUDIT, "正在检索法律依据并准备 DeepSeek 主审。")
+        begin_provider_call(job_id, "deepseek")
+        provider_started = True
         run_primary_ai_audit(
             job_id,
             AiAuditRunRequest(as_of=report.as_of, provider="deepseek", use_semantic=report.use_semantic),
         )
         _mark_done(report, PipelineStage.PRIMARY_AUDIT, detail="法律检索与 DeepSeek 主审已完成。")
     finally:
+        if provider_started:
+            finish_provider_call(job_id, "deepseek")
         _EXTERNAL_PROVIDER_SEMAPHORE.release()
 
 
@@ -380,14 +463,19 @@ def _run_secondary_stage(report: PipelineReport) -> None:
         _EXTERNAL_PROVIDER_SEMAPHORE,
         "等待外部模型调用名额。",
     )
+    provider_started = False
     try:
-        _mark_running(report, PipelineStage.SECONDARY_REVIEW, "正在进行 Kimi 独立二审。")
+        _mark_running(report, PipelineStage.SECONDARY_REVIEW, "正在准备 Kimi 独立二审。")
+        begin_provider_call(job_id, "kimi")
+        provider_started = True
         run_secondary_review(
             job_id,
             SecondaryReviewRunRequest(provider="kimi", use_semantic=report.use_semantic),
         )
         _mark_done(report, PipelineStage.SECONDARY_REVIEW, detail="Kimi 二审已完成。")
     finally:
+        if provider_started:
+            finish_provider_call(job_id, "kimi")
         _EXTERNAL_PROVIDER_SEMAPHORE.release()
 
 
@@ -436,12 +524,30 @@ def _run_pipeline(job_id: UUID) -> None:
             report.status = PipelineStatus.RUNNING
             _persist(report)
 
+        if not _checkpoint_cancel(report):
+            return
         _run_ocr_stage(report)
+        if not _checkpoint_cancel(report):
+            return
         _run_structure_stage(report)
+        if not _checkpoint_cancel(report):
+            return
         _run_rules_stage(report)
+        if not _checkpoint_cancel(report):
+            return
+        if not _provider_boundary(report, PipelineStage.PRIMARY_AUDIT):
+            return
         _run_primary_stage(report)
+        if not _checkpoint_cancel(report):
+            return
+        if not _provider_boundary(report, PipelineStage.SECONDARY_REVIEW):
+            return
         _run_secondary_stage(report)
+        if not _checkpoint_cancel(report):
+            return
         _run_review_stage(report)
+        if not _checkpoint_cancel(report):
+            return
 
         report.status = PipelineStatus.COMPLETE
         report.current_stage = PipelineStage.COMPLETE
@@ -450,6 +556,18 @@ def _run_pipeline(job_id: UUID) -> None:
         report.failure_code = None
         report.failure_detail = None
         _persist(report)
+    except ProviderBoundaryPaused as exc:
+        report = load_pipeline_report(job_id)
+        _mark_waiting(
+            report,
+            report.current_stage,
+            status=PipelineStatus.PAUSED_BEFORE_PROVIDER,
+            code=exc.code,
+            detail=exc.detail,
+        )
+    except PipelineCancellationRequested:
+        report = load_pipeline_report(job_id)
+        _mark_cancelled(report)
     except OcrProviderUnavailable as exc:
         report = load_pipeline_report(job_id)
         _mark_waiting(
@@ -530,8 +648,13 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
             )
         if existing.status == PipelineStatus.COMPLETE:
             return existing
+        if existing.status == PipelineStatus.CANCELLED:
+            raise PipelineError("This pipeline was explicitly cancelled. Use the resume action to restart it.")
         if _active_future(job_id) is not None:
             return existing
+        ensure_pipeline_control(job_id, request.provider_mode)
+    else:
+        ensure_pipeline_control(job_id, request.provider_mode)
 
     if existing is None:
         now = _now()
@@ -555,7 +678,11 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
         report.failure_detail = None
         report.completed_at = None
         for item in report.stages:
-            if item.state in {PipelineStageState.RUNNING, PipelineStageState.WAITING, PipelineStageState.FAILED}:
+            if item.state in {
+                PipelineStageState.RUNNING,
+                PipelineStageState.WAITING,
+                PipelineStageState.FAILED,
+            }:
                 item.state = PipelineStageState.PENDING
                 item.detail = ""
                 item.finished_at = None
@@ -580,7 +707,94 @@ def retry_pipeline(job_id: UUID) -> PipelineReport:
     existing = load_pipeline_report(job_id)
     if existing.status == PipelineStatus.COMPLETE:
         return existing
+    if existing.status in {PipelineStatus.CANCELLED, PipelineStatus.CANCEL_REQUESTED}:
+        raise PipelineError("Cancelled pipelines require the explicit resume action.")
+    control = get_pipeline_control(job_id)
     return start_pipeline(
         job_id,
-        PipelineStartRequest(as_of=existing.as_of, use_semantic=existing.use_semantic),
+        PipelineStartRequest(
+            as_of=existing.as_of,
+            use_semantic=existing.use_semantic,
+            provider_mode=control.provider_mode,
+        ),
+    )
+
+
+def approve_provider_and_resume(job_id: UUID) -> PipelineReport:
+    existing = load_pipeline_report(job_id)
+    if existing.status == PipelineStatus.COMPLETE:
+        return existing
+    if existing.status in {PipelineStatus.CANCELLED, PipelineStatus.CANCEL_REQUESTED}:
+        raise PipelineError("Cancelled pipelines must be resumed before provider approval.")
+    control = approve_provider_phase(job_id)
+    return start_pipeline(
+        job_id,
+        PipelineStartRequest(
+            as_of=existing.as_of,
+            use_semantic=existing.use_semantic,
+            provider_mode=control.provider_mode,
+        ),
+    )
+
+
+def pause_before_provider(job_id: UUID) -> PipelineControl:
+    load_pipeline_report(job_id)
+    return set_provider_mode(job_id, ProviderExecutionMode.REQUIRE_APPROVAL)
+
+
+def set_pipeline_provider_mode(job_id: UUID, provider_mode: ProviderExecutionMode) -> PipelineControl:
+    report = load_pipeline_report(job_id)
+    control = set_provider_mode(job_id, provider_mode)
+    if provider_mode == ProviderExecutionMode.AUTO_CONTINUE and report.status == PipelineStatus.PAUSED_BEFORE_PROVIDER:
+        start_pipeline(
+            job_id,
+            PipelineStartRequest(
+                as_of=report.as_of,
+                use_semantic=report.use_semantic,
+                provider_mode=provider_mode,
+            ),
+        )
+    return control
+
+
+def cancel_pipeline(job_id: UUID) -> tuple[PipelineReport, PipelineControl]:
+    report = load_pipeline_report(job_id)
+    if report.status == PipelineStatus.COMPLETE:
+        raise PipelineError("Completed pipelines cannot be cancelled.")
+    if report.status == PipelineStatus.CANCELLED:
+        return report, get_pipeline_control(job_id)
+
+    control = request_pipeline_cancel(job_id)
+    active = _active_future(job_id)
+    if active is None:
+        _mark_cancelled(report)
+    else:
+        _mark_cancel_requested(report, provider_in_flight=control.active_provider is not None)
+    return load_pipeline_report(job_id), control
+
+
+def resume_cancelled_pipeline(job_id: UUID) -> PipelineReport:
+    existing = load_pipeline_report(job_id)
+    if existing.status not in {PipelineStatus.CANCELLED, PipelineStatus.CANCEL_REQUESTED}:
+        raise PipelineError("Only cancelled pipelines use the explicit resume action.")
+    if _active_future(job_id) is not None:
+        raise PipelineError("Cancellation is still being applied; retry after the current stage reaches a safe stop.")
+
+    control = clear_pipeline_cancel(job_id)
+    for item in existing.stages:
+        if item.state == PipelineStageState.CANCELLED:
+            item.state = PipelineStageState.PENDING
+            item.detail = ""
+            item.finished_at = None
+    existing.status = PipelineStatus.FAILED
+    existing.failure_code = "PIPELINE_RESUME_REQUESTED"
+    existing.failure_detail = "用户已显式要求重新开始已取消的审计。"
+    _persist(existing)
+    return start_pipeline(
+        job_id,
+        PipelineStartRequest(
+            as_of=existing.as_of,
+            use_semantic=existing.use_semantic,
+            provider_mode=control.provider_mode,
+        ),
     )
