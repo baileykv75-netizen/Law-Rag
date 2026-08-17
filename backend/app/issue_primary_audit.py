@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from .ai_audit_models import EvidenceSufficiency, ProviderAuditResult, ProviderUsage
+from .ai_audit_models import ProviderAuditResult, ProviderUsage
 from .audit_planner import AuditPlannerError, load_audit_plan
 from .audit_rules import AuditRuleProcessingError, load_audit_rule_report
 from .contract_models import CanonicalContract, SourceSpan
@@ -21,6 +21,7 @@ from .issue_legal_context import (
 from .issue_legal_context_models import IssueLegalEvidencePackage, IssueLegalSupportState
 from .issue_primary_audit_models import (
     IssueContextRelation,
+    IssueEvidenceSufficiency,
     IssuePrimaryAuditArtifact,
     IssuePrimaryAuditContext,
     IssuePrimaryAuditResult,
@@ -138,33 +139,25 @@ def _grams(value: str) -> set[str]:
 
 
 def _fallback_target_ids(package: IssueLegalEvidencePackage, item_map: dict[str, IssuePrimaryContractItem]) -> list[str]:
-    query = " ".join(
-        [package.topic, *package.questions, *(run.query for run in package.retrieval_runs)]
-    )
+    query = " ".join([package.topic, *package.questions, *(run.query for run in package.retrieval_runs)])
     query_grams = _grams(query)
     if not query_grams:
         return []
     scored: list[tuple[int, str]] = []
     for object_id, item in item_map.items():
-        item_grams = _grams(item.text)
-        score = len(query_grams.intersection(item_grams))
+        score = len(query_grams.intersection(_grams(item.text)))
         if score > 0:
             scored.append((score, object_id))
     scored.sort(key=lambda row: (-row[0], row[1]))
     return [object_id for _, object_id in scored[:MAX_TARGET_FALLBACK_ITEMS]]
 
 
-def _related_ids(
-    contract: CanonicalContract,
-    target_ids: list[str],
-    item_map: dict[str, IssuePrimaryContractItem],
-) -> list[str]:
+def _related_ids(contract: CanonicalContract, target_ids: list[str], item_map: dict[str, IssuePrimaryContractItem]) -> list[str]:
     target_set = set(target_ids)
     related: list[str] = []
     clause_ids = [clause.clause_id for clause in contract.clauses]
     clause_by_id = {clause.clause_id: clause for clause in contract.clauses}
     position = {clause_id: index for index, clause_id in enumerate(clause_ids)}
-
     for target_id in target_ids:
         clause = clause_by_id.get(target_id)
         if clause is None:
@@ -177,7 +170,6 @@ def _related_ids(
         if clause.parent_clause_id:
             related.append(clause.parent_clause_id)
         related.extend(child.clause_id for child in contract.clauses if child.parent_clause_id == target_id)
-
     target_evidence = {
         evidence_id
         for target_id in target_ids
@@ -188,7 +180,6 @@ def _related_ids(
         source_evidence = set(_evidence_ids(reference.source_spans))
         if source_evidence.intersection(target_evidence) and reference.resolved_target_id:
             related.append(reference.resolved_target_id)
-
     return [item for item in _unique(related) if item not in target_set and item in item_map][:MAX_RELATED_ITEMS]
 
 
@@ -260,19 +251,16 @@ def build_issue_primary_contexts(job_id: UUID) -> list[IssuePrimaryAuditContext]
         contract = load_contract_structure(job_id)
     except (FileNotFoundError, IssueLegalContextError, IssueLegalContextStaleError, AuditPlannerError, StructureProcessingError) as exc:
         raise IssuePrimaryAuditError("Fresh audit-plan.json, contract.json and issue-legal-context.json are required before Stage 13E.") from exc
-
     if legal_context.audit_plan_fingerprint != _fingerprint(plan.model_dump(mode="json")):
         raise IssuePrimaryAuditStaleError("Stage 13D legal context does not match the current Audit Plan.")
     if contract.source_fingerprint != legal_context.contract_source_fingerprint:
         raise IssuePrimaryAuditStaleError("Canonical contract source fingerprint changed after Stage 13D.")
-    if legal_context.as_of != legal_context.as_of:
-        raise IssuePrimaryAuditStaleError("Invalid legal-context date state.")
-
+    if plan.contract_content_fingerprint != legal_context.contract_content_fingerprint:
+        raise IssuePrimaryAuditStaleError("Audit Plan contract-content fingerprint differs from Stage 13D.")
     plan_by_id = {issue.issue_id: issue for issue in plan.issues}
     legal_by_id = {issue.issue_id: issue for issue in legal_context.issues}
     if set(plan_by_id) != set(legal_by_id):
         raise IssuePrimaryAuditStaleError("Audit Plan and issue Legal RAG issue sets differ.")
-
     item_map = _contract_item_map(contract)
     contexts: list[IssuePrimaryAuditContext] = []
     for issue in plan.issues:
@@ -281,17 +269,12 @@ def build_issue_primary_contexts(job_id: UUID) -> list[IssuePrimaryAuditContext]
         unknown = set(explicit_ids) - set(item_map)
         if unknown:
             raise IssuePrimaryAuditStaleError(f"Audit issue {issue.issue_id} references missing canonical objects: {sorted(unknown)}")
-
         if explicit_ids:
             target_ids = explicit_ids
             method = IssueTargetSelectionMethod.EXPLICIT_PLAN
         else:
             target_ids = _fallback_target_ids(package, item_map)
-            method = (
-                IssueTargetSelectionMethod.DETERMINISTIC_CONTRACT_RETRIEVAL
-                if target_ids
-                else IssueTargetSelectionMethod.NONE
-            )
+            method = IssueTargetSelectionMethod.DETERMINISTIC_CONTRACT_RETRIEVAL if target_ids else IssueTargetSelectionMethod.NONE
         related_ids = _related_ids(contract, target_ids, item_map)
         targets = [item_map[item_id].model_copy(update={"relation": IssueContextRelation.TARGET}) for item_id in target_ids]
         related = [item_map[item_id].model_copy(update={"relation": IssueContextRelation.RELATED}) for item_id in related_ids]
@@ -301,7 +284,6 @@ def build_issue_primary_contexts(job_id: UUID) -> list[IssuePrimaryAuditContext]
             warnings.append("AuditPlan issue had no explicit canonical object binding; Law-Rag selected candidate contract objects with deterministic local text relevance.")
         if method == IssueTargetSelectionMethod.NONE:
             warnings.append("No relevant canonical contract object could be selected for this issue; Stage 13E must not invent contract evidence.")
-
         base = {
             "job_id": str(job_id),
             "issue_id": issue.issue_id,
@@ -328,18 +310,20 @@ def build_issue_primary_contexts(job_id: UUID) -> list[IssuePrimaryAuditContext]
     return contexts
 
 
-def _evidence_sufficiency(context: IssuePrimaryAuditContext, contract_evidence_ids: list[str]) -> EvidenceSufficiency:
+def _evidence_sufficiency(context: IssuePrimaryAuditContext, contract_evidence_ids: list[str]) -> IssueEvidenceSufficiency:
     cited = set(contract_evidence_ids)
     items = [*context.target_items, *context.related_items]
+    if not context.target_items:
+        return IssueEvidenceSufficiency.CONTRACT_EVIDENCE_INSUFFICIENT
     if any(item.source_uncertain and cited.intersection(item.evidence_ids) for item in items):
-        return EvidenceSufficiency.SOURCE_UNCERTAIN
+        return IssueEvidenceSufficiency.SOURCE_UNCERTAIN
     if context.legal_support_state == IssueLegalSupportState.VERSION_REVIEW_REQUIRED:
-        return EvidenceSufficiency.VERSION_UNCERTAIN
+        return IssueEvidenceSufficiency.LEGAL_VERSION_UNCERTAIN
     if context.legal_support_state == IssueLegalSupportState.NO_MATCH_IN_LOCAL_CORPUS:
-        return EvidenceSufficiency.INSUFFICIENT_CORPUS
+        return IssueEvidenceSufficiency.INSUFFICIENT_LEGAL_CORPUS
     if context.legal_support_state == IssueLegalSupportState.EVIDENCE_FOUND_WITH_LIMITATIONS:
-        return EvidenceSufficiency.PARTIAL_CORPUS
-    return EvidenceSufficiency.SUFFICIENT
+        return IssueEvidenceSufficiency.PARTIAL_LEGAL_CORPUS
+    return IssueEvidenceSufficiency.SUFFICIENT
 
 
 def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext) -> IssuePrimaryAuditResult:
@@ -351,7 +335,6 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
         draft = ModelIssuePrimaryAuditDraft.model_validate(raw)
     except ValidationError as exc:
         raise IssuePrimaryAuditValidationError(f"Primary issue JSON does not match the Stage 13E schema: {exc}") from exc
-
     allowed_objects = {item.canonical_object_id for item in [*context.target_items, *context.related_items]}
     allowed_contract = {eid for item in [*context.target_items, *context.related_items] for eid in item.evidence_ids}
     allowed_legal = {item.legal_evidence_id for item in context.legal_evidence}
@@ -364,7 +347,6 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
         raise IssuePrimaryAuditValidationError(f"Model cited unsupplied contract Evidence IDs: {sorted(unknown_contract)}")
     if unknown_legal:
         raise IssuePrimaryAuditValidationError(f"Model cited unsupplied Legal Evidence IDs: {sorted(unknown_legal)}")
-
     if draft.state == IssuePrimaryAuditState.SUPPORTED_FINDING and not draft.contract_evidence_ids:
         raise IssuePrimaryAuditValidationError("SUPPORTED_FINDING must cite supplied contract Evidence.")
     if draft.legal_conclusion:
@@ -374,12 +356,10 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
             raise IssuePrimaryAuditValidationError("A legal conclusion must cite supplied Legal Evidence.")
         if context.legal_support_state in {IssueLegalSupportState.NO_MATCH_IN_LOCAL_CORPUS, IssueLegalSupportState.VERSION_REVIEW_REQUIRED}:
             raise IssuePrimaryAuditValidationError("A legal conclusion is not allowed with missing or version-uncertain Legal Evidence.")
-
     sufficiency = _evidence_sufficiency(context, draft.contract_evidence_ids)
     review_reasons = list(draft.review_reasons)
     final_state = draft.state
     final_legal_conclusion = draft.legal_conclusion
-
     if draft.state == IssuePrimaryAuditState.NO_MATERIAL_RISK_FOUND:
         if not draft.contract_evidence_ids or not draft.legal_evidence_ids or not draft.legal_conclusion:
             raise IssuePrimaryAuditValidationError("NO_MATERIAL_RISK_FOUND requires contract Evidence, Legal Evidence and legal_conclusion=true.")
@@ -388,16 +368,13 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
             final_state = IssuePrimaryAuditState.REVIEW_REQUIRED
             final_legal_conclusion = False
             review_reasons.append("NO_MATERIAL_RISK_NOT_ALLOWED_WITH_INCOMPLETE_EVIDENCE")
-
     if draft.state == IssuePrimaryAuditState.SUPPORTED_FINDING:
-        cited_uncertain = sufficiency == EvidenceSufficiency.SOURCE_UNCERTAIN
-        if cited_uncertain or context.legal_support_state == IssueLegalSupportState.VERSION_REVIEW_REQUIRED:
+        if sufficiency == IssueEvidenceSufficiency.SOURCE_UNCERTAIN or context.legal_support_state == IssueLegalSupportState.VERSION_REVIEW_REQUIRED:
             final_state = IssuePrimaryAuditState.REVIEW_REQUIRED
             final_legal_conclusion = False
             review_reasons.append("SUPPORTED_FINDING_REQUIRES_REVIEW_DUE_TO_EVIDENCE_STATE")
         elif draft.legal_conclusion and context.legal_support_state == IssueLegalSupportState.EVIDENCE_FOUND_WITH_LIMITATIONS:
             review_reasons.append("PARTIAL_LEGAL_CORPUS")
-
     return IssuePrimaryAuditResult(
         issue_id=context.issue_id,
         topic=context.topic,
@@ -423,7 +400,7 @@ def _no_contract_result(context: IssuePrimaryAuditContext) -> IssuePrimaryAuditR
         issue_id=context.issue_id,
         topic=context.topic,
         state=IssuePrimaryAuditState.INSUFFICIENT_EVIDENCE,
-        evidence_sufficiency=EvidenceSufficiency.INSUFFICIENT_CORPUS,
+        evidence_sufficiency=IssueEvidenceSufficiency.CONTRACT_EVIDENCE_INSUFFICIENT,
         legal_support_state=context.legal_support_state,
         legal_conclusion=False,
         risk_category=context.topic,
@@ -443,18 +420,7 @@ def _sum_usage(calls: list[IssuePrimaryProviderCall]) -> ProviderUsage:
     return ProviderUsage(prompt_tokens=total("prompt_tokens"), completion_tokens=total("completion_tokens"), total_tokens=total("total_tokens"))
 
 
-def _artifact_payload(
-    *,
-    job_id: UUID,
-    status: IssuePrimaryAuditStatus,
-    context_template: IssuePrimaryAuditContext,
-    provider: str,
-    model: str,
-    total_issue_count: int,
-    results: list[IssuePrimaryAuditResult],
-    calls: list[IssuePrimaryProviderCall],
-    warnings: list[str],
-) -> dict:
+def _artifact_payload(*, job_id: UUID, status: IssuePrimaryAuditStatus, context_template: IssuePrimaryAuditContext, provider: str, model: str, total_issue_count: int, results: list[IssuePrimaryAuditResult], calls: list[IssuePrimaryProviderCall], warnings: list[str]) -> dict:
     return {
         "schema_version": "1.0.0",
         "engine_version": "stage13e-1.0.0",
@@ -492,20 +458,12 @@ def _load_checkpoint(job_id: UUID) -> IssuePrimaryAuditArtifact | None:
         return None
 
 
-def run_issue_primary_audit(
-    job_id: UUID,
-    *,
-    provider_name: str = "deepseek",
-    provider_override: IssuePrimaryAuditProvider | None = None,
-) -> IssuePrimaryAuditArtifact:
+def run_issue_primary_audit(job_id: UUID, *, provider_name: str = "deepseek", provider_override: IssuePrimaryAuditProvider | None = None) -> IssuePrimaryAuditArtifact:
     contexts = build_issue_primary_contexts(job_id)
     if not contexts:
         raise IssuePrimaryAuditError("Audit Plan contains no issues for Stage 13E.")
     if len(contexts) > MAX_PRIMARY_ISSUE_REQUESTS:
-        raise IssuePrimaryAuditError(
-            f"Audit Plan contains {len(contexts)} issues, above the bounded Stage 13E limit of {MAX_PRIMARY_ISSUE_REQUESTS}. Law-Rag did not silently omit issues."
-        )
-
+        raise IssuePrimaryAuditError(f"Audit Plan contains {len(contexts)} issues, above the bounded Stage 13E limit of {MAX_PRIMARY_ISSUE_REQUESTS}. Law-Rag did not silently omit issues.")
     ensure_pipeline_control(job_id, ProviderExecutionMode.REQUIRE_APPROVAL)
     try:
         provider = provider_override or issue_primary_provider_from_name(provider_name)
@@ -514,23 +472,16 @@ def run_issue_primary_audit(
         raise IssuePrimaryAuditError(str(exc)) from exc
     if not health.configured:
         raise IssuePrimaryAuditConfigurationError(health.detail)
-
     checkpoint = _load_checkpoint(job_id)
     reusable: dict[str, IssuePrimaryAuditResult] = {}
     reusable_calls: dict[str, IssuePrimaryProviderCall] = {}
-    if (
-        checkpoint is not None
-        and checkpoint.issue_legal_context_fingerprint == contexts[0].issue_legal_context_fingerprint
-        and checkpoint.provider == provider.provider_name
-        and checkpoint.model == provider.model_name
-    ):
+    if checkpoint is not None and checkpoint.issue_legal_context_fingerprint == contexts[0].issue_legal_context_fingerprint and checkpoint.provider == provider.provider_name and checkpoint.model == provider.model_name:
         reusable = {result.issue_id: result for result in checkpoint.results}
         reusable_calls = {call.issue_id: call for call in checkpoint.provider_calls}
         if checkpoint.status == IssuePrimaryAuditStatus.COMPLETE and len(reusable) == len(contexts):
             current = {context.issue_id: context.context_fingerprint for context in contexts}
             if all(reusable[issue_id].context_fingerprint == fingerprint for issue_id, fingerprint in current.items()):
                 return checkpoint
-
     results: list[IssuePrimaryAuditResult] = []
     calls: list[IssuePrimaryProviderCall] = []
     warnings: list[str] = []
@@ -543,20 +494,8 @@ def run_issue_primary_audit(
             continue
         if not context.target_items:
             results.append(_no_contract_result(context))
-            payload = _artifact_payload(
-                job_id=job_id,
-                status=IssuePrimaryAuditStatus.IN_PROGRESS,
-                context_template=contexts[0],
-                provider=provider.provider_name,
-                model=provider.model_name,
-                total_issue_count=len(contexts),
-                results=results,
-                calls=calls,
-                warnings=warnings,
-            )
-            _persist_artifact(payload)
+            _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.IN_PROGRESS, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=warnings))
             continue
-
         try:
             begin_provider_call(job_id, provider.provider_name)
             try:
@@ -565,73 +504,17 @@ def run_issue_primary_audit(
                 finish_provider_call(job_id, provider.provider_name)
             result = validate_issue_model_output(provider_result.content, context)
         except (PipelineCancellationRequested, ProviderBoundaryPaused):
-            payload = _artifact_payload(
-                job_id=job_id,
-                status=IssuePrimaryAuditStatus.INTERRUPTED,
-                context_template=contexts[0],
-                provider=provider.provider_name,
-                model=provider.model_name,
-                total_issue_count=len(contexts),
-                results=results,
-                calls=calls,
-                warnings=[*warnings, "Stage 13E was interrupted by persisted provider/cancel control; completed issue results were checkpointed."],
-            )
-            _persist_artifact(payload)
+            _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.INTERRUPTED, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=[*warnings, "Stage 13E was interrupted by persisted provider/cancel control; completed issue results were checkpointed."]))
             raise
         except (IssuePrimaryAuditProviderError, IssuePrimaryAuditValidationError) as exc:
-            payload = _artifact_payload(
-                job_id=job_id,
-                status=IssuePrimaryAuditStatus.INTERRUPTED,
-                context_template=contexts[0],
-                provider=provider.provider_name,
-                model=provider.model_name,
-                total_issue_count=len(contexts),
-                results=results,
-                calls=calls,
-                warnings=[*warnings, f"Issue {context.issue_id} interrupted Stage 13E: {exc}"],
-            )
-            _persist_artifact(payload)
+            _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.INTERRUPTED, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=[*warnings, f"Issue {context.issue_id} interrupted Stage 13E: {exc}"]))
             raise IssuePrimaryAuditError(str(exc)) from exc
-
         results.append(result)
-        calls.append(
-            IssuePrimaryProviderCall(
-                issue_id=context.issue_id,
-                provider=provider_result.provider,
-                model=provider_result.model,
-                request_id=provider_result.request_id,
-                finish_reason=provider_result.finish_reason,
-                raw_response_hash=provider_result.raw_response_hash,
-                usage=provider_result.usage,
-            )
-        )
-        payload = _artifact_payload(
-            job_id=job_id,
-            status=IssuePrimaryAuditStatus.IN_PROGRESS,
-            context_template=contexts[0],
-            provider=provider.provider_name,
-            model=provider.model_name,
-            total_issue_count=len(contexts),
-            results=results,
-            calls=calls,
-            warnings=warnings,
-        )
-        _persist_artifact(payload)
-
+        calls.append(IssuePrimaryProviderCall(issue_id=context.issue_id, provider=provider_result.provider, model=provider_result.model, request_id=provider_result.request_id, finish_reason=provider_result.finish_reason, raw_response_hash=provider_result.raw_response_hash, usage=provider_result.usage))
+        _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.IN_PROGRESS, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=warnings))
     if {result.issue_id for result in results} != {context.issue_id for context in contexts}:
         raise IssuePrimaryAuditValidationError("Stage 13E completed without one terminal result for every AuditPlan issue.")
-    final_payload = _artifact_payload(
-        job_id=job_id,
-        status=IssuePrimaryAuditStatus.COMPLETE,
-        context_template=contexts[0],
-        provider=provider.provider_name,
-        model=provider.model_name,
-        total_issue_count=len(contexts),
-        results=results,
-        calls=calls,
-        warnings=warnings,
-    )
-    return _persist_artifact(final_payload)
+    return _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.COMPLETE, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=warnings))
 
 
 def load_issue_primary_audit(job_id: UUID, *, validate_freshness: bool = True) -> IssuePrimaryAuditArtifact:
