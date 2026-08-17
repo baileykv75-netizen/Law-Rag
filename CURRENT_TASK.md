@@ -8,41 +8,31 @@
 Stage 11A–11E  COMPLETE / validated release foundations
 Stage 12A–12F  COMPLETE / RC2 VALIDATED
 Stage 13A       COMPLETE — provider boundary + pause/cancel control validated
-Stage 13B       ACTIVE — Audit Planner foundation
-Stage 13C       PENDING — hierarchical planning for long contracts
+Stage 13B       COMPLETE — Audit Planner foundation validated
+Stage 13C       NEXT — hierarchical planning for long contracts
 Stage 13D       PENDING — issue-based Legal RAG
 Stage 13E       PENDING — DeepSeek issue-by-issue primary audit
 Stage 13F       PENDING — Kimi finding + coverage review
 Stage 13G       PENDING — end-to-end audit architecture regression
 ```
 
-The Stage 13 roadmap was deliberately reordered after reviewing the existing Stage 8/9 architecture. Desktop tray/history work is deferred: the more important problem is that the current hard-coded Stage 8 topic router can narrow what the models are allowed to review.
+The Stage 13 roadmap was deliberately reordered after reviewing the existing Stage 8/9 architecture. Desktop tray/history work is deferred: the more important problem is that the old hard-coded Stage 8 topic router can narrow what the models are allowed to review.
 
 ## Stage 13A — Provider boundary + pause/cancel
 
 **Status: complete and retained.**
 
-The persisted provider/cancel control plane remains a hard security boundary. With the new architecture, Audit Planner becomes the first external model call. Therefore the provider boundary must eventually sit **before Planner transmission**, not merely before the current DeepSeek primary-audit call.
-
-No future Planner/DeepSeek/Kimi implementation may bypass `pipeline-control.json`, cancellation semantics, or the atomic outbound-provider boundary.
+The persisted provider/cancel control plane remains a hard security boundary. In the new architecture Audit Planner is the first external model call, so Planner/DeepSeek/Kimi must all respect `pipeline-control.json`, cancellation semantics and the atomic outbound-provider boundary.
 
 See [`docs/PROVIDER_BOUNDARY.md`](docs/PROVIDER_BOUNDARY.md).
 
 ## Stage 13B — Audit Planner foundation
 
-**Status: active. Implement this stage only.**
+**Status: complete and independently validated.**
 
-### Problem being fixed
+### Architecture now implemented
 
-Current Stage 8 uses a small hard-coded topic list to decide which clauses trigger legal retrieval and which contract objects enter the bounded primary-audit context. This is safe and explainable but can suppress issues the programmer did not predefine.
-
-The new rule is:
-
-> Contract structure describes facts; deterministic rules emit certain mechanical anomalies; neither layer may define the complete legal-review scope.
-
-### Goal
-
-Create a formal, evidence-bounded `AuditPlan` layer built from three sources:
+A versioned `audit-plan.json` is produced by deterministic merging of three independent sources:
 
 ```text
 Baseline checklist
@@ -51,71 +41,166 @@ Baseline checklist
 = validated AuditPlan
 ```
 
-The Planner decides **what should be investigated**, not whether a clause is lawful/unlawful and not the final legal conclusion.
+The Planner decides **what should be investigated**. It does not make the final legal conclusion.
 
-### Stage 13B deliverables
+### Contract-type layer
 
-1. Versioned `AuditPlan` / planner-draft Pydantic schemas.
-2. Explicit contract-type enum with `UNKNOWN` and `MIXED`; no forced guess.
-3. Deterministic baseline checklist registry by contract type, with a conservative GENERAL fallback.
-4. Deterministic hints derived from Stage 5 non-PASS results and the existing Stage 8 keyword topics.
-5. Bounded Planner input containing canonical clause IDs/text, source Evidence IDs and deterministic hints.
-6. DeepSeek Planner provider prompt that returns strict JSON and is forbidden to make final legal conclusions or invent IDs.
-7. Provider-free fake Planner for tests.
-8. Deterministic validator/merger that:
-   - rejects unknown canonical object IDs;
-   - rejects malformed/empty retrieval queries;
-   - adds baseline checklist coverage independently of model preference;
-   - de-duplicates dynamic issues/queries conservatively;
-   - preserves provenance (`BASELINE`, `DETERMINISTIC_HINT`, `LLM_DYNAMIC`).
-9. Persisted `audit-plan.json` artifact plus read API.
-10. Explicit direct-planning size guard: no silent clause truncation. Contracts beyond the direct Planner input budget must return a structured `HIERARCHICAL_PLANNING_REQUIRED` condition for Stage 13C.
-11. Any live Planner call must cross the Stage 13A provider boundary.
+The strict Planner schema supports:
 
-### Non-goals for 13B
+```text
+GENERAL
+PURCHASE
+SERVICE
+LEASE
+EMPLOYMENT
+CONSTRUCTION
+TECHNOLOGY
+LOAN
+EQUITY
+UNKNOWN
+MIXED
+```
 
-- Do not yet replace the current Stage 8 primary audit execution path.
-- Do not yet implement Map/Reduce long-contract planning (13C).
-- Do not yet change legal retrieval to issue-by-issue execution (13D).
-- Do not yet change DeepSeek primary findings (13E) or Kimi review semantics (13F).
-- Do not expand OCR or legal corpus.
-- Do not start tray/history/storage-management work.
+`UNKNOWN` and `MIXED` are valid outcomes. They keep the conservative GENERAL baseline rather than forcing a guess.
 
-### Legacy topic-router migration rule
+### Baseline coverage
 
-The existing eight Stage 8 keyword topics remain temporarily available for old Stage 8 compatibility, but from Stage 13B onward they are classified as **deterministic hints**, not the future authoritative audit scope. Stage 13D will remove their role as the sole retrieval/audit entrypoint.
+The GENERAL baseline cannot be removed by weak/empty model output and covers at least:
 
-### Validation gates
+- parties/authority;
+- subject/scope;
+- price/payment;
+- performance/delivery;
+- quality/acceptance;
+- term/effectiveness;
+- breach/liability;
+- change/termination;
+- force majeure/risk events;
+- confidentiality/IP/data;
+- dispute resolution;
+- notice/attachments/document priority.
 
-Backend regressions must prove:
+Recognized contract types add deterministic type-specific review topics.
 
-- baseline coverage cannot be removed by an empty/weak model draft;
-- `UNKNOWN` and `MIXED` are valid classifications;
-- Planner cannot cite nonexistent clause/Evidence IDs;
-- deterministic Stage 5 anomalies survive into the final plan;
-- existing keyword topics contribute hints but do not cap dynamic issues;
-- duplicate LLM issues are merged predictably;
-- over-budget contracts fail closed with `HIERARCHICAL_PLANNING_REQUIRED` instead of truncation;
-- fake/provider-free tests require no API key or paid call;
-- a live Planner boundary cannot bypass `REQUIRE_APPROVAL`, `LOCAL_ONLY`, or cancellation.
+### Canonical Planner input
 
-Existing Stage 11 quality gates and Stage 12/13A regressions must remain green.
+The bounded Planner input contains:
+
+1. complete canonical clause/unnumbered-block text within the direct-planning budget;
+2. canonical object IDs and source Evidence IDs;
+3. global structured facts derived from `contract.json`, including available title, party, date, amount, percentage, identifier and reference facts;
+4. Stage 5 `FAIL`/`REVIEW` hints;
+5. the historical Stage 8 keyword topics as deterministic hints only.
+
+Global facts help contract-type classification but the model is not allowed to output fact IDs or Evidence IDs as authoritative references.
+
+### Evidence integrity
+
+The LLM may output only existing canonical `clause_id`/`block_id` values. Unknown object IDs reject the Planner draft.
+
+The LLM does **not** output Evidence IDs. Law-Rag derives contract Evidence IDs deterministically from validated canonical object IDs.
+
+Dynamic issues must contain at least one review question and one non-empty bounded Legal-RAG query. Duplicate topics are merged only by conservative exact normalized topic equality; no fuzzy merge is used.
+
+### Provider boundary
+
+Planner is treated as an external provider step.
+
+New jobs without existing control fail closed to `REQUIRE_APPROVAL`. `LOCAL_ONLY`, missing approval and cancellation all prevent the Planner request before `generate()` starts. The active provider is recorded as `<provider>-planner` after the atomic boundary is crossed.
+
+The deterministic fake Planner is disabled by default and requires:
+
+```text
+LAW_RAG_ALLOW_FAKE_AUDIT_PLANNER=1
+```
+
+for explicit tests only.
+
+### Long-contract guard
+
+Stage 13B deliberately does not truncate large contracts. The current application-level direct Planner budget is 60,000 canonical text/fact characters.
+
+If exceeded, Law-Rag returns:
+
+```text
+HIERARCHICAL_PLANNING_REQUIRED
+```
+
+before any Planner provider request and does not persist a shortened plan. Stage 13C is responsible for the hierarchical solution.
+
+### Persistence/API
+
+Validated plans are atomically persisted to:
+
+```text
+runtime/jobs/<job-id>/audit-plan.json
+```
+
+API:
+
+```text
+POST /api/documents/<job-id>/audit-plan
+GET  /api/documents/<job-id>/audit-plan
+```
+
+GET is read-only and never calls a provider.
+
+### Regression validation completed
+
+Backend tests prove:
+
+- baseline coverage survives empty/weak Planner drafts;
+- `UNKNOWN`/`MIXED` remain valid;
+- nonexistent canonical object IDs are rejected;
+- Stage 5 anomalies survive into the plan;
+- old keyword topics contribute hints but do not cap dynamic issues;
+- dynamic issues can exist beyond the old topic list;
+- duplicate dynamic topics merge predictably;
+- Evidence IDs are derived from canonical objects rather than model output;
+- canonical title/party global facts enter the Planner input with Evidence lineage;
+- blank/missing dynamic retrieval queries are rejected;
+- long contracts fail closed instead of truncating;
+- new Planner calls default to approval-required;
+- `LOCAL_ONLY` and cancellation cannot be bypassed;
+- fake Planner is disabled unless explicitly enabled for tests.
+
+CI run #449 passed the initial Planner foundation. CI run #450 passed the hardened global-facts/fake-provider regression set together with all existing backend tests, public quality gates and frontend production build.
+
+See [`docs/AUDIT_PLANNER.md`](docs/AUDIT_PLANNER.md).
+
+### Legacy Stage 8 boundary
+
+Stage 13B intentionally does **not** replace the existing Stage 8 production primary-audit path yet. The old eight-topic router remains temporarily for compatibility, but it is now conceptually a deterministic hint source, not the future authoritative audit scope.
+
+Migration occurs in Stage 13D–13G after long-contract planning is solved.
 
 ## Stage 13C — Hierarchical planning for long contracts
 
-Pending until 13B is independently complete.
+**Status: next; not started in the Stage 13B iteration.**
 
-Planned shape:
+Goal:
 
 ```text
-Clause index
- -> bounded local/chunk Planner passes
- -> deterministic merge
- -> global Planner pass over summaries + checklist
+Canonical contract
+ -> stable clause index
+ -> bounded chunk Planner passes
+ -> deterministic local-plan validation
+ -> deterministic merge/de-dup
+ -> bounded global Planner pass over chunk summaries + baseline coverage
  -> final AuditPlan
 ```
 
-No silent truncation of a long contract is allowed.
+Requirements for 13C:
+
+- no silent omission or character truncation;
+- every source clause/block must have explicit planning coverage metadata;
+- chunk boundaries must preserve nearby clause context where necessary;
+- chunk outputs must obey the same canonical-ID and no-Evidence-ID-invention rules as 13B;
+- global Planner cannot delete baseline/deterministic coverage;
+- duplicate/overlapping local issues must merge deterministically;
+- provider boundary/cancellation must apply to every external Planner request;
+- provider-call count must be bounded and observable;
+- provider-free regression fixtures must cover a contract above the 13B direct budget.
 
 ## Stage 13D — Issue-based Legal RAG
 
@@ -148,4 +233,6 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-Implement **Stage 13B Audit Planner foundation only**. Do not start Stage 13C or later roadmap work in the same iteration.
+**Stage 13B is closed.**
+
+The next explicit implementation task is **Stage 13C hierarchical planning for long contracts**. Do not start Stage 13D or later work in the same iteration.

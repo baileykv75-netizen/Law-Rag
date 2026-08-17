@@ -82,6 +82,26 @@ The Planner may add contract-specific review topics outside the baseline and his
 
 A dynamic issue may legitimately have no canonical object ID when the concern is an apparent omission rather than an existing clause.
 
+## Canonical Planner input
+
+The direct Planner input contains the complete canonical clause/unnumbered-block text within the Stage 13B budget. Each item carries its canonical object ID and source Evidence IDs.
+
+The Planner also receives read-only global structured facts from `contract.json` when available:
+
+```text
+TITLE
+PARTY
+DATE
+MONEY
+PERCENTAGE
+IDENTIFIER
+REFERENCE
+```
+
+These facts help classify contract type and understand global transaction context. They retain Evidence lineage, but the model is not allowed to output global fact IDs or Evidence IDs as authoritative references.
+
+The application-level direct size budget counts both clause/block text and these global fact labels/values.
+
 ## Evidence integrity
 
 The Planner is never allowed to output Evidence IDs.
@@ -107,7 +127,7 @@ No fuzzy semantic merge is performed because silently merging legally distinct t
 
 Stage 13B does not silently truncate long contracts.
 
-The direct Planner input budget is currently an application-level guard of 60,000 canonical text characters. If the canonical clause/block text exceeds that budget, Law-Rag raises:
+The direct Planner input budget is currently an application-level guard of 60,000 canonical text/fact characters. If that budget is exceeded, Law-Rag raises:
 
 ```text
 HIERARCHICAL_PLANNING_REQUIRED
@@ -133,6 +153,18 @@ approved/AUTO_CONTINUE             -> active_provider=<provider>-planner -> requ
 ```
 
 An already-started Planner request has the same Stage 13A limitation as other providers: it cannot be made unsent after transmission begins, but cancellation prevents subsequent provider/stage work.
+
+## Fake Planner safety
+
+The deterministic fake Planner exists only for provider-free regression tests. It is disabled by default even if a caller requests `provider=fake`.
+
+Tests must explicitly set:
+
+```text
+LAW_RAG_ALLOW_FAKE_AUDIT_PLANNER=1
+```
+
+This avoids accidentally exposing fixture planning behavior as a normal production provider.
 
 ## Persistence
 
@@ -163,7 +195,26 @@ POST /api/documents/<job>/audit-plan
 GET  /api/documents/<job>/audit-plan
 ```
 
-The POST body accepts a Planner provider name. `deepseek` is the production provider and `fake` is a deterministic provider-free fixture.
+The POST body accepts a Planner provider name. `deepseek` is the production provider. `fake` is available only under the explicit test-only environment flag above.
+
+## Validation completed
+
+Stage 13B regressions cover:
+
+- immutable baseline coverage;
+- `UNKNOWN`/`MIXED` fallback behavior;
+- dynamic issues beyond the old topic list;
+- deterministic Stage 5 and keyword hints;
+- unknown canonical-object rejection;
+- deterministic Evidence derivation;
+- exact duplicate-topic merge behavior;
+- required questions/retrieval queries;
+- no-truncation long-contract guard;
+- Provider Boundary enforcement;
+- global title/party fact propagation with Evidence lineage;
+- fake Planner default-deny behavior.
+
+CI runs #449 and #450 completed successfully with the existing backend regressions, public quality gates and frontend production build.
 
 ## Stage boundary
 
@@ -172,8 +223,8 @@ Stage 13B does **not** yet replace the old Stage 8 primary-audit path. Existing 
 The intended migration is:
 
 ```text
-13B  formal AuditPlan
-13C  hierarchical long-contract planning
+13B  formal AuditPlan                         COMPLETE
+13C  hierarchical long-contract planning     NEXT
 13D  issue-based Legal RAG
 13E  issue-by-issue DeepSeek audit
 13F  Kimi finding + coverage review
