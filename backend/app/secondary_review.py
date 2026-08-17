@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID
 
@@ -274,8 +275,15 @@ def run_secondary_review(
     request: SecondaryReviewRunRequest,
     *,
     provider_override: SecondaryReviewProvider | None = None,
+    provider_gate: Callable[[], None] | None = None,
+    before_provider_generate: Callable[[], None] | None = None,
 ) -> SecondaryReviewReport:
+    """Rebuild/validate the local secondary context before outbound permission checks."""
+
     context = build_secondary_review_context(job_id, use_semantic=request.use_semantic)
+
+    if provider_gate is not None:
+        provider_gate()
 
     try:
         provider = provider_override or secondary_provider_from_name(request.provider)
@@ -283,6 +291,8 @@ def run_secondary_review(
         if not health.configured:
             raise SecondaryReviewConfigurationError(health.detail)
         # Universal Stage 9 policy: exactly one contract-level secondary generate call.
+        if before_provider_generate is not None:
+            before_provider_generate()
         provider_result = provider.generate(context)
     except SecondaryReviewProviderError as exc:
         raise SecondaryReviewError(str(exc)) from exc
