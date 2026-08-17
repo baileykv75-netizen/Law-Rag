@@ -14,60 +14,52 @@ Stage 12A  COMPLETE — minimal intake home + real multi-file upload queue shell
 Stage 12B  COMPLETE — persisted background audit pipeline + real progress/retry semantics
 Stage 12C  COMPLETE — guarded 500 MiB streaming intake + bounded resource-aware batch scheduling
 Stage 12D  COMPLETE — guided provider onboarding + Windows Credential Manager protected secrets
-Stage 12E  NEXT — batch result landing page
-Stage 12F  PENDING — Windows RC2 validation
+Stage 12E  COMPLETE — persisted batch result landing + risk-priority navigation/recovery
+Stage 12F  ACTIVE — Windows RC2 clean-runner user-flow validation
 ```
 
-The first portable RC validated the packaging/runtime path on CI and on a real Windows desktop. User feedback showed the next highest-value work is not an installer: simplify intake, automate the pipeline, support large/batch files, guide API configuration, then provide a compact batch result landing page.
+The first portable RC validated packaging/runtime on CI and a real Windows desktop. Stage 12 then simplified the product path around first-run provider setup, drag/drop batch intake, automatic background processing, persistent progress/results, and a compact result landing page.
 
 ## Product goal
 
-The normal user should see only three concepts:
+The normal user should see only four concepts:
 
 ```text
-first-run configuration
+first-run API configuration
   -> drag one or more contracts into a simple queue
   -> wait while Law-Rag runs the required audit pipeline in the background
-  -> open the finished result/workstation
+  -> review the batch summary, then open detailed evidence/workstation only where needed
 ```
 
 Internal stages, debug buttons, provider implementation details and development panels must not dominate the normal workflow.
 
 ## Hard boundaries
 
-1. Keep the existing Stage 10 evidence/review workstation; it becomes the detailed result surface rather than the home page.
-2. Preserve a developer/debug route for manual stage execution and troubleshooting, but do not expose it as the primary user experience.
-3. Progress must come from real pipeline/upload state; do not animate fake percentages toward 99%.
-4. A failed file in a batch must not cancel or corrupt unrelated jobs.
-5. Large uploads must remain streamed to disk; never read a 500 MiB file into application memory merely to validate/upload it.
-6. Batch execution must use bounded concurrency. OCR and provider calls must not fan out without limits.
-7. API keys must never be committed, bundled in RC artifacts, echoed in diagnostics, or stored as ordinary plaintext project files.
-8. First-run configuration must allow local-only use when provider keys are intentionally skipped.
-9. No hidden provider calls: DeepSeek/Kimi external transmission remains explicit in the user-facing audit flow/configuration.
-10. Stage 1–11 regressions, public quality gates and Windows release safety boundaries remain green.
+1. Keep the existing Stage 10 evidence/review workstation as the detailed result surface, not the home page.
+2. Preserve `/developer` for manual troubleshooting without making it a primary user path.
+3. Progress must come from real upload/pipeline state; no fake 99% animation.
+4. One failed file must not cancel or corrupt unrelated batch Jobs.
+5. Large uploads remain streamed to disk; never read a 500 MiB contract into application memory merely to upload/validate it.
+6. OCR/provider execution remains bounded; no unbounded fan-out.
+7. API keys are never committed, bundled, echoed in diagnostics, returned to the browser, or stored as plaintext project/runtime secrets.
+8. Users may intentionally skip provider setup and retain local-only functions.
+9. DeepSeek/Kimi transmission remains disclosed; no hidden external model calls.
+10. Batch/result persistence stores IDs/state references only and does not duplicate contract text into a second result store.
+11. Result priority is not a correctness/legal-validity score.
+12. Stage 1–11 regressions, public quality gates and Windows release safety boundaries remain green.
 
 ## 12A — Minimal intake home + batch queue shell
 
 **Status: complete.**
 
-Implemented and validated:
-
-- `/` is now a minimal drag/drop intake instead of the legacy developer dashboard;
-- multi-file picker/drop queue;
-- one independent queue row per file;
-- sequential use of the single-file upload API so one failed upload does not cancel the batch;
-- real XHR upload progress, followed by explicit server-side document-reading state;
-- independent retry/removal semantics;
-- duplicate selection guard;
-- legacy Stage controls preserved under `/developer`;
-- `/workspace` remains the detailed evidence/review route;
-- frontend locked production build, backend regressions and public quality gates green.
+- `/` is a minimal drag/drop intake instead of the legacy developer dashboard.
+- Multi-file picker/drop queue with independent rows, real XHR upload progress, retry/removal, duplicate guard.
+- `/developer` preserves manual Stage controls.
+- `/workspace` remains the detailed evidence/review route.
 
 ## 12B — Application-owned background pipeline orchestrator
 
 **Status: complete.**
-
-Implemented and validated:
 
 ```text
 ingest
@@ -82,44 +74,26 @@ ingest
  -> review report ready
 ```
 
-Behavior:
-
-- every Job has versioned local `pipeline.json` state;
-- POST `/api/documents/{job}/pipeline` queues work and returns immediately;
-- GET `/api/documents/{job}/pipeline` is read-only/provider-free polling;
-- POST `/api/documents/{job}/pipeline/retry` resumes using the original `as_of`/semantic settings;
-- successful persisted OCR/structure/rules/primary/secondary/review artifacts are reused when valid rather than blindly rerun;
-- native-text documents explicitly skip OCR;
-- missing PaddleOCR stops at `WAITING_OPTIONAL_COMPONENT` rather than crashing the whole queue;
-- missing DeepSeek/Kimi configuration stops at `WAITING_CONFIGURATION` with completed local stages preserved;
-- unexpected failures fail closed with persisted stage/error state;
-- duplicate start/retry while a Job is already active returns current state rather than resetting it;
-- normal intake automatically starts the pipeline after upload and polls real state;
-- user-visible progress is derived from upload bytes + persisted stage milestones only;
-- completed rows expose the existing `/workspace?job=<id>` result surface;
-- external DeepSeek/Kimi transmission is disclosed on the intake page before processing.
-
-Stage 12B initially used complete-pipeline concurrency = 1 as a conservative safety guard. Stage 12C intentionally supersedes that temporary serialization with bounded resource-specific scheduling.
+- Every Job has versioned local `pipeline.json` state.
+- POST starts/queues; GET polls read-only/provider-free; retry resumes with original settings.
+- Valid persisted artifacts are reused rather than blindly rerun.
+- Missing OCR/provider configuration stops in explicit waiting states.
+- Normal intake automatically starts the pipeline and shows real persisted stage progress.
 
 ## 12C — 500 MiB streaming upload + bounded batch scheduling
 
 **Status: complete.**
 
-Implemented and validated:
+Large-file intake:
 
-### Large-file intake
+- exact per-file limit 500 MiB front/back;
+- fixed 1 MiB streamed writes;
+- expected size + 512 MiB disk reserve preflight;
+- HTTP 507 on insufficient space;
+- partial-file cleanup for oversize/write exhaustion;
+- content signature and empty-file checks remain fail-closed.
 
-- exact per-file limit is 500 MiB on both normal frontend intake and backend enforcement;
-- backend copies uploads into Law-Rag runtime storage in fixed 1 MiB chunks rather than reading the entire contract into application memory;
-- the multipart parser's known size is used for an early rejection when available, while the streamed byte counter remains the authoritative 500 MiB limit;
-- disk-space preflight requires the expected upload size plus a conservative 512 MiB writable safety reserve for downstream local work;
-- insufficient preflight space returns HTTP 507 before a Job upload directory is created;
-- disk exhaustion during the copy is handled explicitly and the partial source artifact is removed best-effort;
-- oversize streaming failures also remove partial source artifacts;
-- empty, mismatched-signature and unsupported file behavior remains fail-closed;
-- the disk preflight is an upload guard, not a guarantee that an unusually large later OCR/render workload will always fit.
-
-### Resource-aware batch scheduling
+Resource-aware execution:
 
 ```text
 pipeline worker pool                  4 Jobs
@@ -128,74 +102,75 @@ OCR                                  1 concurrent
 DeepSeek + Kimi combined             2 concurrent
 ```
 
-Behavior:
-
-- the application no longer creates an unbounded waiting thread per uploaded contract;
-- Jobs beyond the fixed worker pool remain queued in the executor;
-- a worker waiting on OCR/local/provider capacity persists `WAITING_WORKER` instead of pretending to be actively processing;
-- normal UI distinguishes `等待后台处理名额` from active audit stages;
-- reuse of already-valid immutable artifacts does not consume an unnecessary resource slot;
-- a failure/wait condition for one Job does not cancel other queued/active Jobs;
-- retry retains the original legal `as_of`/semantic settings;
-- future registration is guarded with a re-entrant lock so an already-completed fast Future cannot deadlock its completion callback;
-- explicit tests cover the 500 MiB constant, 1 MiB chunked copy, partial cleanup, disk reserve/507 behavior, worker-pool bound and persisted `WAITING_WORKER` state.
-
-The client still uploads files sequentially by design. Successfully uploaded Jobs can execute concurrently in the bounded backend scheduler while the next file uploads.
+The browser still uploads files sequentially by design; already-uploaded Jobs can process concurrently under the fixed backend limits.
 
 ## 12D — First-run DeepSeek/Kimi configuration guide
 
 **Status: complete.**
 
-Implemented and validated:
-
-- normal `/` intake checks provider setup state on launch and opens a focused first-run dialog when configuration has not been completed;
-- separate password-style inputs are provided for DeepSeek and Kimi / Moonshot;
-- saved secrets are never returned to the browser and are never repopulated into the input fields;
-- normal UI reports only configured/not configured plus non-secret provider/model/source metadata;
-- users may explicitly skip setup and continue local-only, then reopen `API 设置` later;
-- Windows desktop persistence uses Generic Credentials in Windows Credential Manager rather than plaintext `.env` or runtime JSON;
-- development/CI environment variables remain supported and take precedence over the protected Windows store;
-- `runtime/config/provider-setup.json` stores only non-secret setup-completion state;
-- DeepSeek/Kimi provider adapters resolve the protected credential automatically before model invocation;
-- saved Windows credentials can be explicitly removed from the settings UI;
-- connection testing is an explicit action and sends only a fixed tiny connectivity message with no contract, Evidence, audit context or filename data;
-- connection-test responses expose only a safe success/failure summary and never echo the supplied key or provider response body;
-- startup diagnostics recognize protected provider configuration without exposing secret values;
-- Linux/backend security regressions prove provider status/runtime state never contain test secrets;
-- clean Windows CI performs a synthetic Credential Manager `write -> read -> resolve -> delete` round trip and verifies deletion afterward;
-- the same clean Windows validation rebuilds the PyInstaller onedir application, runs the packaged executable/PDF smoke, creates the deterministic portable ZIP, extracts it into a fresh directory and reruns the final RC smoke successfully.
+- Focused first-run modal with password inputs for DeepSeek and Kimi/Moonshot.
+- Saved keys are never returned/repopulated; normal UI shows configured/not configured only.
+- Windows desktop uses Generic Credentials in Windows Credential Manager.
+- Environment variables remain a development/CI override and take precedence.
+- Runtime stores only non-secret setup-completion state.
+- Explicit test-connection sends one fixed tiny non-contract message and never echoes key/provider body.
+- Users may skip and reopen API settings later.
+- Packaged Windows synthetic `write -> read -> resolve -> delete` Credential Manager smoke is green.
+- Development CORS now explicitly allows the PUT/DELETE methods required by the configuration UI.
 
 ## 12E — Batch result landing page
 
-**Status: next.**
+**Status: complete.**
 
-After processing:
+Implemented:
 
-- show one compact summary row/card per contract;
-- distinguish completed, failed and human-review-required Jobs;
-- summarize high/medium/low findings and material disagreement without inventing a correctness score;
-- click a contract to open the existing `/workspace?job=<id>` detailed evidence/review UI;
-- preserve visible `CURATED_EXCERPT`, evidence and human-review boundaries;
-- keep the intake/progress experience simple rather than exposing internal Stage terminology.
+- every intake session gets a local `batch_id` and a versioned runtime batch manifest;
+- the manifest stores only Job IDs and timestamps, never duplicate contract text;
+- each successfully uploaded Job is registered independently, so one failure cannot remove siblings;
+- GET `/api/batches/{batch_id}` rebuilds its summary from current `pipeline.json` and `review-report.json` rather than persisting a second truth;
+- GET `/api/batches/recent` restores the latest batch entry after browser/application restart;
+- `/results?batch=<id>` is a dedicated compact result landing page;
+- cards are deterministically sorted by human-review requirement, material disagreement, serious/high/medium risk and possible omissions;
+- critical/high/medium/low counts and possible omission/material-disagreement flags remain explicit;
+- failed, invalid, waiting and still-processing Jobs stay visible instead of being omitted;
+- no aggregate correctness/legal-validity score is generated;
+- complete Jobs link into the existing `/workspace?job=<id>` detailed evidence/review UI;
+- all-success batches automatically open the result page; partial failure/waiting batches keep an explicit result-page button rather than silently navigating away;
+- the intake home exposes a small `recent batch` recovery link when no new queue is active;
+- backend regressions, public deterministic quality gates and locked frontend production build are green.
 
 ## 12F — Windows RC2 validation
 
-Build a new portable RC only after 12A–12E are stable.
+**Status: active.**
 
-Validate on clean Windows and real desktop:
+RC2 config:
 
-- first-run setup/skip flow;
-- single and multi-file intake;
-- large-file streaming behavior with safe synthetic fixtures;
-- queue recovery after one failure;
-- background pipeline progress;
-- result navigation;
-- restart/persistence;
-- no keys/private data in bundle/diagnostics;
-- developer route remains available but not primary.
+```text
+0.8.0-rc2
+portable Windows x64 onedir ZIP
+publication_state = NOT_PUBLISHED
+```
+
+The final extracted RC must pass all earlier Stage 11D/11E checks plus a new packaged user-flow smoke:
+
+- fresh first-run provider setup state;
+- protected synthetic DeepSeek/Kimi credential save through the packaged HTTP API;
+- no secret value in returned configuration JSON;
+- protected credential deletion;
+- explicit local-only skip state;
+- one normal PDF plus one 64 MiB synthetic padded PDF, proving packaged intake exceeds the old 50 MiB limit;
+- two Jobs registered into one persistent batch;
+- `/results?batch=...` route served by the packaged SPA;
+- application process stopped and restarted against the same runtime;
+- provider onboarding completion survives restart;
+- deleted synthetic keys remain absent;
+- latest batch and both Job IDs survive restart;
+- existing diagnostics, private-data scan, PDFium render, RC hash/manifest and extracted-ZIP smoke remain green.
+
+Default CI remains provider-free and does not use paid model keys. Full real-provider desktop UAT remains a manual step.
 
 Installer work remains deferred unless RC2 testing demonstrates a concrete need.
 
 ## Current implementation boundary
 
-Proceed with **12E only** next. Do not combine the batch result landing page with RC2 packaging or installer work.
+Proceed with **12F validation only**. If the Windows RC2 clean-runner fails, fix only the release/user-flow regression that caused the failure. After RC2 is green, close Stage 12 and perform an end-to-end product-gap review before adding any new feature stage.
