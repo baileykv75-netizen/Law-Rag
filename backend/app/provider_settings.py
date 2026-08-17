@@ -107,10 +107,17 @@ def _provider_details(provider: ProviderName) -> tuple[str, str]:
     return base_url, model
 
 
+def _resolve(provider: ProviderName):
+    try:
+        return resolve_provider_secret(provider.value)
+    except (SecretStoreError, SecretStoreUnavailable) as exc:
+        raise ProviderConfigurationError(str(exc)) from exc
+
+
 def provider_overview() -> ProviderConfigurationOverview:
     items: list[ProviderConfigurationItem] = []
     for provider in (ProviderName.DEEPSEEK, ProviderName.KIMI):
-        resolved = resolve_provider_secret(provider.value)
+        resolved = _resolve(provider)
         base_url, model = _provider_details(provider)
         items.append(
             ProviderConfigurationItem(
@@ -190,7 +197,7 @@ def test_provider_connection(request: ProviderTestRequest) -> ProviderTestResult
     if supplied:
         api_key = supplied
     else:
-        api_key = resolve_provider_secret(request.provider.value).value or ""
+        api_key = _resolve(request.provider).value or ""
     if not api_key:
         return ProviderTestResult(
             provider=request.provider,
