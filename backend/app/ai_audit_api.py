@@ -13,10 +13,12 @@ from .ai_audit import (
 )
 from .ai_audit_models import AiAuditReport, AiAuditRunRequest, ProviderHealth
 from .ai_audit_providers import PrimaryAuditProviderError, provider_from_name
+from .provider_settings_api import router as provider_settings_router
 from .secondary_review_api import router as secondary_review_router
 from .workspace_api import router as workspace_router
 
 router = APIRouter()
+router.include_router(provider_settings_router)
 router.include_router(secondary_review_router)
 router.include_router(workspace_router)
 
