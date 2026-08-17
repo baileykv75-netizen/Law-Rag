@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .ai_audit_models import EvidenceSufficiency, FindingSeverity, ProviderUsage
+from .ai_audit_models import FindingSeverity, ProviderUsage
 from .audit_plan_models import AuditPlanSource, ReviewPriority
 from .issue_legal_context_models import IssueLegalSupportState, IssueLegalEvidenceHit
 
@@ -19,6 +19,15 @@ class IssuePrimaryAuditState(str, Enum):
     NO_MATERIAL_RISK_FOUND = "NO_MATERIAL_RISK_FOUND"
     INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
+
+
+class IssueEvidenceSufficiency(str, Enum):
+    SUFFICIENT = "SUFFICIENT"
+    PARTIAL_LEGAL_CORPUS = "PARTIAL_LEGAL_CORPUS"
+    INSUFFICIENT_LEGAL_CORPUS = "INSUFFICIENT_LEGAL_CORPUS"
+    LEGAL_VERSION_UNCERTAIN = "LEGAL_VERSION_UNCERTAIN"
+    SOURCE_UNCERTAIN = "SOURCE_UNCERTAIN"
+    CONTRACT_EVIDENCE_INSUFFICIENT = "CONTRACT_EVIDENCE_INSUFFICIENT"
 
 
 class IssuePrimaryAuditStatus(str, Enum):
@@ -119,7 +128,7 @@ class IssuePrimaryAuditResult(BaseModel):
     issue_id: str
     topic: str
     state: IssuePrimaryAuditState
-    evidence_sufficiency: EvidenceSufficiency
+    evidence_sufficiency: IssueEvidenceSufficiency
     legal_support_state: IssueLegalSupportState
     legal_conclusion: bool
     risk_category: str
