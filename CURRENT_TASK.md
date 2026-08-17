@@ -13,12 +13,12 @@ Stage 11E  RC1 VALIDATED — portable Windows RC runs successfully; installer re
 Stage 12A  COMPLETE — minimal intake home + real multi-file upload queue shell
 Stage 12B  COMPLETE — persisted background audit pipeline + real progress/retry semantics
 Stage 12C  COMPLETE — guarded 500 MiB streaming intake + bounded resource-aware batch scheduling
-Stage 12D  NEXT — guided DeepSeek/Kimi configuration + protected local secrets
-Stage 12E  PENDING — batch result landing page
+Stage 12D  COMPLETE — guided provider onboarding + Windows Credential Manager protected secrets
+Stage 12E  NEXT — batch result landing page
 Stage 12F  PENDING — Windows RC2 validation
 ```
 
-The first portable RC validated the packaging/runtime path on CI and on a real Windows desktop. User feedback showed the next highest-value work is not an installer: simplify intake, automate the pipeline, support large/batch files, and guide API configuration.
+The first portable RC validated the packaging/runtime path on CI and on a real Windows desktop. User feedback showed the next highest-value work is not an installer: simplify intake, automate the pipeline, support large/batch files, guide API configuration, then provide a compact batch result landing page.
 
 ## Product goal
 
@@ -121,8 +121,6 @@ Implemented and validated:
 
 ### Resource-aware batch scheduling
 
-Stage 12B whole-pipeline serialization is replaced by fixed, conservative resource limits:
-
 ```text
 pipeline worker pool                  4 Jobs
 local structure/rules/report work    2 concurrent
@@ -140,35 +138,36 @@ Behavior:
 - a failure/wait condition for one Job does not cancel other queued/active Jobs;
 - retry retains the original legal `as_of`/semantic settings;
 - future registration is guarded with a re-entrant lock so an already-completed fast Future cannot deadlock its completion callback;
-- the old Stage 12B regression asserting global pipeline serialization was intentionally replaced with a bounded four-worker regression;
-- explicit tests cover the 500 MiB constant, 1 MiB chunked copy, partial cleanup, disk reserve/507 behavior, worker-pool bound and persisted `WAITING_WORKER` state;
-- backend regressions, public deterministic quality gates and locked frontend production build are green.
+- explicit tests cover the 500 MiB constant, 1 MiB chunked copy, partial cleanup, disk reserve/507 behavior, worker-pool bound and persisted `WAITING_WORKER` state.
 
-The client still uploads files sequentially by design. Successfully uploaded Jobs can execute concurrently in the bounded backend scheduler while the next file uploads. Parallel HTTP upload fan-out is not required for this stage and would add avoidable disk/network pressure on a local desktop application.
+The client still uploads files sequentially by design. Successfully uploaded Jobs can execute concurrently in the bounded backend scheduler while the next file uploads.
 
 ## 12D — First-run DeepSeek/Kimi configuration guide
 
-**Status: next.**
+**Status: complete.**
 
-On first normal launch, show a simple provider setup flow for:
+Implemented and validated:
 
-```text
-DeepSeek API Key
-Kimi / Moonshot API Key
-```
-
-Requirements:
-
-- password-style inputs; never re-display full saved keys;
-- test-connection actions must be explicit and must not send contract data;
-- user may skip and continue local-only;
-- normal UI shows only configured/not configured;
-- Windows release should use an OS-appropriate protected local secret store rather than writing keys into a plaintext `.env` file;
-- development environment-variable support may remain for contributors/CI.
-
-Provider defaults remain the currently accepted DeepSeek primary and Kimi secondary adapters unless a later decision supersedes them.
+- normal `/` intake checks provider setup state on launch and opens a focused first-run dialog when configuration has not been completed;
+- separate password-style inputs are provided for DeepSeek and Kimi / Moonshot;
+- saved secrets are never returned to the browser and are never repopulated into the input fields;
+- normal UI reports only configured/not configured plus non-secret provider/model/source metadata;
+- users may explicitly skip setup and continue local-only, then reopen `API 设置` later;
+- Windows desktop persistence uses Generic Credentials in Windows Credential Manager rather than plaintext `.env` or runtime JSON;
+- development/CI environment variables remain supported and take precedence over the protected Windows store;
+- `runtime/config/provider-setup.json` stores only non-secret setup-completion state;
+- DeepSeek/Kimi provider adapters resolve the protected credential automatically before model invocation;
+- saved Windows credentials can be explicitly removed from the settings UI;
+- connection testing is an explicit action and sends only a fixed tiny connectivity message with no contract, Evidence, audit context or filename data;
+- connection-test responses expose only a safe success/failure summary and never echo the supplied key or provider response body;
+- startup diagnostics recognize protected provider configuration without exposing secret values;
+- Linux/backend security regressions prove provider status/runtime state never contain test secrets;
+- clean Windows CI performs a synthetic Credential Manager `write -> read -> resolve -> delete` round trip and verifies deletion afterward;
+- the same clean Windows validation rebuilds the PyInstaller onedir application, runs the packaged executable/PDF smoke, creates the deterministic portable ZIP, extracts it into a fresh directory and reruns the final RC smoke successfully.
 
 ## 12E — Batch result landing page
+
+**Status: next.**
 
 After processing:
 
@@ -176,7 +175,8 @@ After processing:
 - distinguish completed, failed and human-review-required Jobs;
 - summarize high/medium/low findings and material disagreement without inventing a correctness score;
 - click a contract to open the existing `/workspace?job=<id>` detailed evidence/review UI;
-- preserve visible `CURATED_EXCERPT`, evidence and human-review boundaries.
+- preserve visible `CURATED_EXCERPT`, evidence and human-review boundaries;
+- keep the intake/progress experience simple rather than exposing internal Stage terminology.
 
 ## 12F — Windows RC2 validation
 
@@ -198,4 +198,4 @@ Installer work remains deferred unless RC2 testing demonstrates a concrete need.
 
 ## Current implementation boundary
 
-Proceed with **12D only** next. Do not combine protected secret storage/provider onboarding and the Stage 12E result-summary redesign into one patch.
+Proceed with **12E only** next. Do not combine the batch result landing page with RC2 packaging or installer work.
