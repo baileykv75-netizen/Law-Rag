@@ -10,6 +10,10 @@ Double-click:
 Law-Rag.exe
 ```
 
+The normal double-click path intentionally hides Law-Rag's own console window. The local FastAPI process continues running in the background and the default browser opens the workstation. Closing the browser tab does not stop the local process; close Law-Rag from Task Manager for now if you need to stop it before a dedicated tray/quit control is added.
+
+When `Law-Rag.exe` is launched from an existing PowerShell/CMD window, that existing console remains available for diagnostics and command-line output.
+
 The launcher binds only to:
 
 ```text
@@ -21,6 +25,8 @@ and opens the local workstation in the default browser.
 The browser UI and FastAPI backend are served from the same local process. Node.js, npm and Vite are not required on the end-user machine.
 
 ## Diagnose without starting
+
+Run these from PowerShell or CMD so the diagnostic output remains visible:
 
 ```text
 Law-Rag.exe --diagnose
@@ -84,7 +90,7 @@ Provider calls are external network operations and remain explicit audit/review 
 
 ## Troubleshooting
 
-If the application does not start, run:
+If the application does not start, open PowerShell/CMD in the extracted folder and run:
 
 ```text
 Law-Rag.exe --diagnose
