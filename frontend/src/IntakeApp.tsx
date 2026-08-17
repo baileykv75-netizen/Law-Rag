@@ -1,6 +1,14 @@
 import { DragEvent, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  API_BASE_URL,
+  PipelineReport,
+  ProviderExecutionMode,
+  approveProvider,
+  cancelPipeline,
+  pauseFutureProviders,
+  resumeCancelledPipeline,
+} from './pipelineControlClient'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 const CURRENT_MAX_BYTES = 500 * 1024 * 1024
 
@@ -10,6 +18,7 @@ type QueueState =
   | 'inspecting'
   | 'processing'
   | 'waiting'
+  | 'cancelled'
   | 'complete'
   | 'error'
 
@@ -21,41 +30,16 @@ type UploadResponse = {
   ocr_required_pages: number
 }
 
-type PipelineStatus =
-  | 'QUEUED'
-  | 'WAITING_WORKER'
-  | 'RUNNING'
-  | 'WAITING_CONFIGURATION'
-  | 'WAITING_OPTIONAL_COMPONENT'
-  | 'FAILED'
-  | 'COMPLETE'
-
-type PipelineStage =
-  | 'INGEST'
-  | 'OCR'
-  | 'STRUCTURE'
-  | 'RULES'
-  | 'PRIMARY_AUDIT'
-  | 'SECONDARY_REVIEW'
-  | 'REVIEW_REPORT'
-  | 'COMPLETE'
-
-type PipelineReport = {
-  status: PipelineStatus
-  current_stage: PipelineStage
-  progress_percent: number
-  failure_code: string | null
-  failure_detail: string | null
-}
-
 type QueueItem = {
   id: string
   file: File
   state: QueueState
   progress: number
   error: string | null
+  notice: string | null
   result: UploadResponse | null
   pipeline: PipelineReport | null
+  providerMode: ProviderExecutionMode
 }
 
 type BatchManifest = {
@@ -67,6 +51,7 @@ type BatchSummary = {
   total_jobs: number
   complete_jobs: number
   waiting_jobs: number
+  cancelled_jobs?: number
   failed_jobs: number
   processing_jobs: number
 }
@@ -99,7 +84,7 @@ function localToday() {
   return `${year}-${month}-${day}`
 }
 
-function pipelineStageLabel(stage: PipelineStage) {
+function pipelineStageLabel(stage: PipelineReport['current_stage']) {
   if (stage === 'INGEST') return '文件已接收'
   if (stage === 'OCR') return '正在识别扫描文本'
   if (stage === 'STRUCTURE') return '正在整理合同结构'
@@ -110,25 +95,34 @@ function pipelineStageLabel(stage: PipelineStage) {
   return '审计完成'
 }
 
+function providerModeCopy(mode: ProviderExecutionMode) {
+  if (mode === 'AUTO_CONTINUE') return '本地阶段完成后自动发送受限证据到 DeepSeek 与 Kimi。'
+  if (mode === 'LOCAL_ONLY') return '只运行本地阶段，除非你之后对具体合同明确批准云端审计。'
+  return '推荐：先完成本地阶段，在发送任何合同证据到 DeepSeek/Kimi 前停下等待你确认。'
+}
+
 function stateLabel(item: QueueItem) {
   if (item.state === 'queued') return '等待上传'
   if (item.state === 'uploading') return `正在上传 ${Math.round(item.progress)}%`
   if (item.state === 'inspecting') return '正在读取文档'
   if (item.state === 'processing') {
+    if (item.pipeline?.status === 'CANCEL_REQUESTED') return '正在安全取消'
     if (item.pipeline?.status === 'QUEUED' || item.pipeline?.status === 'WAITING_WORKER') {
       return '等待后台处理名额'
     }
     return item.pipeline ? pipelineStageLabel(item.pipeline.current_stage) : '正在启动后台审计'
   }
   if (item.state === 'waiting') {
+    if (item.pipeline?.status === 'PAUSED_BEFORE_PROVIDER') return '等待云端发送确认'
     if (item.pipeline?.status === 'WAITING_OPTIONAL_COMPONENT') return '等待可选组件'
     return '等待 API 配置'
   }
+  if (item.state === 'cancelled') return '已取消'
   if (item.state === 'complete') return '审计完成'
   return '处理失败'
 }
 
-function createQueueItem(file: File): QueueItem {
+function createQueueItem(file: File, providerMode: ProviderExecutionMode): QueueItem {
   const error = validateFile(file)
   return {
     id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
@@ -136,8 +130,10 @@ function createQueueItem(file: File): QueueItem {
     state: error ? 'error' : 'queued',
     progress: 0,
     error,
+    notice: null,
     result: null,
     pipeline: null,
+    providerMode,
   }
 }
 
@@ -149,6 +145,8 @@ function IntakeApp() {
   const [batchId, setBatchId] = useState<string | null>(null)
   const [batchError, setBatchError] = useState<string | null>(null)
   const [recentBatch, setRecentBatch] = useState<BatchSummary | null>(null)
+  const [providerMode, setProviderMode] = useState<ProviderExecutionMode>('REQUIRE_APPROVAL')
+  const [actionId, setActionId] = useState<string | null>(null)
   const pollingIds = useRef(new Set<string>())
   const mounted = useRef(true)
   const batchIdRef = useRef<string | null>(null)
@@ -192,6 +190,7 @@ function IntakeApp() {
   const queuedCount = items.filter((item) => item.state === 'queued').length
   const completeCount = items.filter((item) => item.state === 'complete').length
   const waitingCount = items.filter((item) => item.state === 'waiting').length
+  const cancelledCount = items.filter((item) => item.state === 'cancelled').length
   const errorCount = items.filter((item) => item.state === 'error').length
 
   const itemProgress = (item: QueueItem) => {
@@ -222,13 +221,26 @@ function IntakeApp() {
         if (pipeline.status === 'COMPLETE') {
           return { ...item, state: 'complete', progress: 100, pipeline, error: null }
         }
-        if (pipeline.status === 'WAITING_CONFIGURATION' || pipeline.status === 'WAITING_OPTIONAL_COMPONENT') {
+        if (pipeline.status === 'CANCELLED') {
+          return {
+            ...item,
+            state: 'cancelled',
+            progress: pipeline.progress_percent,
+            pipeline,
+            error: null,
+          }
+        }
+        if (
+          pipeline.status === 'WAITING_CONFIGURATION' ||
+          pipeline.status === 'WAITING_OPTIONAL_COMPONENT' ||
+          pipeline.status === 'PAUSED_BEFORE_PROVIDER'
+        ) {
           return {
             ...item,
             state: 'waiting',
             progress: pipeline.progress_percent,
             pipeline,
-            error: pipeline.failure_detail,
+            error: pipeline.status === 'PAUSED_BEFORE_PROVIDER' ? null : pipeline.failure_detail,
           }
         }
         if (pipeline.status === 'FAILED') {
@@ -264,6 +276,8 @@ function IntakeApp() {
         if (
           pipeline.status === 'COMPLETE' ||
           pipeline.status === 'FAILED' ||
+          pipeline.status === 'CANCELLED' ||
+          pipeline.status === 'PAUSED_BEFORE_PROVIDER' ||
           pipeline.status === 'WAITING_CONFIGURATION' ||
           pipeline.status === 'WAITING_OPTIONAL_COMPONENT'
         ) {
@@ -285,12 +299,12 @@ function IntakeApp() {
     }
   }
 
-  const beginPipeline = async (id: string, jobId: string) => {
+  const beginPipeline = async (id: string, jobId: string, mode: ProviderExecutionMode) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/documents/${jobId}/pipeline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ as_of: localToday(), use_semantic: false }),
+        body: JSON.stringify({ as_of: localToday(), use_semantic: false, provider_mode: mode }),
       })
       if (!response.ok) {
         let message = `无法启动后台审计（HTTP ${response.status}）。`
@@ -316,21 +330,22 @@ function IntakeApp() {
     }
   }
 
-  const registerAndBeginPipeline = async (id: string, jobId: string) => {
+  const registerAndBeginPipeline = async (id: string, jobId: string, mode: ProviderExecutionMode) => {
     const currentBatchId = batchIdRef.current ?? (await ensureBatch())
     const response = await fetch(
       `${API_BASE_URL}/api/batches/${encodeURIComponent(currentBatchId)}/jobs/${encodeURIComponent(jobId)}`,
       { method: 'POST' },
     )
     if (!response.ok) throw new Error(`无法登记批次结果（HTTP ${response.status}）。`)
-    await beginPipeline(id, jobId)
+    await beginPipeline(id, jobId, mode)
   }
 
   const retryPipeline = async (item: QueueItem) => {
     if (!item.result) return
+    setActionId(item.id)
     setItems((current) =>
       current.map((candidate) =>
-        candidate.id === item.id ? { ...candidate, state: 'processing', error: null } : candidate,
+        candidate.id === item.id ? { ...candidate, state: 'processing', error: null, notice: null } : candidate,
       ),
     )
     try {
@@ -347,6 +362,105 @@ function IntakeApp() {
             : candidate,
         ),
       )
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const approveCloud = async (item: QueueItem) => {
+    if (!item.result) return
+    setActionId(item.id)
+    try {
+      const pipeline = await approveProvider(item.result.job_id)
+      setItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? { ...candidate, state: 'processing', pipeline, error: null, notice: '已明确批准该合同进入 DeepSeek/Kimi 云端审计。', providerMode: 'REQUIRE_APPROVAL' }
+          : candidate
+      )))
+      void pollPipeline(item.id, item.result.job_id)
+    } catch (caught) {
+      setItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? { ...candidate, error: caught instanceof Error ? caught.message : '无法批准云端审计。' }
+          : candidate
+      )))
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const pauseCloud = async (item: QueueItem) => {
+    if (!item.result) return
+    setActionId(item.id)
+    try {
+      const control = await pauseFutureProviders(item.result.job_id)
+      const notice = control.active_provider
+        ? `当前 ${control.active_provider} 请求已经开始，无法撤回；后续外部模型调用已设置为发送前暂停。`
+        : '已设置为发送前确认；尚未开始的 DeepSeek/Kimi 调用不会自动发送。'
+      setItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? { ...candidate, providerMode: 'REQUIRE_APPROVAL', notice }
+          : candidate
+      )))
+    } catch (caught) {
+      setItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? { ...candidate, error: caught instanceof Error ? caught.message : '无法暂停后续云端调用。' }
+          : candidate
+      )))
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const cancelAudit = async (item: QueueItem) => {
+    if (!item.result) return
+    setActionId(item.id)
+    try {
+      const action = await cancelPipeline(item.result.job_id)
+      setItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? {
+              ...candidate,
+              state: 'processing',
+              error: null,
+              notice: action.provider_in_flight
+                ? `${action.detail} 当前 ${action.control.active_provider ?? '外部模型'} 请求已经开始，无法撤回已发送内容。`
+                : action.detail,
+            }
+          : candidate
+      )))
+      void pollPipeline(item.id, item.result.job_id)
+    } catch (caught) {
+      setItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? { ...candidate, error: caught instanceof Error ? caught.message : '无法取消审计。' }
+          : candidate
+      )))
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  const resumeCancelled = async (item: QueueItem) => {
+    if (!item.result) return
+    setActionId(item.id)
+    try {
+      const pipeline = await resumeCancelledPipeline(item.result.job_id)
+      setItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? { ...candidate, state: 'processing', pipeline, error: null, notice: '已按原云端策略显式重新开始审计。' }
+          : candidate
+      )))
+      void pollPipeline(item.id, item.result.job_id)
+    } catch (caught) {
+      setItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? { ...candidate, error: caught instanceof Error ? caught.message : '无法重新开始审计。' }
+          : candidate
+      )))
+    } finally {
+      setActionId(null)
     }
   }
 
@@ -363,7 +477,7 @@ function IntakeApp() {
       const existing = new Set(current.map((item) => `${item.file.name}::${item.file.size}::${item.file.lastModified}`))
       const additions = files
         .filter((file) => !existing.has(`${file.name}::${file.size}::${file.lastModified}`))
-        .map(createQueueItem)
+        .map((file) => createQueueItem(file, providerMode))
       return [...current, ...additions]
     })
   }
@@ -433,7 +547,7 @@ function IntakeApp() {
                 : candidate,
             ),
           )
-          await registerAndBeginPipeline(activeId, result.job_id)
+          await registerAndBeginPipeline(activeId, result.job_id, item.providerMode)
         } catch (error) {
           setItems((current) =>
             current.map((candidate) =>
@@ -476,7 +590,7 @@ function IntakeApp() {
     setItems((current) =>
       current.map((item) =>
         item.id === id && validateFile(item.file) === null
-          ? { ...item, state: 'queued', progress: 0, error: null, result: null, pipeline: null }
+          ? { ...item, state: 'queued', progress: 0, error: null, notice: null, result: null, pipeline: null }
           : item,
       ),
     )
@@ -504,6 +618,23 @@ function IntakeApp() {
           </a>
         )}
         {batchError && <p className="intake-error-text">{batchError}</p>}
+
+        <div className="provider-boundary-choice" aria-label="云端审计策略">
+          <div>
+            <strong>云端审计</strong>
+            <span>{providerModeCopy(providerMode)}</span>
+          </div>
+          <select
+            value={providerMode}
+            onChange={(event) => setProviderMode(event.target.value as ProviderExecutionMode)}
+            disabled={items.length > 0}
+            aria-label="选择云端审计策略"
+          >
+            <option value="REQUIRE_APPROVAL">发送前确认（推荐）</option>
+            <option value="AUTO_CONTINUE">本地完成后自动继续</option>
+            <option value="LOCAL_ONLY">仅本地处理</option>
+          </select>
+        </div>
 
         <div
           className={`intake-dropzone${dragging ? ' is-dragging' : ''}`}
@@ -536,7 +667,7 @@ function IntakeApp() {
         </div>
 
         <p className="intake-transmission-note">
-          文件会分块写入本机并自动执行完整审计。DeepSeek 主审与 Kimi 二审会把经过边界限制的合同/法律证据上下文发送到对应外部 API；未配置时流程会停下等待，不会静默跳过。
+          合同先在本机分块保存并运行可用的本地处理。任何已经开始的外部 API 请求都无法撤回已发送内容，因此 Law-Rag 会在每次 DeepSeek/Kimi 调用前重新检查你的云端策略与取消状态。
         </p>
 
         {items.length > 0 && (
@@ -546,7 +677,8 @@ function IntakeApp() {
                 <strong>{completeCount}/{items.length}</strong>
                 <span> 审计完成</span>
                 {queuedCount > 0 && <span> · {queuedCount} 个等待上传</span>}
-                {waitingCount > 0 && <span> · {waitingCount} 个等待配置</span>}
+                {waitingCount > 0 && <span> · {waitingCount} 个等待确认/配置</span>}
+                {cancelledCount > 0 && <span> · {cancelledCount} 个已取消</span>}
                 {errorCount > 0 && <span className="intake-error-text"> · {errorCount} 个失败</span>}
               </div>
               <span>{batchProgress}%</span>
@@ -555,7 +687,7 @@ function IntakeApp() {
               <div style={{ width: `${batchProgress}%` }} />
             </div>
 
-            {(completeCount > 0 || waitingCount > 0 || errorCount > 0) && batchId && (
+            {(completeCount > 0 || waitingCount > 0 || cancelledCount > 0 || errorCount > 0) && batchId && (
               <div className="batch-result-entry">
                 <a href={`/results?batch=${encodeURIComponent(batchId)}`}>查看批次结果</a>
                 <span>全部正常完成时会自动进入结果页。</span>
@@ -565,8 +697,15 @@ function IntakeApp() {
             <div className="intake-queue" aria-live="polite">
               {items.map((item) => {
                 const rowProgress = itemProgress(item)
-                const pipelineRetry = Boolean(item.result && (item.pipeline || item.state === 'waiting'))
+                const pausedForProvider = item.pipeline?.status === 'PAUSED_BEFORE_PROVIDER'
+                const retryable = Boolean(
+                  item.result &&
+                  (item.pipeline?.status === 'WAITING_CONFIGURATION' ||
+                    item.pipeline?.status === 'WAITING_OPTIONAL_COMPONENT' ||
+                    item.state === 'error'),
+                )
                 const busy = ['uploading', 'inspecting', 'processing'].includes(item.state)
+                const canCancel = Boolean(item.result && !['complete', 'cancelled'].includes(item.state))
                 return (
                   <article className={`intake-row state-${item.state}`} key={item.id}>
                     <div className="intake-file-copy">
@@ -575,12 +714,13 @@ function IntakeApp() {
                     </div>
                     <div className="intake-row-status">
                       <span>{stateLabel(item)}</span>
-                      {(busy || item.state === 'waiting' || item.state === 'complete') && (
+                      {(busy || item.state === 'waiting' || item.state === 'cancelled' || item.state === 'complete') && (
                         <div className="intake-row-progress" aria-label={`文件进度 ${Math.round(rowProgress)}%`}>
                           <div style={{ width: `${rowProgress}%` }} />
                         </div>
                       )}
-                      {item.error && <small>{item.error}</small>}
+                      {item.error && <small className="intake-error-text">{item.error}</small>}
+                      {item.notice && <small>{item.notice}</small>}
                       {item.result && !item.error && item.state !== 'complete' && (
                         <small>
                           {item.result.page_count} 页
@@ -593,13 +733,25 @@ function IntakeApp() {
                       {item.state === 'complete' && item.result && (
                         <a className="intake-result-link" href={`/workspace?job=${encodeURIComponent(item.result.job_id)}`}>详细审计</a>
                       )}
-                      {(item.state === 'waiting' || item.state === 'error') && pipelineRetry && (
-                        <button type="button" onClick={() => void retryPipeline(item)}>重试审计</button>
+                      {pausedForProvider && (
+                        <button type="button" onClick={() => void approveCloud(item)} disabled={actionId === item.id}>批准云端审计</button>
+                      )}
+                      {item.state === 'processing' && item.providerMode === 'AUTO_CONTINUE' && item.pipeline?.status !== 'CANCEL_REQUESTED' && (
+                        <button type="button" className="quiet" onClick={() => void pauseCloud(item)} disabled={actionId === item.id}>发送前暂停</button>
+                      )}
+                      {(item.state === 'waiting' || item.state === 'error') && retryable && !pausedForProvider && (
+                        <button type="button" onClick={() => void retryPipeline(item)} disabled={actionId === item.id}>重试审计</button>
+                      )}
+                      {item.state === 'cancelled' && item.result && (
+                        <button type="button" onClick={() => void resumeCancelled(item)} disabled={actionId === item.id}>重新开始</button>
+                      )}
+                      {canCancel && item.pipeline?.status !== 'CANCEL_REQUESTED' && (
+                        <button type="button" className="danger-quiet" onClick={() => void cancelAudit(item)} disabled={actionId === item.id}>取消</button>
                       )}
                       {item.state === 'error' && !item.result && validateFile(item.file) === null && (
                         <button type="button" onClick={() => retryUpload(item.id)}>重试上传</button>
                       )}
-                      {!busy && item.state !== 'waiting' && item.id !== activeId && (
+                      {!busy && item.state !== 'waiting' && item.state !== 'cancelled' && item.id !== activeId && (
                         <button type="button" className="quiet" onClick={() => remove(item.id)}>移除</button>
                       )}
                     </div>
@@ -609,7 +761,7 @@ function IntakeApp() {
             </div>
 
             <div className="intake-footnote">
-              进度来自真实上传字节和后台持久化阶段状态。批次只保存 Job ID，不复制合同正文；刷新或重启后可从“最近批次”恢复结果入口。
+              进度来自真实上传字节和后台持久化状态。默认“发送前确认”会先完成本地阶段，再停在外部模型边界；取消/批准意图同样保存在本机，重启不会静默恢复云端调用。
             </div>
           </div>
         )}
