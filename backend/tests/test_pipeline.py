@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -195,3 +196,54 @@ def test_unknown_job_pipeline_start_does_not_create_empty_job_directory(tmp_path
     response = client.post(f"/api/documents/{job_id}/pipeline", json={"as_of": "2026-08-17"})
     assert response.status_code == 404
     assert not (tmp_path / "jobs" / str(job_id)).exists()
+
+
+def test_stage12c_scheduler_limits_are_explicit_and_bounded() -> None:
+    import app.pipeline as pipeline
+
+    assert pipeline.PIPELINE_MAX_WORKERS == 4
+    assert pipeline.LOCAL_STAGE_CONCURRENCY == 2
+    assert pipeline.OCR_STAGE_CONCURRENCY == 1
+    assert pipeline.EXTERNAL_PROVIDER_CONCURRENCY == 2
+
+
+def test_resource_contention_persists_waiting_worker_state(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+    job_id = uuid4()
+    _seed_job(tmp_path, job_id)
+
+    import app.pipeline as pipeline
+
+    now = pipeline._now()
+    report = PipelineReport(
+        job_id=job_id,
+        status=PipelineStatus.RUNNING,
+        current_stage=PipelineStage.STRUCTURE,
+        progress_percent=30,
+        as_of=date(2026, 8, 17),
+        started_at=now,
+        updated_at=now,
+        stages=pipeline._initial_stages(),
+    )
+    pipeline._persist(report)
+
+    semaphore = threading.Semaphore(0)
+    acquired = threading.Event()
+
+    def wait_for_slot() -> None:
+        pipeline._acquire_resource(report, PipelineStage.STRUCTURE, semaphore, "等待本地处理名额。")
+        acquired.set()
+        semaphore.release()
+
+    worker = threading.Thread(target=wait_for_slot)
+    worker.start()
+    waiting = _wait(job_id, {"WAITING_WORKER"})
+    assert waiting["current_stage"] == "STRUCTURE"
+    assert waiting["failure_code"] is None
+    stage = next(item for item in waiting["stages"] if item["stage"] == "STRUCTURE")
+    assert stage["state"] == "WAITING"
+    assert "等待本地处理名额" in stage["detail"]
+
+    semaphore.release()
+    worker.join(timeout=1)
+    assert acquired.is_set()
