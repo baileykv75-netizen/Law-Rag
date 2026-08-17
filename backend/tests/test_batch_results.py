@@ -141,6 +141,22 @@ def test_batch_persists_jobs_and_recent_pointer(tmp_path: Path, monkeypatch) -> 
     assert "合同A" not in serialized
 
 
+def test_empty_new_batch_does_not_hide_last_useful_batch(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+    useful = create_batch()
+    job_id = uuid4()
+    _write_document(tmp_path, job_id, "useful.pdf")
+    register_batch_job(useful.batch_id, job_id)
+
+    empty = create_batch()
+    assert empty.job_ids == []
+
+    recent = summarize_latest_batch()
+    assert recent is not None
+    assert recent.batch_id == useful.batch_id
+    assert recent.total_jobs == 1
+
+
 def test_batch_result_prioritizes_human_review_and_high_risk(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     batch = create_batch()
@@ -151,7 +167,6 @@ def test_batch_result_prioritizes_human_review_and_high_risk(tmp_path: Path, mon
         _write_pipeline(tmp_path, job_id, PipelineStatus.COMPLETE, 100)
         register_batch_job(batch.batch_id, job_id)
 
-    # A completed pipeline without a valid review report fails closed in the summary.
     _write_review(tmp_path, risky_job)
     _write_review(tmp_path, safe_job)
     safe_report_path = tmp_path / "jobs" / str(safe_job) / "review-report.json"
@@ -189,6 +204,20 @@ def test_batch_exposes_waiting_and_failed_without_affecting_other_jobs(tmp_path:
     assert states[failed_job] == BatchJobState.FAILED
     assert summary.waiting_jobs == 1
     assert summary.failed_jobs == 1
+
+
+def test_batch_summary_does_not_create_phantom_job_directory_for_bad_manifest_entry(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+    batch = create_batch()
+    missing_job = uuid4()
+    manifest_path = tmp_path / "batches" / f"{batch.batch_id}.json"
+    payload = __import__("json").loads(manifest_path.read_text(encoding="utf-8"))
+    payload["job_ids"] = [str(missing_job)]
+    manifest_path.write_text(__import__("json").dumps(payload), encoding="utf-8")
+
+    summary = summarize_batch(batch.batch_id)
+    assert summary.jobs[0].state == BatchJobState.INVALID
+    assert not (tmp_path / "jobs" / str(missing_job)).exists()
 
 
 def test_provider_configuration_cors_allows_put_and_delete() -> None:
