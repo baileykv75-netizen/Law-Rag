@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 from pypdf.generic import DictionaryObject, NameObject, StreamObject
 
+import app.main as main_module
 from app.main import app
+from app.upload_streaming import UploadInsufficientStorageError
 
 client = TestClient(app)
 
@@ -185,3 +187,20 @@ def test_corrupt_pdf_returns_explicit_failure(tmp_path: Path, monkeypatch) -> No
 
     assert response.status_code == 422
     assert "PDF" in response.json()["detail"]
+
+
+def test_upload_disk_preflight_returns_507_without_creating_job(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+
+    def no_space(*args, **kwargs):
+        raise UploadInsufficientStorageError("Insufficient local disk space for this upload.")
+
+    monkeypatch.setattr(main_module, "ensure_upload_capacity", no_space)
+    response = client.post(
+        "/api/documents",
+        files={"file": ("fictional.pdf", _pdf_bytes([_native_text()]), "application/pdf")},
+    )
+
+    assert response.status_code == 507
+    assert "disk space" in response.json()["detail"]
+    assert not (tmp_path / "uploads").exists()
