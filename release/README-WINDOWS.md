@@ -10,11 +10,9 @@ Double-click:
 Law-Rag.exe
 ```
 
-The normal double-click path intentionally hides Law-Rag's own console window. The local FastAPI process continues running in the background and the default browser opens Law-Rag.
+The normal double-click path hides Law-Rag's own console window. The local FastAPI process continues running in the background and the default browser opens Law-Rag.
 
-Closing the browser tab does **not** stop the local process. RC2 still has no dedicated tray/quit control, so use Task Manager if you need to stop Law-Rag completely. This is a known desktop-lifecycle limitation rather than an installer requirement.
-
-When `Law-Rag.exe` is launched from an existing PowerShell/CMD window, that existing console remains available for diagnostics and command-line output.
+Closing the browser tab does **not** stop the local process. A dedicated tray/quit control is still pending, so use Task Manager if you need to stop Law-Rag completely. When launched from an existing PowerShell/CMD window, that console remains available for diagnostics.
 
 The launcher binds only to:
 
@@ -24,48 +22,84 @@ http://127.0.0.1:8000/
 
 The browser UI and FastAPI backend are served from the same local process. Node.js, npm, Vite and a separately installed Python runtime are not required on the end-user machine.
 
-## Normal RC2 workflow
-
-The intended user path is:
+## Normal workflow
 
 ```text
 first-run DeepSeek / Kimi setup (or explicit local-only skip)
-  -> drag one or more PDF/JPG/PNG contracts onto the simple intake page
-  -> streamed local upload + bounded background processing
+  -> choose cloud policy
+  -> drag one or more PDF/JPG/PNG contracts onto the intake page
+  -> streamed local upload + bounded local processing
+  -> explicit provider boundary when required
   -> batch result landing page
-  -> open the detailed evidence/review workstation only where needed
+  -> detailed evidence/review workstation only where needed
 ```
 
-Normal users do not need to operate the internal Stage buttons. The legacy manual controls remain available at `/developer` for troubleshooting.
+Normal users do not need internal Stage controls. Manual troubleshooting controls remain under `/developer`.
 
 ### File intake
 
 - multiple files may be queued in one intake batch;
-- the exact per-file limit is **500 MiB**;
-- uploads are copied to the local runtime in fixed chunks rather than loaded wholesale into application memory;
-- disk-space preflight and partial-file cleanup remain fail-closed;
-- browser uploads are sequential by design, while already-uploaded Jobs can process concurrently under bounded backend resource limits.
+- exact per-file limit: **500 MiB**;
+- uploads are copied to local runtime in fixed chunks rather than loaded wholesale into memory;
+- disk-space preflight and partial-file cleanup fail closed;
+- browser uploads are sequential, while already-uploaded Jobs may process concurrently under bounded backend limits.
 
-### Background processing
+## Cloud/provider boundary controls
 
-For a supported contract, the application-owned pipeline performs the required local stages and then the configured provider stages automatically. Progress shown in the UI comes from real upload bytes and persisted pipeline milestones.
+Stage 13A makes provider transmission application-controlled rather than an automatic side effect of upload. The intake screen exposes three policies:
 
-If OCR or provider configuration is missing, or a stage fails, that Job remains visible and can be retried independently. Closing/restarting Law-Rag never silently continues a process-local provider task: any transient `QUEUED/RUNNING/WAITING_WORKER` state left by the prior process is converted to an explicit retry-required state. Already completed artifacts remain available for reuse.
+```text
+发送前确认（推荐）
+本地完成后自动继续
+仅本地处理
+```
 
-### Batch results
+The default normal-user policy is **发送前确认（推荐）**.
 
-Each intake session gets a local batch ID. The batch manifest stores Job IDs/timestamps only; it does not copy contract text into a second result database.
+With that policy, Law-Rag first runs available local work, including document/OCR handling, canonical structure, deterministic rules and construction of the local legal-retrieval/evidence context. The Job then stops at:
 
-The result page prioritizes:
+```text
+PAUSED_BEFORE_PROVIDER
+PROVIDER_APPROVAL_REQUIRED
+```
 
-- human-review-required contracts;
-- material model disagreement / more-evidence states;
-- critical/high/medium risk findings;
-- possible primary-review omissions.
+No DeepSeek/Kimi generation call starts until the user explicitly approves cloud auditing for that Job.
 
-This priority order is **not** a correctness score or legal-validity score. Open a contract's detailed workstation to inspect its contract Evidence, Legal Evidence, DeepSeek/Kimi opinions, deterministic comparison, Agent trace and human-review history.
+`仅本地处理` stops at the same outbound boundary with `LOCAL_ONLY_PROVIDER_DISABLED`. The user can later explicitly approve the Job if cloud review is desired.
 
-The latest useful batch remains discoverable after restarting the application. Empty intake batches do not replace the latest useful batch pointer.
+`本地完成后自动继续` preserves the older automatic-provider behavior for users who deliberately choose it.
+
+### Pause and cancel semantics
+
+Every DeepSeek/Kimi generation call rechecks persistent provider/cancel state immediately before the outbound request. The application records which provider has actually crossed that boundary.
+
+Users can:
+
+- change not-yet-started provider work to `发送前暂停`;
+- approve a paused Job;
+- cancel a queued/local/paused Job;
+- request cancellation while a provider call is already in flight;
+- explicitly restart a cancelled Job.
+
+A crucial limitation is shown explicitly in the UI: **a provider request that has already started cannot be recalled or made unsent**. If cancellation occurs after that boundary, Law-Rag records the request as in flight, waits for the current call to return, and prevents subsequent provider/stage execution. A cancelled Job never resumes merely because the application restarts.
+
+Cancelled state and cloud policy are persisted separately from ordinary progress so a worker cannot overwrite user intent with stale progress writes.
+
+## Background processing and restart behavior
+
+Progress comes from real upload bytes and persisted pipeline milestones. If OCR/provider configuration is missing, provider approval is pending, a Job is cancelled, or a stage fails, that Job remains visible independently of its siblings.
+
+Closing/restarting Law-Rag never silently continues a process-local provider task. Prior transient `QUEUED/RUNNING/WAITING_WORKER` work becomes explicit retry-required state. A persisted cancellation request becomes `CANCELLED`. Already completed local/model artifacts remain available for safe reuse.
+
+If a Job is interrupted rather than cancelled, reopen its results and use `继续 / 重试审计`. Cancelled Jobs use the separate explicit restart action and retain their original cloud policy.
+
+## Batch results
+
+Each intake session has a local batch ID. Its manifest stores Job IDs/timestamps only; it does not duplicate contract text into another result database.
+
+The result page keeps complete, processing, waiting-for-provider/configuration, cancelled, failed and invalid Jobs visible. Ordering prioritizes human-review requirements, material disagreement/more-evidence states, serious risks and possible omissions. This is **not** a correctness or legal-validity score.
+
+Complete Jobs open the existing evidence-level workstation with contract Evidence, Legal Evidence, separate DeepSeek/Kimi opinions, deterministic comparison, Agent trace and append-only human-review history.
 
 ## First-run DeepSeek / Kimi configuration
 
@@ -76,7 +110,7 @@ DeepSeek API Key
 Kimi / Moonshot API Key
 ```
 
-Saved desktop secrets are stored as **Generic Credentials in Windows Credential Manager**, not as plaintext `.env` files or ordinary runtime JSON. Law-Rag never returns the saved secret value to the browser and does not repopulate it into the input box.
+Saved desktop secrets are stored as **Generic Credentials in Windows Credential Manager**, not plaintext `.env` or ordinary runtime JSON. Law-Rag never returns saved secret values to the browser or repopulates them into input fields.
 
 Development/CI environment variables remain supported and take precedence:
 
@@ -85,15 +119,11 @@ DEEPSEEK_API_KEY
 MOONSHOT_API_KEY
 ```
 
-Connection testing is explicit and sends only a fixed tiny non-contract test message. It does not send a contract, filename, Evidence package or audit context. A connection test can still consume a very small amount of provider API usage.
-
-Users may choose `暂时跳过，仅使用本地功能`. Local upload/extraction/rules/legal inspection remain available, while the automatic full pipeline will stop at the provider boundary until the missing provider is configured.
-
-No API key is embedded in the bundle.
+Explicit connection testing sends only a fixed tiny non-contract message. Users may skip provider setup and continue local-only work. No API key is embedded in the bundle.
 
 ## Diagnose without starting
 
-Run these from PowerShell or CMD so diagnostic output remains visible:
+Run from PowerShell/CMD:
 
 ```text
 Law-Rag.exe --diagnose
@@ -104,26 +134,23 @@ Diagnostics are local and non-mutating. They do not call DeepSeek/Kimi, download
 
 ## Included base capabilities
 
-RC2 includes the stable native-PDF/base workflow:
-
 - PDF/JPG/PNG intake;
-- 500 MiB guarded streamed upload path;
-- native PDF extraction and PDFium page rendering;
+- **500 MiB** guarded streamed upload path;
+- native PDF extraction and PDFium rendering;
 - deterministic contract structure and rules;
-- checked-in public curated legal seed compiled into `legal.db`;
+- curated versioned legal seed compiled into `legal.db`;
 - exact + lexical/BM25 legal retrieval;
-- DeepSeek primary / Kimi secondary provider adapters;
-- protected Windows provider-secret onboarding;
+- DeepSeek primary / Kimi secondary adapters;
+- Windows Credential Manager provider-secret onboarding;
 - persistent background pipeline and bounded batch scheduler;
-- persistent batch result landing and restart/retry recovery;
-- professional workstation and Evidence navigation;
-- local runtime/integrity diagnostics.
+- persistent provider-boundary/pause/cancel state;
+- batch result landing and restart recovery;
+- professional evidence workstation;
+- runtime/integrity diagnostics.
 
-The bundled legal seed remains a `CURATED_EXCERPT`, not a complete statement of Chinese law. A no-hit result cannot be interpreted as absence of a legal rule.
+The bundled legal seed remains `CURATED_EXCERPT`, not a complete statement of Chinese law. A no-hit result cannot be interpreted as absence of a legal rule.
 
-## Not included in the base RC
-
-These remain optional external/local extensions:
+## Not included in the base bundle
 
 ```text
 PaddleOCR / PaddlePaddle
@@ -132,60 +159,25 @@ sentence-transformers / PyTorch
 BAAI/bge-small-zh-v1.5 weights
 ```
 
-Therefore **scanned/image-only contracts are not yet a zero-setup RC2 workflow**. They can be accepted by intake, but OCR-required Jobs will wait for the optional OCR runtime instead of silently producing a low-quality audit. Native-text PDF workflows remain available without those components.
+Therefore scanned/image-only contracts are not yet zero-setup. OCR-required Jobs stop at the explicit optional-component boundary rather than silently producing a low-quality audit.
 
 ## Local data
 
-Private jobs are written below the extracted bundle directory at:
+Private Jobs are written below the extracted bundle directory under:
 
 ```text
 runtime/
 ```
 
-This includes uploaded source files, per-Job audit artifacts, human-review history, provider-setup completion state and batch manifests. API secret values are not stored there.
+This contains uploaded source files, Job artifacts, batch manifests, pipeline/control state and human-review history. API secret values are not stored there.
 
-Extract the RC into a normal writable user folder. The packaged public `legal.db` and lexical `retrieval.db` live separately inside the application data collected by PyInstaller; they are not user job data.
-
-RC2 does not yet provide a graphical batch-history cleanup/storage-management screen. Do not delete `runtime/` as a first troubleshooting step because it contains the user's local contracts and audit history.
-
-## Troubleshooting
-
-If the application does not start, open PowerShell/CMD in the extracted folder and run:
-
-```text
-Law-Rag.exe --diagnose
-```
-
-Runtime diagnostics surface missing/stale/corrupt components without destructive auto-repair.
-
-If the application was closed while a Job was actively processing, reopen its batch results and use `继续 / 重试审计`. The application intentionally does not auto-resume external model work after restart.
+Do not delete `runtime/` as a first troubleshooting step. Full history/storage management and application-level at-rest contract encryption remain future work.
 
 ## Release metadata and third-party notices
 
-The bundle includes:
+The bundle includes reproducibility metadata, exact Python dependency records, Vite frontend license data and collected Python/PDFium notices under `_internal/`. These support release review; they are not an automatic declaration that every redistribution obligation has been legally satisfied.
 
-```text
-python-runtime.json
-python-resolved.txt
-_internal/release/release-metadata.json
-_internal/release/public-assets-metadata.json
-_internal/release/dependency-inventory.json
-_internal/frontend-dist/third-party-frontend-licenses.json
-_internal/THIRD-PARTY-NOTICES/python-third-party-notices.json
-_internal/THIRD-PARTY-NOTICES/python/<package>/...
-```
-
-`release-metadata.json` records the source commit, application/toolchain versions, lock/inventory fingerprints and bundled public legal/retrieval fingerprints without a wall-clock build timestamp or private local path.
-
-The Python notice set is generated from the exact isolated Windows release environment. The build fails if the installed pypdfium2 wheel does not expose PDFium/dependency license material for collection.
-
-The frontend license JSON is generated by Vite from the actual locked production dependencies.
-
-These files support reproducibility and dependency/license review. Their presence is evidence for release review, not an automatic legal conclusion that every redistribution obligation has been satisfied.
-
-## RC files outside this folder
-
-Stage 12F packages this folder into:
+The current portable RC files remain:
 
 ```text
 Law-Rag-0.8.0-rc2-windows-x64.zip
@@ -193,6 +185,6 @@ RC-MANIFEST.json
 SHA256SUMS.txt
 ```
 
-The final ZIP is independently extracted and smoke-tested in a clean Windows runner before it is retained as an RC artifact. The Stage 12F smoke covers protected provider setup, a provider-free background pipeline, >50 MiB packaged upload, persistent batch/results, simulated interrupted-work recovery, explicit retry, PDFium rendering, private-data scanning and restart recovery.
+Clean Windows validation extracts the final ZIP and runs base runtime/PDFium checks, the Stage 12 user-flow smoke, and the Stage 13A provider-boundary pause/cancel/resume smoke without real provider keys or paid calls.
 
 Public GitHub Release/tag publication remains a separate explicit owner decision.
