@@ -53,6 +53,7 @@ from .storage import job_issue_primary_audit_path
 
 OCR_REVIEW_THRESHOLD = 0.85
 MAX_PRIMARY_ISSUE_REQUESTS = 256
+MAX_ISSUE_CONTEXT_CHARS = 120_000
 MAX_RELATED_ITEMS = 16
 MAX_TARGET_FALLBACK_ITEMS = 8
 MAX_GLOBAL_FACTS = 64
@@ -326,6 +327,10 @@ def _evidence_sufficiency(context: IssuePrimaryAuditContext, contract_evidence_i
     return IssueEvidenceSufficiency.SUFFICIENT
 
 
+def _context_char_count(context: IssuePrimaryAuditContext) -> int:
+    return len(json.dumps(context.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")))
+
+
 def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext) -> IssuePrimaryAuditResult:
     try:
         raw = json.loads(content)
@@ -406,9 +411,35 @@ def _no_contract_result(context: IssuePrimaryAuditContext) -> IssuePrimaryAuditR
         risk_category=context.topic,
         severity="INFO",
         title=f"合同证据不足：{context.topic}",
-        reasoning_summary="该审查问题没有可验证的目标合同条款，Law-Rag 未让模型 invent 合同证据。",
+        reasoning_summary="该审查问题没有可验证的目标合同条款，Law-Rag 未让模型虚构合同证据。",
         suggestion="人工定位相关条款或改进合同结构化/规划后重新审查。",
         review_reasons=["NO_RELEVANT_CONTRACT_EVIDENCE_SELECTED"],
+        context_fingerprint=context.context_fingerprint,
+    )
+
+
+def _context_budget_result(context: IssuePrimaryAuditContext) -> IssuePrimaryAuditResult:
+    target_ids = [item.canonical_object_id for item in context.target_items]
+    contract_evidence_ids = _unique(eid for item in context.target_items for eid in item.evidence_ids)
+    return IssuePrimaryAuditResult(
+        issue_id=context.issue_id,
+        topic=context.topic,
+        state=IssuePrimaryAuditState.REVIEW_REQUIRED,
+        evidence_sufficiency=_evidence_sufficiency(context, contract_evidence_ids),
+        legal_support_state=context.legal_support_state,
+        legal_conclusion=False,
+        risk_category=context.topic,
+        severity="INFO",
+        title=f"单项审查上下文超出安全预算：{context.topic}",
+        reasoning_summary=(
+            f"该 Issue 的完整证据上下文超过 {MAX_ISSUE_CONTEXT_CHARS} 字符的应用级安全预算。"
+            "Law-Rag 没有截断合同或法律证据，也没有向 DeepSeek 发送残缺上下文。"
+        ),
+        suggestion="人工复核该 Issue；若真实样本中频繁出现，应增加 Issue 内部分层审查，而不是提高截断容忍度。",
+        canonical_object_ids=target_ids,
+        contract_evidence_ids=contract_evidence_ids,
+        legal_evidence_ids=[],
+        review_reasons=["ISSUE_CONTEXT_BUDGET_EXCEEDED"],
         context_fingerprint=context.context_fingerprint,
     )
 
@@ -494,6 +525,12 @@ def run_issue_primary_audit(job_id: UUID, *, provider_name: str = "deepseek", pr
             continue
         if not context.target_items:
             results.append(_no_contract_result(context))
+            _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.IN_PROGRESS, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=warnings))
+            continue
+        context_chars = _context_char_count(context)
+        if context_chars > MAX_ISSUE_CONTEXT_CHARS:
+            results.append(_context_budget_result(context))
+            warnings.append(f"Issue {context.issue_id} context size {context_chars} exceeded the {MAX_ISSUE_CONTEXT_CHARS}-character provider budget; no truncated provider request was sent.")
             _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.IN_PROGRESS, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=warnings))
             continue
         try:
