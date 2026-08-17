@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from .ai_audit_api import router as ai_audit_router
 from .audit_rule_models import DEFAULT_PROFILE_ID, AuditRuleReport
 from .audit_rules import AuditRuleProcessingError, load_audit_rule_report, run_audit_rules
+from .batch_results_api import router as batch_results_router
 from .contract_models import CanonicalContract, StructureSummary
 from .contract_structure import (
     StructureIncompleteError,
@@ -74,12 +75,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 app.include_router(ai_audit_router)
 app.include_router(runtime_health_router)
 app.include_router(pipeline_router)
+app.include_router(batch_results_router)
 
 
 class HealthResponse(BaseModel):
