@@ -60,7 +60,12 @@ class IssueLegalContextArtifact(BaseModel):
     contract_source_fingerprint: str
     contract_content_fingerprint: str
     legal_source_fingerprint: str
+    retrieval_index_fingerprint: str
+    retrieval_schema_version: str | None = None
+    lexical_tokenizer: str | None = None
     lexical_index_version: str | None = None
+    semantic_provider: str | None = None
+    semantic_model: str | None = None
     total_issue_count: int = Field(ge=0)
     total_query_count: int = Field(ge=0)
     issues: list[IssueLegalEvidencePackage] = Field(default_factory=list)
