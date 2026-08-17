@@ -57,6 +57,26 @@ function Stop-LawRag {
     }
 }
 
+function Wait-PipelineStatus {
+    param(
+        [string]$BaseUrl,
+        [string]$JobId,
+        [string[]]$Expected,
+        [int]$Attempts = 50
+    )
+    for ($Attempt = 1; $Attempt -le $Attempts; $Attempt++) {
+        $Pipeline = Invoke-RestMethod -Uri "$BaseUrl/api/documents/$JobId/pipeline" -Method Get -TimeoutSec 10
+        if ($Expected -contains $Pipeline.status) {
+            return $Pipeline
+        }
+        if ($Pipeline.status -eq "FAILED") {
+            throw "Pipeline failed unexpectedly during Stage 12F smoke: $($Pipeline.failure_code) $($Pipeline.failure_detail)"
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "Pipeline did not reach expected status: $($Expected -join ', ')"
+}
+
 $First = $null
 $Second = $null
 try {
@@ -101,9 +121,22 @@ try {
         Invoke-RestMethod -Uri "$BaseUrl/api/batches/$($Batch.batch_id)/jobs/$($Upload.job_id)" -Method Post -TimeoutSec 10 | Out-Null
     }
 
+    # Start one real packaged background pipeline with no provider keys. It may
+    # execute local structure/rules/retrieval work, but must stop before any paid
+    # DeepSeek call at the explicit configuration boundary.
+    $PipelineBody = @{
+        as_of = (Get-Date).ToString("yyyy-MM-dd")
+        use_semantic = $false
+    } | ConvertTo-Json
+    Invoke-RestMethod -Uri "$BaseUrl/api/documents/$($UploadA.job_id)/pipeline" -Method Post -ContentType "application/json" -Body $PipelineBody -TimeoutSec 10 | Out-Null
+    $Waiting = Wait-PipelineStatus -BaseUrl $BaseUrl -JobId $UploadA.job_id -Expected @("WAITING_CONFIGURATION")
+    if ($Waiting.failure_code -ne "DEEPSEEK_NOT_CONFIGURED") {
+        throw "Provider-free packaged pipeline did not stop at the DeepSeek configuration boundary."
+    }
+
     $Summary = Invoke-RestMethod -Uri "$BaseUrl/api/batches/$($Batch.batch_id)" -Method Get -TimeoutSec 10
-    if ($Summary.total_jobs -ne 2) {
-        throw "Batch summary did not retain both uploaded Jobs."
+    if ($Summary.total_jobs -ne 2 -or $Summary.waiting_jobs -lt 1) {
+        throw "Batch summary did not retain both Jobs and the provider-waiting state."
     }
     $ResultsRoute = Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/results?batch=$($Batch.batch_id)" -TimeoutSec 10
     if ($ResultsRoute.StatusCode -ne 200 -or $ResultsRoute.Content -notmatch '<div id="root"></div>') {
@@ -113,6 +146,22 @@ try {
     Stop-LawRag -Process $First.Process
     $First = $null
 
+    # Simulate a process interruption after a stage had become RUNNING. The next
+    # packaged launch must fail closed and require explicit retry instead of
+    # pretending the dead worker is still alive or silently calling a provider.
+    $PipelinePath = Join-Path $Runtime "jobs\$($UploadA.job_id)\pipeline.json"
+    $Interrupted = Get-Content $PipelinePath -Raw | ConvertFrom-Json
+    $Interrupted.status = "RUNNING"
+    $Interrupted.failure_code = $null
+    $Interrupted.failure_detail = $null
+    foreach ($Stage in $Interrupted.stages) {
+        if ($Stage.stage -eq $Interrupted.current_stage) {
+            $Stage.state = "RUNNING"
+            $Stage.finished_at = $null
+        }
+    }
+    $Interrupted | ConvertTo-Json -Depth 30 | Set-Content -Path $PipelinePath -Encoding utf8
+
     $Second = Start-LawRag -ListenPort $Port
     $BaseUrl = $Second.BaseUrl
     $ProviderAfter = Invoke-RestMethod -Uri "$BaseUrl/api/config/providers" -Method Get -TimeoutSec 10
@@ -121,6 +170,17 @@ try {
     }
     if (($ProviderAfter.providers | Where-Object { $_.configured }).Count -ne 0) {
         throw "Synthetic provider secrets were not deleted before restart."
+    }
+
+    $RecoveredPipeline = Invoke-RestMethod -Uri "$BaseUrl/api/documents/$($UploadA.job_id)/pipeline" -Method Get -TimeoutSec 10
+    if ($RecoveredPipeline.status -ne "FAILED" -or $RecoveredPipeline.failure_code -ne "APPLICATION_RESTARTED_RETRY_REQUIRED") {
+        throw "Interrupted pipeline was not converted to explicit retry-required state after restart."
+    }
+
+    Invoke-RestMethod -Uri "$BaseUrl/api/documents/$($UploadA.job_id)/pipeline/retry" -Method Post -TimeoutSec 10 | Out-Null
+    $Retried = Wait-PipelineStatus -BaseUrl $BaseUrl -JobId $UploadA.job_id -Expected @("WAITING_CONFIGURATION")
+    if ($Retried.failure_code -ne "DEEPSEEK_NOT_CONFIGURED") {
+        throw "Explicit retry did not safely resume to the provider configuration boundary."
     }
 
     $Recent = Invoke-RestMethod -Uri "$BaseUrl/api/batches/recent" -Method Get -TimeoutSec 10
@@ -133,7 +193,7 @@ try {
         throw "Recovered batch results route failed after restart."
     }
 
-    Write-Host "[Law-Rag] Stage 12F onboarding, protected secrets, >50 MiB upload, batch persistence, restart recovery, and results-route smoke passed."
+    Write-Host "[Law-Rag] Stage 12F onboarding, protected secrets, >50 MiB upload, provider-free pipeline, explicit interruption recovery, batch persistence, restart recovery, and results-route smoke passed."
 }
 finally {
     if ($First) { Stop-LawRag -Process $First.Process }
