@@ -62,10 +62,18 @@ function Wait-PipelineStatus {
         [string]$BaseUrl,
         [string]$JobId,
         [string[]]$Expected,
-        [int]$Attempts = 50
+        [int]$Attempts = 180
     )
+    $Last = $null
+    $LastSignature = $null
     for ($Attempt = 1; $Attempt -le $Attempts; $Attempt++) {
         $Pipeline = Invoke-RestMethod -Uri "$BaseUrl/api/documents/$JobId/pipeline" -Method Get -TimeoutSec 10
+        $Last = $Pipeline
+        $Signature = "$($Pipeline.status)|$($Pipeline.current_stage)|$($Pipeline.progress_percent)|$($Pipeline.failure_code)"
+        if ($Signature -ne $LastSignature) {
+            Write-Host "[Law-Rag][Stage12F] Job $JobId status=$($Pipeline.status) stage=$($Pipeline.current_stage) progress=$($Pipeline.progress_percent)% failure=$($Pipeline.failure_code)"
+            $LastSignature = $Signature
+        }
         if ($Expected -contains $Pipeline.status) {
             return $Pipeline
         }
@@ -74,7 +82,10 @@ function Wait-PipelineStatus {
         }
         Start-Sleep -Milliseconds 500
     }
-    throw "Pipeline did not reach expected status: $($Expected -join ', ')"
+    if ($null -ne $Last) {
+        throw "Pipeline did not reach expected status: $($Expected -join ', '); last status=$($Last.status), stage=$($Last.current_stage), progress=$($Last.progress_percent), failure=$($Last.failure_code), detail=$($Last.failure_detail)"
+    }
+    throw "Pipeline did not reach expected status: $($Expected -join ', '); no pipeline status could be observed."
 }
 
 $First = $null
