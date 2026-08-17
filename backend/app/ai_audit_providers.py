@@ -19,6 +19,7 @@ from .ai_audit_models import (
     ProviderHealth,
     ProviderUsage,
 )
+from .secret_store import SecretStoreError, resolve_provider_secret
 
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
@@ -98,7 +99,12 @@ class DeepSeekProvider(PrimaryAuditProvider):
     provider_name = "deepseek"
 
     def __init__(self) -> None:
-        self.api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+        try:
+            resolved = resolve_provider_secret("deepseek")
+        except SecretStoreError as exc:
+            raise PrimaryAuditProviderError(f"DeepSeek credential store could not be read: {exc}") from exc
+        self.api_key = resolved.value or ""
+        self.credential_source = resolved.source
         self.base_url = os.getenv("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE_URL).rstrip("/")
         self.model_name = os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL).strip() or DEFAULT_DEEPSEEK_MODEL
 
@@ -109,7 +115,7 @@ class DeepSeekProvider(PrimaryAuditProvider):
                 configured=False,
                 model=self.model_name,
                 base_url=self.base_url,
-                detail="DEEPSEEK_API_KEY is not configured in the local environment.",
+                detail="DeepSeek API key is not configured. Use Law-Rag API Settings or DEEPSEEK_API_KEY for development.",
             )
         return ProviderHealth(
             provider=self.provider_name,
@@ -121,7 +127,7 @@ class DeepSeekProvider(PrimaryAuditProvider):
 
     def generate(self, context: AuditContextPackage) -> ProviderAuditResult:
         if not self.api_key:
-            raise PrimaryAuditProviderError("DEEPSEEK_API_KEY is not configured.")
+            raise PrimaryAuditProviderError("DeepSeek API key is not configured.")
 
         payload = {
             "model": self.model_name,
