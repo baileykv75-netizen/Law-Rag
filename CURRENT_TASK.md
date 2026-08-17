@@ -1,6 +1,6 @@
 # CURRENT_TASK.md
 
-# Stage 11E — Release Candidate Validation and Installer Decision
+# Stage 12 — User-facing Workflow Simplification
 
 ## Status
 
@@ -9,190 +9,141 @@ Stage 11A  COMPLETE — versioned benchmark schema + public synthetic evaluator
 Stage 11B  COMPLETE — layered metrics + failure diagnostics + deterministic CI quality gates
 Stage 11C  COMPLETE — runtime/startup/data-integrity hardening
 Stage 11D  COMPLETE — reproducible Windows onedir bundle + clean-runner validation
-Stage 11E  ACTIVE   — release-candidate validation / distribution and installer decision
+Stage 11E  RC1 VALIDATED — portable Windows RC runs successfully; installer remains deferred
+Stage 12   ACTIVE — user-facing intake, queue, guided configuration and automated pipeline
 ```
 
-Stage 11D selected PyInstaller `onedir`, locked the release toolchain/dependencies, removed Node/Vite from the end-user runtime, generated public legal/retrieval assets, collected exact Python/PDFium and frontend license evidence, generated safe release metadata, and validated the packaged executable on a clean Windows runner. The final Stage 11D smoke also checks bundle privacy, native PDF upload, packaged PDFium rendering, React/API serving and artifact upload.
+The first portable RC validated the packaging/runtime path on CI and on a real Windows desktop. User feedback showed the next highest-value work is not an installer: simplify intake, automate the pipeline, support large/batch files, and guide API configuration.
 
-See:
+## Product goal
 
-- `docs/WINDOWS_PACKAGING.md`
-- `release/README-WINDOWS.md`
-- `release/dependency-inventory.json`
-
-## Goal
-
-Turn the verified Stage 11D portable folder into a **reviewable Release Candidate (RC)** and decide whether Law-Rag actually needs an installer.
-
-Priority:
+The normal user should see only three concepts:
 
 ```text
-freeze RC identity
-  -> create portable distribution artifact + hashes/manifest
-  -> independently validate artifact contents
-  -> define/manual-run user acceptance checklist
-  -> review third-party notices and distribution boundary
-  -> decide portable ZIP vs installer
-  -> only then publish/tag a release if explicitly intended
+first-run configuration
+  -> drag one or more contracts into a simple queue
+  -> wait while Law-Rag runs the required audit pipeline in the background
+  -> open the finished result/workstation
 ```
 
-The default 11E bias is **portable first**. An installer must solve a demonstrated user problem; it is not a maturity badge.
+Internal stages, debug buttons, provider implementation details and development panels must not dominate the normal workflow.
 
 ## Hard boundaries
 
-1. Do not add an installer merely because Stage 11D can build an `.exe`.
-2. Do not add auto-update, registry mutation, file associations, PATH changes, services or startup tasks without a concrete need.
-3. Do not publish a GitHub Release/tag automatically as part of ordinary CI; publication is an explicit release action.
-4. Do not add a repository open-source license without the owner's explicit decision.
-5. Do not represent generated notice files as automatic legal/licensing sign-off; actual release review remains explicit.
-6. No API keys, `.env` with real values, private contracts, user jobs/reviews, logs, model caches or private benchmarks may enter an RC artifact.
-7. OCR/Paddle and semantic/BGE remain outside the first base RC unless a separate verified bundle variant is intentionally approved.
-8. DeepSeek/Kimi credentials remain user-supplied at runtime.
-9. `CURATED_EXCERPT` legal coverage warning must remain visible and unchanged.
-10. Stage 1–10 regressions, Stage 11B quality gates, Stage 11C diagnostics and Stage 11D Windows bundle smoke must remain green.
+1. Keep the existing Stage 10 evidence/review workstation; it becomes the detailed result surface rather than the home page.
+2. Preserve a developer/debug route for manual stage execution and troubleshooting, but do not expose it as the primary user experience.
+3. Progress must come from real pipeline/upload state; do not animate fake percentages toward 99%.
+4. A failed file in a batch must not cancel or corrupt unrelated jobs.
+5. Large uploads must remain streamed to disk; never read a 500 MiB file into application memory merely to validate/upload it.
+6. Batch execution must use bounded concurrency. OCR and provider calls must not fan out without limits.
+7. API keys must never be committed, bundled in RC artifacts, echoed in diagnostics, or stored as ordinary plaintext project files.
+8. First-run configuration must allow local-only use when provider keys are intentionally skipped.
+9. No hidden provider calls: DeepSeek/Kimi external transmission remains explicit in the user-facing audit flow/configuration.
+10. Stage 1–11 regressions, public quality gates and Windows release safety boundaries remain green.
 
-## 11E-1 — RC identity and portable artifact
+## 12A — Minimal intake home + batch queue shell
 
-Define a clear RC identity without pretending it is a final production release.
+Replace the legacy developer-heavy root page with a minimal intake surface:
 
-Target first candidate:
+- large drag/drop target;
+- multi-file selection;
+- one queue row per file;
+- filename, size, state and real upload progress;
+- independent failure/retry/removal semantics;
+- current supported formats remain explicit;
+- old developer controls move to `/developer`;
+- `/workspace` remains the detailed review route.
 
-```text
-Law-Rag 0.8.0-rc1
-Windows x64
-portable onedir ZIP
-```
+12A may use the existing one-file upload API repeatedly; it must not fake downstream audit completion before the orchestrator exists.
 
-Generate alongside the ZIP:
+## 12B — Application-owned background pipeline orchestrator
 
-```text
-SHA256SUMS.txt
-RC-MANIFEST.json
-```
-
-The manifest should contain only safe reproducibility/distribution metadata, including source commit, application version, artifact filename/hash/size, target, toolchain summary, bundled public legal/retrieval fingerprints and notice/report fingerprints.
-
-Do not put absolute local paths, usernames, secrets or private data in the manifest.
-
-## 11E-2 — Independent RC artifact verification
-
-Validation must operate on the **final zipped/unzipped RC artifact**, not only on the pre-archive build directory.
-
-Verify at minimum:
-
-- ZIP extraction succeeds on Windows;
-- expected top-level executable/README/config template exist;
-- release metadata and SHA match the source/build record;
-- no banned private/runtime files are present;
-- `Law-Rag.exe --diagnose --json` succeeds after extraction;
-- backend/API/frontend start from the extracted RC;
-- native PDF upload and packaged PDFium page rendering still pass;
-- public `legal.db` + lexical `retrieval.db` are readable and fingerprint-matched;
-- no provider key is required for base startup;
-- OCR/BGE absence remains an explicit nonfatal optional state.
-
-## 11E-3 — Manual Windows user-acceptance checklist
-
-Create a short human checklist for testing the actual RC on a normal Windows 10/11 desktop outside GitHub Actions.
-
-It should cover the user-visible path, not developer internals:
+Create one server-owned pipeline state machine per Job. The normal path should automatically execute the required stages in order:
 
 ```text
-extract ZIP
-launch Law-Rag.exe
-browser opens
-upload native-text PDF
-open workspace/source page
-run deterministic structure/rules
-inspect legal evidence/retrieval
-verify missing OCR/BGE is explained rather than crashing
-configure provider keys only if intentionally testing AI stages
-close/reopen and confirm local job persistence
-run --diagnose for a controlled failure/missing optional component
+ingest
+ -> OCR only where required
+ -> canonical structure
+ -> deterministic rules
+ -> legal retrieval/context
+ -> DeepSeek primary audit
+ -> Kimi secondary review
+ -> deterministic comparison
+ -> bounded Agent follow-up
+ -> review report ready
 ```
 
-Do not require real private contracts for acceptance. Use fictional/public documents first.
+Requirements:
 
-## 11E-4 — Distribution/licence review packet
+- persisted pipeline state/progress;
+- retryable stage failures without rerunning already valid immutable work unnecessarily;
+- explicit optional/unavailable states for OCR/provider configuration;
+- no open-ended Agent loop;
+- API/UI polling must be read-only and provider-free;
+- a completed Job exposes the existing professional workstation.
 
-Prepare a release-review packet that points to the actual generated notice evidence rather than restating headline licenses.
+## 12C — 500 MiB streaming upload + bounded batch scheduling
 
-Review items include:
+Raise the per-file limit from 50 MiB to 500 MiB while preserving chunked streaming and cleanup-on-failure.
 
-- CPython licensing material;
-- PyInstaller bundling exception/bootloader boundary;
-- exact Python distribution notices;
-- pypdfium2/PDFium dependency license material;
-- Vite generated frontend dependency licenses;
-- public legal-source provenance;
-- explicit statement that PaddleOCR/PaddlePaddle, PyTorch/BGE weights are not bundled in the base RC;
-- repository itself still has no general reuse/open-source license selected.
+Batch policy:
 
-If an obligation is uncertain, mark it `REVIEW_REQUIRED` instead of inventing a compliance conclusion.
+- one Job per file;
+- frontend/client queue may contain many files;
+- bounded concurrent local parsing;
+- OCR default concurrency 1 unless measured otherwise;
+- external model calls default to a small bounded concurrency;
+- disk-space and oversize failures are explicit per file;
+- one failed Job does not abort the batch.
 
-## 11E-5 — Installer decision
+## 12D — First-run DeepSeek/Kimi configuration guide
 
-After portable RC validation, record one explicit decision:
+On first normal launch, show a simple provider setup flow for:
 
 ```text
-PORTABLE_ZIP_SUFFICIENT
-or
-INSTALLER_JUSTIFIED
+DeepSeek API Key
+Kimi / Moonshot API Key
 ```
 
-Installer is justified only if manual RC testing shows concrete friction such as:
+Requirements:
 
-- users cannot reliably choose a writable install/runtime location;
-- shortcuts/uninstall handling materially improve usability;
-- optional components need a controlled installation path;
-- distribution/update requirements genuinely need an installer.
+- password-style inputs; never re-display full saved keys;
+- test-connection actions must be explicit and must not send contract data;
+- user may skip and continue local-only;
+- normal UI shows only configured/not configured;
+- Windows release should use an OS-appropriate protected local secret store rather than writing keys into a plaintext `.env` file;
+- development environment-variable support may remain for contributors/CI.
 
-If the portable ZIP works reliably, prefer it for the first personal-use release and defer MSI/Inno/NSIS.
+Provider defaults remain the currently accepted DeepSeek primary and Kimi secondary adapters unless a later decision supersedes them.
 
-## 11E-6 — Publication boundary
+## 12E — Batch result landing page
 
-Stage 11E may prepare release files and a release-note draft, but must not silently publish/tag a public release.
+After processing:
 
-A publication-ready set should include:
+- show one compact summary row/card per contract;
+- distinguish completed, failed and human-review-required Jobs;
+- summarize high/medium/low findings and material disagreement without inventing a correctness score;
+- click a contract to open the existing `/workspace?job=<id>` detailed evidence/review UI;
+- preserve visible `CURATED_EXCERPT`, evidence and human-review boundaries.
 
-```text
-Law-Rag-0.8.0-rc1-windows-x64.zip
-SHA256SUMS.txt
-RC-MANIFEST.json
-release notes / known limitations
-```
+## 12F — Windows RC2 validation
 
-Known limitations must explicitly mention at least:
+Build a new portable RC only after 12A–12E are stable.
 
-- base RC excludes OCR and semantic ML stacks;
-- DeepSeek/Kimi require user-supplied keys and external transmission;
-- bundled legal corpus is a curated excerpt, not complete law;
-- the software is an audit/review aid, not a replacement for professional legal judgment.
+Validate on clean Windows and real desktop:
 
-## Validation before 11E completion
+- first-run setup/skip flow;
+- single and multi-file intake;
+- large-file streaming behavior with safe synthetic fixtures;
+- queue recovery after one failure;
+- background pipeline progress;
+- result navigation;
+- restart/persistence;
+- no keys/private data in bundle/diagnostics;
+- developer route remains available but not primary.
 
-1. a named RC portable ZIP is produced by a committed deterministic path;
-2. final ZIP hash and manifest are generated and internally consistent;
-3. the extracted RC passes independent Windows smoke, including native PDF/PDFium;
-4. the final RC is scanned for private/runtime/secret files;
-5. a normal-user Windows acceptance checklist exists;
-6. release/notice review packet exists with unresolved items explicit;
-7. installer decision is recorded with evidence rather than aesthetics;
-8. no automatic public publication occurs;
-9. backend regressions and Stage 11B quality gates remain green;
-10. frontend locked production build remains green;
-11. Stage 11D bundle path remains reproducible and green;
-12. release notes accurately state optional-stack/legal-corpus/provider limitations.
+Installer work remains deferred unless RC2 testing demonstrates a concrete need.
 
-## Out of scope unless 11E explicitly concludes `INSTALLER_JUSTIFIED`
+## Current implementation boundary
 
-- MSI/Inno/NSIS implementation;
-- code-signing purchase/setup;
-- Windows SmartScreen reputation work;
-- auto-updater;
-- system-wide service/background daemon;
-- file associations;
-- automatic registry/PATH mutation;
-- bundled OCR/BGE heavyweight variants;
-- automatic public GitHub Release publication;
-- cloud deployment/authentication.
+Start with **12A only**. Do not combine the UI rewrite, background orchestrator, protected secret storage and large-file scheduling into one unreviewable patch.
