@@ -7,13 +7,32 @@ from fastapi import APIRouter, HTTPException, status
 from .pipeline import (
     PipelineError,
     PipelineNotFoundError,
+    approve_provider_and_resume,
+    cancel_pipeline,
     load_pipeline_report,
+    pause_before_provider,
+    resume_cancelled_pipeline,
     retry_pipeline,
+    set_pipeline_provider_mode,
     start_pipeline,
+)
+from .pipeline_control import PipelineControlError, get_pipeline_control
+from .pipeline_control_models import (
+    PipelineControl,
+    PipelineControlActionResponse,
+    PipelineControlUpdateRequest,
 )
 from .pipeline_models import PipelineReport, PipelineStartRequest
 
 router = APIRouter()
+
+
+def _raise_pipeline_http(exc: Exception) -> None:
+    if isinstance(exc, PipelineNotFoundError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if isinstance(exc, PipelineControlError):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post(
@@ -24,16 +43,15 @@ router = APIRouter()
 def start_document_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineReport:
     """Queue the application-owned audit pipeline and return immediately.
 
-    The worker may perform explicit DeepSeek/Kimi calls as part of the normal audit
-    pipeline. Polling the GET endpoint never performs provider work.
+    Provider execution follows the explicit provider_mode in this request. Polling
+    the GET endpoint never performs provider work.
     """
 
     try:
         return start_pipeline(job_id, request)
-    except PipelineNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except PipelineError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
+        _raise_pipeline_http(exc)
+        raise AssertionError("unreachable")
 
 
 @router.get("/api/documents/{job_id}/pipeline", response_model=PipelineReport)
@@ -48,17 +66,108 @@ def get_document_pipeline(job_id: UUID) -> PipelineReport:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
+@router.get("/api/documents/{job_id}/pipeline/control", response_model=PipelineControl)
+def get_document_pipeline_control(job_id: UUID) -> PipelineControl:
+    """Read provider/cancel intent only. Missing legacy control is synthesized and not persisted."""
+
+    try:
+        load_pipeline_report(job_id)
+        return get_pipeline_control(job_id)
+    except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
+        _raise_pipeline_http(exc)
+        raise AssertionError("unreachable")
+
+
+@router.put("/api/documents/{job_id}/pipeline/control", response_model=PipelineControl)
+def update_document_pipeline_control(job_id: UUID, request: PipelineControlUpdateRequest) -> PipelineControl:
+    """Change future provider behavior without killing an active worker/provider request."""
+
+    try:
+        return set_pipeline_provider_mode(job_id, request.provider_mode)
+    except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
+        _raise_pipeline_http(exc)
+        raise AssertionError("unreachable")
+
+
+@router.post(
+    "/api/documents/{job_id}/pipeline/approve-provider",
+    response_model=PipelineReport,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def approve_document_provider(job_id: UUID) -> PipelineReport:
+    """Explicitly approve the bounded DeepSeek + Kimi provider phase and resume."""
+
+    try:
+        return approve_provider_and_resume(job_id)
+    except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
+        _raise_pipeline_http(exc)
+        raise AssertionError("unreachable")
+
+
+@router.post(
+    "/api/documents/{job_id}/pipeline/pause-provider",
+    response_model=PipelineControl,
+)
+def pause_document_provider(job_id: UUID) -> PipelineControl:
+    """Require approval before any provider call that has not already started."""
+
+    try:
+        return pause_before_provider(job_id)
+    except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
+        _raise_pipeline_http(exc)
+        raise AssertionError("unreachable")
+
+
+@router.post(
+    "/api/documents/{job_id}/pipeline/cancel",
+    response_model=PipelineControlActionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def cancel_document_pipeline(job_id: UUID) -> PipelineControlActionResponse:
+    """Persist a cooperative cancel request.
+
+    If an external request has already crossed the provider boundary, that request
+    cannot be retracted; Law-Rag stops before any subsequent stage.
+    """
+
+    try:
+        report, control = cancel_pipeline(job_id)
+        in_flight = control.active_provider is not None
+        return PipelineControlActionResponse(
+            control=control,
+            provider_in_flight=in_flight,
+            detail=report.failure_detail or "取消请求已记录。",
+        )
+    except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
+        _raise_pipeline_http(exc)
+        raise AssertionError("unreachable")
+
+
+@router.post(
+    "/api/documents/{job_id}/pipeline/resume",
+    response_model=PipelineReport,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def resume_document_pipeline(job_id: UUID) -> PipelineReport:
+    """Explicitly restart a previously cancelled pipeline with its existing provider policy."""
+
+    try:
+        return resume_cancelled_pipeline(job_id)
+    except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
+        _raise_pipeline_http(exc)
+        raise AssertionError("unreachable")
+
+
 @router.post(
     "/api/documents/{job_id}/pipeline/retry",
     response_model=PipelineReport,
     status_code=status.HTTP_202_ACCEPTED,
 )
 def retry_document_pipeline(job_id: UUID) -> PipelineReport:
-    """Resume a failed/waiting pipeline using its original as_of and semantic settings."""
+    """Resume a failed/waiting pipeline using its original settings and provider policy."""
 
     try:
         return retry_pipeline(job_id)
-    except PipelineNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except PipelineError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
+        _raise_pipeline_http(exc)
+        raise AssertionError("unreachable")
