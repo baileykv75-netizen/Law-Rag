@@ -58,6 +58,27 @@ jobs:
         with:
           node-version: '22.23.2'
           package-manager-cache: false
+      - name: Smoke Windows Credential Manager provider secret storage
+        working-directory: backend
+        shell: pwsh
+        env:
+          PYTHONPATH: .
+        run: |
+          @'
+          from app.secret_store import delete_secure_secret, read_secure_secret, resolve_provider_secret, write_secure_secret
+          secret = "law-rag-stage12d-synthetic-secret"
+          delete_secure_secret("deepseek")
+          try:
+              write_secure_secret("deepseek", secret)
+              assert read_secure_secret("deepseek") == secret
+              resolved = resolve_provider_secret("deepseek")
+              assert resolved.value == secret
+              assert resolved.source == "windows_credential_manager"
+          finally:
+              delete_secure_secret("deepseek")
+          assert read_secure_secret("deepseek") is None
+          print("Windows Credential Manager round-trip: OK")
+          '@ | python -
       - name: Build Windows onedir bundle from isolated exact lock
         shell: pwsh
         run: ./release/build-windows.ps1
