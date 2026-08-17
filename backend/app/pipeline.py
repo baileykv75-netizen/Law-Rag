@@ -298,24 +298,6 @@ def _checkpoint_cancel(report: PipelineReport) -> bool:
         return False
 
 
-def _provider_boundary(report: PipelineReport, stage: PipelineStage) -> bool:
-    try:
-        assert_provider_allowed(report.job_id)
-        return True
-    except PipelineCancellationRequested:
-        _mark_cancelled(report)
-        return False
-    except ProviderBoundaryPaused as exc:
-        _mark_waiting(
-            report,
-            stage,
-            status=PipelineStatus.PAUSED_BEFORE_PROVIDER,
-            code=exc.code,
-            detail=exc.detail,
-        )
-        return False
-
-
 def _load_document(job_id: UUID) -> DocumentInspection:
     try:
         document_payload = json.loads(job_document_path(job_id).read_text(encoding="utf-8"))
@@ -415,26 +397,39 @@ def _run_primary_stage(report: PipelineReport) -> None:
         except Exception:
             pass
 
-    _acquire_resource(
-        report,
-        PipelineStage.PRIMARY_AUDIT,
-        _EXTERNAL_PROVIDER_SEMAPHORE,
-        "等待外部模型调用名额。",
-    )
+    provider_slot_acquired = False
     provider_started = False
-    try:
-        _mark_running(report, PipelineStage.PRIMARY_AUDIT, "正在检索法律依据并准备 DeepSeek 主审。")
+
+    def gate_provider() -> None:
+        assert_provider_allowed(job_id)
+
+    def begin_outbound_provider() -> None:
+        nonlocal provider_slot_acquired, provider_started
+        _acquire_resource(
+            report,
+            PipelineStage.PRIMARY_AUDIT,
+            _EXTERNAL_PROVIDER_SEMAPHORE,
+            "本地法律检索已完成，等待外部模型调用名额。",
+        )
+        provider_slot_acquired = True
+        _mark_running(report, PipelineStage.PRIMARY_AUDIT, "本地法律检索已完成，正在调用 DeepSeek 主审。")
         begin_provider_call(job_id, "deepseek")
         provider_started = True
+
+    try:
+        _mark_running(report, PipelineStage.PRIMARY_AUDIT, "正在本机构建法律检索与受限审计证据上下文。")
         run_primary_ai_audit(
             job_id,
             AiAuditRunRequest(as_of=report.as_of, provider="deepseek", use_semantic=report.use_semantic),
+            provider_gate=gate_provider,
+            before_provider_generate=begin_outbound_provider,
         )
         _mark_done(report, PipelineStage.PRIMARY_AUDIT, detail="法律检索与 DeepSeek 主审已完成。")
     finally:
         if provider_started:
             finish_provider_call(job_id, "deepseek")
-        _EXTERNAL_PROVIDER_SEMAPHORE.release()
+        if provider_slot_acquired:
+            _EXTERNAL_PROVIDER_SEMAPHORE.release()
 
 
 def _run_secondary_stage(report: PipelineReport) -> None:
@@ -457,26 +452,39 @@ def _run_secondary_stage(report: PipelineReport) -> None:
         except Exception:
             pass
 
-    _acquire_resource(
-        report,
-        PipelineStage.SECONDARY_REVIEW,
-        _EXTERNAL_PROVIDER_SEMAPHORE,
-        "等待外部模型调用名额。",
-    )
+    provider_slot_acquired = False
     provider_started = False
-    try:
-        _mark_running(report, PipelineStage.SECONDARY_REVIEW, "正在准备 Kimi 独立二审。")
+
+    def gate_provider() -> None:
+        assert_provider_allowed(job_id)
+
+    def begin_outbound_provider() -> None:
+        nonlocal provider_slot_acquired, provider_started
+        _acquire_resource(
+            report,
+            PipelineStage.SECONDARY_REVIEW,
+            _EXTERNAL_PROVIDER_SEMAPHORE,
+            "本地二审上下文已准备，等待外部模型调用名额。",
+        )
+        provider_slot_acquired = True
+        _mark_running(report, PipelineStage.SECONDARY_REVIEW, "本地二审上下文已准备，正在调用 Kimi 独立二审。")
         begin_provider_call(job_id, "kimi")
         provider_started = True
+
+    try:
+        _mark_running(report, PipelineStage.SECONDARY_REVIEW, "正在本机重建并验证 Kimi 二审证据上下文。")
         run_secondary_review(
             job_id,
             SecondaryReviewRunRequest(provider="kimi", use_semantic=report.use_semantic),
+            provider_gate=gate_provider,
+            before_provider_generate=begin_outbound_provider,
         )
         _mark_done(report, PipelineStage.SECONDARY_REVIEW, detail="Kimi 二审已完成。")
     finally:
         if provider_started:
             finish_provider_call(job_id, "kimi")
-        _EXTERNAL_PROVIDER_SEMAPHORE.release()
+        if provider_slot_acquired:
+            _EXTERNAL_PROVIDER_SEMAPHORE.release()
 
 
 def _run_review_stage(report: PipelineReport) -> None:
@@ -535,12 +543,8 @@ def _run_pipeline(job_id: UUID) -> None:
         _run_rules_stage(report)
         if not _checkpoint_cancel(report):
             return
-        if not _provider_boundary(report, PipelineStage.PRIMARY_AUDIT):
-            return
         _run_primary_stage(report)
         if not _checkpoint_cancel(report):
-            return
-        if not _provider_boundary(report, PipelineStage.SECONDARY_REVIEW):
             return
         _run_secondary_stage(report)
         if not _checkpoint_cancel(report):
