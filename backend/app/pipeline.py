@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import threading
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -85,6 +84,11 @@ _STAGE_SPECS: list[tuple[PipelineStage, str, int]] = [
 
 _THREADS: dict[str, threading.Thread] = {}
 _THREADS_LOCK = threading.Lock()
+# Stage 12B chooses the safest batch behavior: one complete audit pipeline at a
+# time. Stage 12C may split this into measured local/OCR/provider concurrency
+# limits, but ordinary multi-file intake must never create unbounded model/OCR
+# fan-out in the meantime.
+_EXECUTION_SEMAPHORE = threading.Semaphore(1)
 
 
 def _now() -> datetime:
@@ -433,6 +437,11 @@ def _run_pipeline(job_id: UUID) -> None:
                 _THREADS.pop(str(job_id), None)
 
 
+def _run_pipeline_serialized(job_id: UUID) -> None:
+    with _EXECUTION_SEMAPHORE:
+        _run_pipeline(job_id)
+
+
 def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineReport:
     _ensure_job_exists(job_id)
     existing = _load_report_if_present(job_id)
@@ -476,7 +485,7 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
         if active is not None and active.is_alive():
             return load_pipeline_report(job_id)
         thread = threading.Thread(
-            target=_run_pipeline,
+            target=_run_pipeline_serialized,
             args=(job_id,),
             name=f"law-rag-pipeline-{job_id}",
             daemon=True,
