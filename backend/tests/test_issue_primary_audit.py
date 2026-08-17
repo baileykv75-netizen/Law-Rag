@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import date
 from pathlib import Path
 from uuid import uuid4
@@ -28,7 +27,6 @@ from app.contract_models import (
 )
 from app.issue_legal_context import build_issue_legal_context
 from app.issue_primary_audit import (
-    IssuePrimaryAuditError,
     IssuePrimaryAuditValidationError,
     build_issue_primary_contexts,
     load_issue_primary_audit,
@@ -45,7 +43,12 @@ from app.legal.importer import import_manifest
 from app.legal.retrieval import build_retrieval_index
 from app.main import app
 from app.models import SourceMethod
-from app.pipeline_control import PipelineCancellationRequested, ensure_pipeline_control, request_pipeline_cancel
+from app.pipeline_control import (
+    PipelineCancellationRequested,
+    clear_pipeline_cancel,
+    ensure_pipeline_control,
+    request_pipeline_cancel,
+)
 from app.pipeline_control_models import ProviderExecutionMode
 from app.storage import job_audit_plan_path, job_contract_path
 
@@ -248,6 +251,7 @@ def test_contract_only_supported_finding_is_allowed_without_false_legal_claim(tm
     assert result.state == IssuePrimaryAuditState.SUPPORTED_FINDING
     assert result.legal_conclusion is False
     assert result.legal_evidence_ids == []
+    assert result.evidence_sufficiency.value == "INSUFFICIENT_LEGAL_CORPUS"
 
 
 class CancelAfterFirstProvider(IssuePrimaryAuditProvider):
@@ -283,6 +287,41 @@ class CancelAfterFirstProvider(IssuePrimaryAuditProvider):
         return ProviderAuditResult(provider=self.provider_name, model=self.model_name, content=content, raw_response_hash=f"hash-{self.calls}")
 
 
+class ResumeSameProvider(IssuePrimaryAuditProvider):
+    provider_name = "test-cancel"
+    model_name = "test-cancel-v1"
+
+    def __init__(self):
+        self.calls = 0
+
+    def health(self) -> ProviderHealth:
+        return ProviderHealth(provider=self.provider_name, configured=True, model=self.model_name, detail="fixture")
+
+    def generate(self, context) -> ProviderAuditResult:
+        self.calls += 1
+        target = context.target_items[0]
+        legal = context.legal_evidence[0] if context.legal_evidence else None
+        draft = ModelIssuePrimaryAuditDraft(
+            state=IssuePrimaryAuditState.SUPPORTED_FINDING if legal else IssuePrimaryAuditState.INSUFFICIENT_EVIDENCE,
+            legal_conclusion=bool(legal),
+            risk_category=context.topic,
+            severity="MEDIUM" if legal else "INFO",
+            title="resume fixture",
+            reasoning_summary="resume fixture",
+            suggestion="resume fixture",
+            canonical_object_ids=[target.canonical_object_id],
+            contract_evidence_ids=target.evidence_ids[:1],
+            legal_evidence_ids=[legal.legal_evidence_id] if legal else [],
+        )
+        content = draft.model_dump_json()
+        return ProviderAuditResult(
+            provider=self.provider_name,
+            model=self.model_name,
+            content=content,
+            raw_response_hash=f"resume-hash-{self.calls}",
+        )
+
+
 def test_cancellation_between_issues_checkpoints_completed_work_without_false_complete(tmp_path: Path, monkeypatch) -> None:
     job_id, _, _ = _prepare(tmp_path, monkeypatch)
     provider = CancelAfterFirstProvider(job_id)
@@ -296,6 +335,26 @@ def test_cancellation_between_issues_checkpoints_completed_work_without_false_co
     assert len(artifact.results) == 1
     assert len(artifact.provider_calls) == 1
     assert provider.calls == 1
+
+
+def test_resume_reuses_completed_issue_and_calls_provider_only_for_remaining_issue(tmp_path: Path, monkeypatch) -> None:
+    job_id, _, _ = _prepare(tmp_path, monkeypatch)
+    first = CancelAfterFirstProvider(job_id)
+    with pytest.raises(PipelineCancellationRequested):
+        run_issue_primary_audit(job_id, provider_override=first)
+    assert first.calls == 1
+
+    clear_pipeline_cancel(job_id)
+    resumed_provider = ResumeSameProvider()
+    artifact = run_issue_primary_audit(job_id, provider_override=resumed_provider)
+
+    assert artifact.status == IssuePrimaryAuditStatus.COMPLETE
+    assert artifact.completed_issue_count == 2
+    assert len(artifact.results) == 2
+    assert len(artifact.provider_calls) == 2
+    assert resumed_provider.calls == 1
+    assert artifact.provider_calls[0].raw_response_hash == "hash-1"
+    assert artifact.provider_calls[1].raw_response_hash == "resume-hash-1"
 
 
 def test_stage13d_and_stage13e_routes_are_reachable_from_main_app(tmp_path: Path, monkeypatch) -> None:
