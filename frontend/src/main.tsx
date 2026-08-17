@@ -29,7 +29,9 @@ createRoot(document.getElementById('root')!).render(
     {isWorkspaceRoute ? (
       <WorkspaceApp />
     ) : isResultsRoute ? (
-      <BatchResultsApp />
+      <ProviderSetupGate>
+        <BatchResultsApp />
+      </ProviderSetupGate>
     ) : isDeveloperRoute ? (
       <>
         <div className="workspace-launch-strip">
