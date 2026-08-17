@@ -177,7 +177,23 @@ def _summarize_job(job_id: UUID) -> BatchJobResult:
             needs_attention=True,
             priority_rank=4000,
         )
-    if status in {"WAITING_CONFIGURATION", "WAITING_OPTIONAL_COMPONENT"}:
+    if status == "CANCELLED":
+        return BatchJobResult(
+            job_id=job_id,
+            filename=document.filename,
+            state=BatchJobState.CANCELLED,
+            progress_percent=pipeline.progress_percent,
+            pipeline_status=status,
+            failure_code=pipeline.failure_code,
+            failure_detail=pipeline.failure_detail,
+            needs_attention=False,
+            priority_rank=2000,
+        )
+    if status in {
+        "WAITING_CONFIGURATION",
+        "WAITING_OPTIONAL_COMPONENT",
+        "PAUSED_BEFORE_PROVIDER",
+    }:
         return BatchJobResult(
             job_id=job_id,
             filename=document.filename,
@@ -249,6 +265,7 @@ def summarize_batch(batch_id: UUID) -> BatchResultSummary:
         total_jobs=len(jobs),
         complete_jobs=sum(item.state == BatchJobState.COMPLETE for item in jobs),
         waiting_jobs=sum(item.state == BatchJobState.WAITING for item in jobs),
+        cancelled_jobs=sum(item.state == BatchJobState.CANCELLED for item in jobs),
         failed_jobs=sum(item.state in {BatchJobState.FAILED, BatchJobState.INVALID} for item in jobs),
         human_review_required_jobs=sum(item.human_review_required for item in jobs),
         processing_jobs=sum(item.state == BatchJobState.PROCESSING for item in jobs),
