@@ -2,7 +2,7 @@ import { DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
-const CURRENT_MAX_BYTES = 50 * 1024 * 1024
+const CURRENT_MAX_BYTES = 500 * 1024 * 1024
 
 type QueueState =
   | 'queued'
@@ -23,6 +23,7 @@ type UploadResponse = {
 
 type PipelineStatus =
   | 'QUEUED'
+  | 'WAITING_WORKER'
   | 'RUNNING'
   | 'WAITING_CONFIGURATION'
   | 'WAITING_OPTIONAL_COMPONENT'
@@ -74,7 +75,7 @@ function validateFile(file: File): string | null {
   }
   if (file.size === 0) return '文件为空。'
   if (file.size > CURRENT_MAX_BYTES) {
-    return '当前版本单文件上限仍为 50 MB；500 MB 流式上传将在 12C 接入。'
+    return '单文件上限为 500 MB。'
   }
   return null
 }
@@ -103,6 +104,9 @@ function stateLabel(item: QueueItem) {
   if (item.state === 'uploading') return `正在上传 ${Math.round(item.progress)}%`
   if (item.state === 'inspecting') return '正在读取文档'
   if (item.state === 'processing') {
+    if (item.pipeline?.status === 'QUEUED' || item.pipeline?.status === 'WAITING_WORKER') {
+      return '等待后台处理名额'
+    }
     return item.pipeline ? pipelineStageLabel(item.pipeline.current_stage) : '正在启动后台审计'
   }
   if (item.state === 'waiting') {
@@ -490,11 +494,11 @@ function IntakeApp() {
           <div className="intake-drop-icon" aria-hidden="true">＋</div>
           <h2>拖入合同文件</h2>
           <p>也可以点击选择多个文件</p>
-          <span>PDF · JPG · PNG</span>
+          <span>PDF · JPG · PNG · 单文件最大 500 MB</span>
         </div>
 
         <p className="intake-transmission-note">
-          文件接收后会自动执行完整审计。DeepSeek 主审与 Kimi 二审会把经过边界限制的合同/法律证据上下文发送到对应外部 API；未配置时流程会停下等待，不会静默跳过。
+          文件会分块写入本机并自动执行完整审计。DeepSeek 主审与 Kimi 二审会把经过边界限制的合同/法律证据上下文发送到对应外部 API；未配置时流程会停下等待，不会静默跳过。
         </p>
 
         {items.length > 0 && (
@@ -562,7 +566,7 @@ function IntakeApp() {
             </div>
 
             <div className="intake-footnote">
-              进度来自本地上传与持久化后台阶段状态，不使用自动缓慢增长的假进度。当前单文件仍限 50 MB；500 MB 与批量并发调度留在 12C。
+              进度来自真实上传字节和后台持久化阶段状态。大文件按 1 MB 分块写入本机；后台任务使用受控并发，不会把 OCR 或模型请求无限并行。
             </div>
           </div>
         )}
