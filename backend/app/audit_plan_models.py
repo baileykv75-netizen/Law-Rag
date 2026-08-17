@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .ai_audit_models import ProviderUsage
 
-AUDIT_PLAN_SCHEMA_VERSION = "1.0.0"
-AUDIT_PLANNER_VERSION = "stage13b-1.0.0"
+AUDIT_PLAN_SCHEMA_VERSION = "1.1.0"
+AUDIT_PLANNER_VERSION = "stage13c-1.0.0"
 
 
 class ContractType(str, Enum):
@@ -41,6 +41,22 @@ class ReviewPriority(str, Enum):
     NORMAL = "NORMAL"
     IMPORTANT = "IMPORTANT"
     HIGH_ATTENTION = "HIGH_ATTENTION"
+
+
+class AuditPlanPlanningMode(str, Enum):
+    DIRECT = "DIRECT"
+    HIERARCHICAL = "HIERARCHICAL"
+
+
+class AuditPlanPassType(str, Enum):
+    DIRECT = "DIRECT"
+    CHUNK = "CHUNK"
+    GLOBAL = "GLOBAL"
+
+
+class AuditPlanningCoverageState(str, Enum):
+    REVIEWED_WITH_ISSUE = "REVIEWED_WITH_ISSUE"
+    REVIEWED_NO_SPECIFIC_ISSUE = "REVIEWED_NO_SPECIFIC_ISSUE"
 
 
 class PlannerContractItem(BaseModel):
@@ -133,6 +149,24 @@ class AuditPlanIssue(BaseModel):
     legacy_hint_topics: list[str] = Field(default_factory=list)
 
 
+class AuditPlanPass(BaseModel):
+    pass_id: str
+    pass_type: AuditPlanPassType
+    contract_object_ids: list[str] = Field(default_factory=list)
+    input_fingerprint: str
+    response_hash: str
+    provider_request_id: str | None = None
+    provider_usage: ProviderUsage = Field(default_factory=ProviderUsage)
+
+
+class AuditPlanningCoverage(BaseModel):
+    canonical_object_id: str
+    object_type: str
+    chunk_ids: list[str] = Field(default_factory=list)
+    state: AuditPlanningCoverageState
+    issue_ids: list[str] = Field(default_factory=list)
+
+
 class AuditPlan(BaseModel):
     schema_version: str = AUDIT_PLAN_SCHEMA_VERSION
     planner_version: str = AUDIT_PLANNER_VERSION
@@ -150,6 +184,10 @@ class AuditPlan(BaseModel):
     provider_request_id: str | None = None
     provider_finish_reason: str | None = None
     provider_usage: ProviderUsage = Field(default_factory=ProviderUsage)
+    planning_mode: AuditPlanPlanningMode = AuditPlanPlanningMode.DIRECT
+    planner_passes: list[AuditPlanPass] = Field(default_factory=list)
+    coverage: list[AuditPlanningCoverage] = Field(default_factory=list)
+    coverage_complete: bool = False
     issues: list[AuditPlanIssue] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
