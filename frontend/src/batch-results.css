@@ -63,6 +63,21 @@
   opacity: 0.55;
 }
 
+.batch-result-actions button.quiet {
+  color: #667085;
+  background: #f9fafb;
+}
+
+.batch-result-actions button.danger-quiet {
+  color: #b54747;
+  border-color: #efd0d0;
+  background: #fffafa;
+}
+
+.batch-result-actions button.danger-quiet:hover:not(:disabled) {
+  border-color: #dda9a9;
+}
+
 .batch-results-header-actions .quiet-link {
   color: #667085;
 }
@@ -134,6 +149,16 @@
 
 .batch-result-card.needs-attention {
   border-color: #f2b8b5;
+}
+
+.batch-result-card.state-cancelled {
+  border-color: #d6dae1;
+  background: #fafbfc;
+}
+
+.batch-result-card.state-cancelled .batch-state-badge {
+  background: #eef0f3;
+  color: #667085;
 }
 
 .batch-result-title-row {
