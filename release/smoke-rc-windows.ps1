@@ -68,7 +68,12 @@ try {
         throw "Extracted portable RC Stage 12F user-flow smoke failed with exit code $LASTEXITCODE"
     }
 
-    Write-Host "[Law-Rag] Extracted RC hash/metadata/bundled-guide/runtime/PDFium and Stage 12F user-flow smoke passed."
+    & (Join-Path $PSScriptRoot "smoke-stage13a-windows.ps1") -BundleDir $ExtractedBundle -Port ($Port + 20)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Extracted portable RC Stage 13A provider-boundary smoke failed with exit code $LASTEXITCODE"
+    }
+
+    Write-Host "[Law-Rag] Extracted RC hash/metadata/runtime/PDFium, Stage 12F user flow, and Stage 13A provider boundary smoke passed."
 }
 finally {
     if (Test-Path $ExtractRoot) {
