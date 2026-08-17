@@ -11,18 +11,19 @@ from pydantic import ValidationError
 
 from .audit_plan_models import (
     AuditPlan,
+    AuditPlanIssue,
     AuditPlanPass,
     AuditPlanPassType,
     AuditPlanPlanningMode,
+    AuditPlanSource,
     AuditPlanningCoverage,
     AuditPlanningCoverageState,
     AuditPlannerInput,
-    ContractType,
     ModelAuditPlanDraft,
-    ModelAuditPlanIssueDraft,
     PlannerContractItem,
     PlannerGlobalFact,
     PlannerProviderResult,
+    ReviewPriority,
 )
 from .audit_planner import (
     DIRECT_PLANNER_TEXT_CHAR_LIMIT,
@@ -45,6 +46,7 @@ from .storage import job_audit_plan_path
 
 HIERARCHICAL_CHUNK_TARGET_CHARS = 18_000
 HIERARCHICAL_CHUNK_MAX_ITEMS = 24
+MAX_HIERARCHICAL_PROVIDER_PASSES = 256
 GLOBAL_INDEX_TARGET_CHARS = 36_000
 GLOBAL_INDEX_MIN_PREVIEW_CHARS = 24
 GLOBAL_INDEX_MAX_PREVIEW_CHARS = 180
@@ -155,6 +157,11 @@ def build_planner_chunks(items: list[PlannerContractItem]) -> list[PlannerChunk]
         if current_chars >= HIERARCHICAL_CHUNK_TARGET_CHARS or len(current) >= HIERARCHICAL_CHUNK_MAX_ITEMS:
             flush()
     flush()
+    if len(chunks) + 1 > MAX_HIERARCHICAL_PROVIDER_PASSES:
+        raise HierarchicalAuditPlannerError(
+            f"Hierarchical planning would require {len(chunks) + 1} external Planner passes, above the bounded limit "
+            f"of {MAX_HIERARCHICAL_PROVIDER_PASSES}. No Planner request was started."
+        )
     return chunks
 
 
@@ -208,32 +215,70 @@ def _compact_preview(text: str, limit: int) -> str:
     return single[: max(0, limit - 1)].rstrip() + "…"
 
 
+def _topic_key(value: str) -> str:
+    return "".join(value.lower().split())
+
+
+def _priority_max(left: ReviewPriority, right: ReviewPriority) -> ReviewPriority:
+    rank = {ReviewPriority.NORMAL: 0, ReviewPriority.IMPORTANT: 1, ReviewPriority.HIGH_ATTENTION: 2}
+    return left if rank[left] >= rank[right] else right
+
+
 def _global_summary_facts(chunk_drafts: list[ChunkDraft]) -> list[PlannerGlobalFact]:
+    """Compact local Planner outputs for global synthesis without dropping final-plan data.
+
+    Full local drafts are preserved separately and merged into the final AuditPlan after
+    the global pass. The global pass receives a deterministic topic-level summary only,
+    so its bounded input does not grow with every local question/retrieval phrase.
+    """
+
     facts: list[PlannerGlobalFact] = []
+    classifications: dict[str, int] = {}
+    aggregated: dict[str, dict[str, object]] = {}
+
     for chunk_draft in chunk_drafts:
         draft = chunk_draft.draft
+        classification = f"{draft.contract_type.value}/{draft.contract_type_confidence.value}"
+        classifications[classification] = classifications.get(classification, 0) + 1
+        for issue in draft.issues:
+            key = _topic_key(issue.topic)
+            current = aggregated.get(key)
+            if current is None:
+                aggregated[key] = {
+                    "topic": issue.topic,
+                    "priority": issue.priority,
+                    "occurrences": 1,
+                    "object_ids": list(issue.contract_object_ids),
+                }
+                continue
+            current["priority"] = _priority_max(current["priority"], issue.priority)  # type: ignore[arg-type]
+            current["occurrences"] = int(current["occurrences"]) + 1
+            current["object_ids"] = _unique([*current["object_ids"], *issue.contract_object_ids])  # type: ignore[list-item]
+
+    for classification in sorted(classifications):
         facts.append(
             PlannerGlobalFact(
-                fact_id=f"{chunk_draft.chunk.chunk_id}-classification",
+                fact_id="local-classification-" + hashlib.sha256(classification.encode("utf-8")).hexdigest()[:12],
                 fact_type="LOCAL_PLANNER_CLASSIFICATION",
-                label=chunk_draft.chunk.chunk_id,
-                value=f"{draft.contract_type.value}/{draft.contract_type_confidence.value}: {draft.contract_type_reasoning}",
+                label=classification,
+                value=f"local_pass_count={classifications[classification]}",
             )
         )
-        for issue in draft.issues:
-            summary = (
-                f"topic={issue.topic}; priority={issue.priority.value}; why={issue.why_review}; "
-                f"objects={','.join(issue.contract_object_ids) or '<none>'}; "
-                f"questions={' | '.join(issue.questions)}; queries={' | '.join(issue.retrieval_queries)}"
+
+    for key in sorted(aggregated):
+        item = aggregated[key]
+        object_ids = item["object_ids"]
+        facts.append(
+            PlannerGlobalFact(
+                fact_id="local-topic-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12],
+                fact_type="LOCAL_PLANNER_ISSUE",
+                label=str(item["topic"]),
+                value=(
+                    f"priority={item['priority'].value}; occurrences={item['occurrences']}; "
+                    f"objects={','.join(object_ids) or '<none>'}"
+                ),
             )
-            facts.append(
-                PlannerGlobalFact(
-                    fact_id=f"{chunk_draft.chunk.chunk_id}-{issue.client_issue_id}",
-                    fact_type="LOCAL_PLANNER_ISSUE",
-                    label=issue.topic,
-                    value=summary,
-                )
-            )
+        )
     return facts
 
 
@@ -278,22 +323,9 @@ def _build_global_input(
     if global_input.total_text_chars > DIRECT_PLANNER_TEXT_CHAR_LIMIT:
         raise HierarchicalAuditPlannerError(
             "Hierarchical local planning completed, but the bounded global synthesis index still exceeds the Planner request budget. "
-            "Law-Rag did not drop local coverage or silently truncate issues. A deeper reduction layer is required for this unusually large structure."
+            "Law-Rag preserved every local draft and did not silently drop planning topics; a deeper reduction layer is required for this unusually large structure."
         )
     return global_input
-
-
-def _combine_drafts(chunk_drafts: list[ChunkDraft], global_draft: ModelAuditPlanDraft) -> ModelAuditPlanDraft:
-    issues: list[ModelAuditPlanIssueDraft] = []
-    for item in chunk_drafts:
-        issues.extend(item.draft.issues)
-    issues.extend(global_draft.issues)
-    return ModelAuditPlanDraft(
-        contract_type=global_draft.contract_type,
-        contract_type_confidence=global_draft.contract_type_confidence,
-        contract_type_reasoning=global_draft.contract_type_reasoning,
-        issues=issues,
-    )
 
 
 def _aggregate_usage(results: list[PlannerProviderResult]):
@@ -341,6 +373,36 @@ def _pass_records(chunk_drafts: list[ChunkDraft], global_input: AuditPlannerInpu
         )
     )
     return records
+
+
+def _merge_issue(target: AuditPlanIssue, source: AuditPlanIssue) -> None:
+    target.priority = _priority_max(target.priority, source.priority)
+    target.sources = list(dict.fromkeys([*target.sources, *source.sources]))
+    target.why_review = _unique([*target.why_review, *source.why_review])
+    target.contract_object_ids = _unique([*target.contract_object_ids, *source.contract_object_ids])
+    target.contract_evidence_ids = _unique([*target.contract_evidence_ids, *source.contract_evidence_ids])
+    target.questions = _unique([*target.questions, *source.questions])
+    target.retrieval_queries = _unique([*target.retrieval_queries, *source.retrieval_queries])
+    target.rule_result_ids = _unique([*target.rule_result_ids, *source.rule_result_ids])
+    target.legacy_hint_topics = _unique([*target.legacy_hint_topics, *source.legacy_hint_topics])
+
+
+def _merge_local_dynamic_issues(plan: AuditPlan, full_input: AuditPlannerInput, chunk_drafts: list[ChunkDraft]) -> None:
+    by_id = {item.issue_id: item for item in plan.issues}
+    for chunk_draft in chunk_drafts:
+        local_plan = merge_audit_plan(full_input, chunk_draft.draft, chunk_draft.provider_result)
+        for issue in local_plan.issues:
+            if AuditPlanSource.LLM_DYNAMIC not in issue.sources:
+                continue
+            existing = by_id.get(issue.issue_id)
+            if existing is None:
+                plan.issues.append(issue)
+                by_id[issue.issue_id] = issue
+            else:
+                _merge_issue(existing, issue)
+
+    priority_rank = {ReviewPriority.HIGH_ATTENTION: 0, ReviewPriority.IMPORTANT: 1, ReviewPriority.NORMAL: 2}
+    plan.issues = sorted(plan.issues, key=lambda item: (priority_rank[item.priority], item.topic, item.issue_id))
 
 
 def _coverage(items: list[PlannerContractItem], chunks: list[PlannerChunk], plan: AuditPlan) -> list[AuditPlanningCoverage]:
@@ -442,7 +504,6 @@ def run_hierarchical_audit_planner(job_id: UUID, *, provider: AuditPlannerProvid
     # The global pass may reference any canonical object in the compact clause index.
     merge_audit_plan(global_input, global_draft, global_result)
 
-    combined_draft = _combine_drafts(chunk_drafts, global_draft)
     all_results = [item.provider_result for item in chunk_drafts] + [global_result]
     synthetic_result = PlannerProviderResult(
         provider=global_result.provider,
@@ -450,7 +511,7 @@ def run_hierarchical_audit_planner(job_id: UUID, *, provider: AuditPlannerProvid
         base_url=global_result.base_url,
         request_id=global_result.request_id,
         finish_reason=global_result.finish_reason,
-        content=combined_draft.model_dump_json(),
+        content=global_draft.model_dump_json(),
         raw_response_hash=_combined_response_hash(all_results),
         usage=_aggregate_usage(all_results),
     )
@@ -464,7 +525,8 @@ def run_hierarchical_audit_planner(job_id: UUID, *, provider: AuditPlannerProvid
         rule_hints=rule_hints,
         topic_hints=topic_hints,
     )
-    plan = merge_audit_plan(full_input, combined_draft, synthetic_result)
+    plan = merge_audit_plan(full_input, global_draft, synthetic_result)
+    _merge_local_dynamic_issues(plan, full_input, chunk_drafts)
     plan.planning_mode = AuditPlanPlanningMode.HIERARCHICAL
     plan.planner_passes = _pass_records(chunk_drafts, global_input, global_result)
     plan.coverage = _coverage(items, chunks, plan)
