@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import IntakeApp from './IntakeApp'
 import LegalKnowledgePanel from './LegalKnowledgePanel'
 import LegalRetrievalPanel from './LegalRetrievalPanel'
 import PrimaryAuditPanel from './PrimaryAuditPanel'
@@ -12,17 +13,21 @@ import './source-viewer.css'
 import './audit-workstation.css'
 import './human-review.css'
 import './workstation-polish.css'
+import './intake.css'
 
-const isWorkspaceRoute = window.location.pathname === '/workspace' || window.location.pathname.startsWith('/workspace/')
+const pathname = window.location.pathname
+const isWorkspaceRoute = pathname === '/workspace' || pathname.startsWith('/workspace/')
+const isDeveloperRoute = pathname === '/developer' || pathname.startsWith('/developer/')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {isWorkspaceRoute ? (
       <WorkspaceApp />
-    ) : (
+    ) : isDeveloperRoute ? (
       <>
         <div className="workspace-launch-strip">
-          <a href="/workspace">打开 Stage 10 专业审计工作台 →</a>
+          <a href="/">← 返回合同导入</a>
+          <a href="/workspace">打开专业审计工作台 →</a>
         </div>
         <style>{'.hero .notice { display: none; }'}</style>
         <App />
@@ -31,6 +36,8 @@ createRoot(document.getElementById('root')!).render(
         <PrimaryAuditPanel />
         <SecondaryReviewPanel />
       </>
+    ) : (
+      <IntakeApp />
     )}
   </StrictMode>,
 )
