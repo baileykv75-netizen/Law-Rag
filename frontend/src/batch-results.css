@@ -1,0 +1,232 @@
+.batch-results-shell {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 36px 0 64px;
+}
+
+.batch-results-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.batch-results-header h1 {
+  margin: 2px 0 8px;
+  font-size: clamp(30px, 4vw, 46px);
+  letter-spacing: -0.04em;
+}
+
+.batch-results-header p {
+  margin: 0;
+  color: var(--muted, #667085);
+}
+
+.batch-results-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.batch-results-header-actions a,
+.batch-result-actions a,
+.batch-result-entry a,
+.batch-recent-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  color: #101828;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.batch-results-header-actions a:hover,
+.batch-result-actions a:hover,
+.batch-result-entry a:hover,
+.batch-recent-link:hover {
+  border-color: #98a2b3;
+}
+
+.batch-results-header-actions .quiet-link {
+  color: #667085;
+}
+
+.batch-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.batch-summary-grid article {
+  min-height: 100px;
+  padding: 18px;
+  border: 1px solid #eaecf0;
+  border-radius: 14px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.batch-summary-grid article.wide {
+  grid-column: 1 / -1;
+  min-height: 76px;
+}
+
+.batch-summary-grid strong {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.batch-summary-grid span {
+  color: #667085;
+  font-size: 14px;
+}
+
+.batch-results-note,
+.batch-results-message {
+  border-radius: 12px;
+  border: 1px solid #eaecf0;
+  background: #f9fafb;
+  padding: 14px 16px;
+  color: #475467;
+  line-height: 1.65;
+}
+
+.batch-results-message.error,
+.batch-job-problem {
+  color: #b42318;
+}
+
+.batch-results-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.batch-result-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 20px;
+  border: 1px solid #eaecf0;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.batch-result-card.needs-attention {
+  border-color: #f2b8b5;
+}
+
+.batch-result-title-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.batch-result-title-row h2 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+}
+
+.batch-state-badge {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.needs-attention .batch-state-badge {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.risk-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-chip-row span {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #f2f4f7;
+  color: #475467;
+  font-size: 12px;
+}
+
+.batch-job-progress {
+  height: 7px;
+  margin-top: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eaecf0;
+}
+
+.batch-job-progress > div {
+  height: 100%;
+  background: #344054;
+  transition: width 180ms ease;
+}
+
+.batch-job-problem {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.batch-result-entry {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin: 14px 0 4px;
+}
+
+.batch-result-entry span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.batch-recent-link {
+  margin-bottom: 14px;
+  width: fit-content;
+}
+
+@media (max-width: 800px) {
+  .batch-results-shell {
+    width: min(100% - 24px, 1180px);
+    padding-top: 22px;
+  }
+
+  .batch-results-header,
+  .batch-result-card {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .batch-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .batch-result-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
