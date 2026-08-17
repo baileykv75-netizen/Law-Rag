@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 from uuid import UUID
 
@@ -16,7 +17,7 @@ from .issue_legal_context_models import (
     IssueRetrievalRun,
 )
 from .legal.retrieval import RetrievalIndexError, get_retrieval_index_summary, retrieve_legal_evidence
-from .legal.retrieval_models import RetrievalRequest, RetrievalResponse, RetrievalState
+from .legal.retrieval_models import RetrievalRequest, RetrievalState
 from .safe_persistence import atomic_write_text
 from .storage import (
     job_issue_legal_context_path,
@@ -42,6 +43,10 @@ def _fingerprint(payload: object) -> str:
 
 def _plan_fingerprint(plan) -> str:
     return _fingerprint(plan.model_dump(mode="json"))
+
+
+def _index_fingerprint(index_summary) -> str:
+    return _fingerprint(index_summary.model_dump(mode="json"))
 
 
 def _support_state(runs: list[IssueRetrievalRun], hits: list[IssueLegalEvidenceHit]) -> IssueLegalSupportState:
@@ -100,7 +105,7 @@ def _deduplicate_candidates(runs: list[IssueRetrievalRun]) -> list[IssueLegalEvi
 def build_issue_legal_context(
     job_id: UUID,
     *,
-    as_of,
+    as_of: date,
     use_semantic: bool = False,
     top_k_per_query: int = 5,
 ) -> IssueLegalContextArtifact:
@@ -135,6 +140,9 @@ def build_issue_legal_context(
 
     issue_packages: list[IssueLegalEvidencePackage] = []
     artifact_warnings: list[str] = []
+    lexical_versions: list[str] = []
+    semantic_providers: list[str] = []
+    semantic_models: list[str] = []
     for issue in plan.issues:
         runs: list[IssueRetrievalRun] = []
         issue_warnings: list[str] = []
@@ -151,6 +159,12 @@ def build_issue_legal_context(
             )
             runs.append(IssueRetrievalRun(query_index=query_index, query=query, response=response))
             issue_warnings.extend(f"query {query_index}: {warning}" for warning in response.warnings)
+            if response.lexical_index_version and response.lexical_index_version not in lexical_versions:
+                lexical_versions.append(response.lexical_index_version)
+            if response.semantic_provider and response.semantic_provider not in semantic_providers:
+                semantic_providers.append(response.semantic_provider)
+            if response.semantic_model and response.semantic_model not in semantic_models:
+                semantic_models.append(response.semantic_model)
 
         hits = _deduplicate_candidates(runs)
         support_state = _support_state(runs, hits)
@@ -179,6 +193,9 @@ def build_issue_legal_context(
         issue_packages.append(package)
         artifact_warnings.extend(f"{issue.topic}: {warning}" for warning in package.warnings)
 
+    if len(lexical_versions) > 1 or len(semantic_providers) > 1 or len(semantic_models) > 1:
+        raise IssueLegalContextError("Retrieval engine metadata changed during one issue-based Legal RAG build; no artifact was persisted.")
+
     base = {
         "schema_version": "1.0.0",
         "builder_version": "stage13d-1.0.0",
@@ -192,7 +209,12 @@ def build_issue_legal_context(
         "contract_source_fingerprint": plan.contract_source_fingerprint,
         "contract_content_fingerprint": plan.contract_content_fingerprint,
         "legal_source_fingerprint": index_summary.legal_source_fingerprint,
-        "lexical_index_version": index_summary.lexical_tokenizer,
+        "retrieval_index_fingerprint": _index_fingerprint(index_summary),
+        "retrieval_schema_version": index_summary.schema_version,
+        "lexical_tokenizer": index_summary.lexical_tokenizer,
+        "lexical_index_version": lexical_versions[0] if lexical_versions else None,
+        "semantic_provider": semantic_providers[0] if semantic_providers else None,
+        "semantic_model": semantic_models[0] if semantic_models else None,
         "total_issue_count": len(issue_packages),
         "total_query_count": query_count,
         "issues": [item.model_dump(mode="json") for item in issue_packages],
@@ -223,5 +245,7 @@ def load_issue_legal_context(job_id: UUID, *, validate_freshness: bool = True) -
             raise IssueLegalContextStaleError("Issue legal context is stale because audit-plan.json changed.")
         index_summary = get_retrieval_index_summary(legal_retrieval_index_path(), legal_db_path())
         if not index_summary.ready or artifact.legal_source_fingerprint != index_summary.legal_source_fingerprint:
-            raise IssueLegalContextStaleError("Issue legal context is stale because the local legal corpus/index changed.")
+            raise IssueLegalContextStaleError("Issue legal context is stale because the local legal corpus changed.")
+        if artifact.retrieval_index_fingerprint != _index_fingerprint(index_summary):
+            raise IssueLegalContextStaleError("Issue legal context is stale because the local retrieval index configuration changed.")
     return artifact
