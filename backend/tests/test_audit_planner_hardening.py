@@ -118,4 +118,4 @@ def test_fake_planner_is_disabled_unless_explicitly_enabled(tmp_path: Path, monk
     monkeypatch.setenv("LAW_RAG_ALLOW_FAKE_AUDIT_PLANNER", "1")
     result = FakeAuditPlannerProvider().generate(planner_input)
     assert result.provider == "fake"
-    assert result.model == "deterministic-stage13b-planner-v1"
+    assert result.model == "deterministic-stage13c-planner-v1"
