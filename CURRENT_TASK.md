@@ -6,171 +6,130 @@
 
 ```text
 Stage 11A  COMPLETE — versioned benchmark schema + public synthetic evaluator
-Stage 11B  COMPLETE — layered metrics + failure diagnostics + deterministic CI quality gates
+Stage 11B  COMPLETE — layered metrics + deterministic public quality gates
 Stage 11C  COMPLETE — runtime/startup/data-integrity hardening
-Stage 11D  COMPLETE — reproducible Windows onedir bundle + clean-runner validation
-Stage 11E  RC1 VALIDATED — portable Windows RC runs successfully; installer remains deferred
-Stage 12A  COMPLETE — minimal intake home + real multi-file upload queue shell
-Stage 12B  COMPLETE — persisted background audit pipeline + real progress/retry semantics
-Stage 12C  COMPLETE — guarded 500 MiB streaming intake + bounded resource-aware batch scheduling
-Stage 12D  COMPLETE — guided provider onboarding + Windows Credential Manager protected secrets
-Stage 12E  COMPLETE — persisted batch result landing + risk-priority navigation/recovery
-Stage 12F  ACTIVE — Windows RC2 clean-runner user-flow validation
+Stage 11D  COMPLETE — reproducible Windows onedir bundle
+Stage 11E  RC1 VALIDATED — portable distribution path proven
+Stage 12A  COMPLETE — minimal intake home + multi-file queue
+Stage 12B  COMPLETE — persisted automatic background pipeline
+Stage 12C  COMPLETE — guarded 500 MiB streaming + bounded scheduling
+Stage 12D  COMPLETE — guided providers + Windows Credential Manager
+Stage 12E  COMPLETE — persistent batch result landing + recovery
+Stage 12F  COMPLETE / RC2 VALIDATED — final extracted Windows ZIP passed Stage 12 user-flow smoke
 ```
 
-The first portable RC validated packaging/runtime on CI and a real Windows desktop. Stage 12 then simplified the product path around first-run provider setup, drag/drop batch intake, automatic background processing, persistent progress/results, and a compact result landing page.
+**Stage 12 is closed. Do not start another feature stage implicitly.**
 
-## Product goal
+The post-stage product review is recorded in [`docs/POST_STAGE12_PRODUCT_REVIEW.md`](docs/POST_STAGE12_PRODUCT_REVIEW.md). Future work should be selected from that review according to product value rather than continuing feature accumulation automatically.
 
-The normal user should see only four concepts:
+## Validated normal-user flow
 
 ```text
-first-run API configuration
-  -> drag one or more contracts into a simple queue
-  -> wait while Law-Rag runs the required audit pipeline in the background
-  -> review the batch summary, then open detailed evidence/workstation only where needed
+Law-Rag.exe
+  -> first-run DeepSeek / Kimi protected setup or explicit local-only skip
+  -> drag one or more PDF/JPG/PNG contracts
+  -> exact 500 MiB guarded streamed local intake
+  -> persistent batch + independent Job IDs
+  -> bounded background pipeline
+       -> OCR only when required/available
+       -> canonical structure
+       -> deterministic rules
+       -> legal retrieval + DeepSeek primary
+       -> Kimi secondary
+       -> deterministic comparison
+       -> bounded local Agent evidence follow-up
+       -> review report
+  -> persistent /results batch landing
+  -> risk/human-review priority
+  -> /workspace evidence-level detailed review
+  -> append-only human decision history
 ```
 
-Internal stages, debug buttons, provider implementation details and development panels must not dominate the normal workflow.
+## Stage 12 hard boundaries retained
 
-## Hard boundaries
+1. The Stage 10 workstation remains the detailed evidence/review surface rather than the home page.
+2. `/developer` preserves manual troubleshooting controls but is not the normal product entry.
+3. Progress comes only from upload bytes and persisted pipeline state.
+4. One failed file never cancels unrelated batch Jobs.
+5. The 500 MiB path stays streamed to disk; no whole-file in-memory upload validation.
+6. OCR/provider concurrency remains bounded.
+7. API keys are never committed, bundled, returned to the browser, written to ordinary runtime JSON, or echoed by diagnostics.
+8. Windows desktop secrets use Generic Credentials in Windows Credential Manager; environment variables remain a development/CI override.
+9. External DeepSeek/Kimi transmission remains disclosed; no hidden provider calls.
+10. Batch manifests store Job IDs/timestamps only and never duplicate contract text as a second result truth.
+11. Batch priority is not a legal-validity/correctness score.
+12. Restart handling fails closed: prior-process transient work requires explicit retry and never silently resumes provider calls.
+13. Public/default CI remains provider-free.
+14. `CURATED_EXCERPT` remains explicit; absence from the bundled corpus is never treated as absence of law.
 
-1. Keep the existing Stage 10 evidence/review workstation as the detailed result surface, not the home page.
-2. Preserve `/developer` for manual troubleshooting without making it a primary user path.
-3. Progress must come from real upload/pipeline state; no fake 99% animation.
-4. One failed file must not cancel or corrupt unrelated batch Jobs.
-5. Large uploads remain streamed to disk; never read a 500 MiB contract into application memory merely to upload/validate it.
-6. OCR/provider execution remains bounded; no unbounded fan-out.
-7. API keys are never committed, bundled, echoed in diagnostics, returned to the browser, or stored as plaintext project/runtime secrets.
-8. Users may intentionally skip provider setup and retain local-only functions.
-9. DeepSeek/Kimi transmission remains disclosed; no hidden external model calls.
-10. Batch/result persistence stores IDs/state references only and does not duplicate contract text into a second result store.
-11. Result priority is not a correctness/legal-validity score.
-12. Stage 1–11 regressions, public quality gates and Windows release safety boundaries remain green.
+## 12E result/recovery acceptance
 
-## 12A — Minimal intake home + batch queue shell
+Validated behavior:
 
-**Status: complete.**
+- every active intake session gets a versioned local batch manifest;
+- only a batch that owns a persisted Job becomes the latest useful batch, so an empty new batch cannot hide previous work;
+- result summaries are rebuilt from canonical Job artifacts rather than persisted as another legal conclusion store;
+- batch/result reads are non-mutating and do not create phantom Job directories;
+- `/results?batch=<id>` shows complete, processing, waiting, failed and invalid Jobs;
+- deterministic ordering prioritizes human-review-required cases, material disagreement/more-evidence conditions, serious/high/medium risk and possible omissions;
+- no aggregate “legal accuracy” score is generated;
+- complete Jobs link to `/workspace?job=<id>`;
+- API settings are reachable from both intake and result surfaces;
+- persisted incomplete/interrupted Jobs can be explicitly started/retried from the result page;
+- latest useful batch survives application restart.
 
-- `/` is a minimal drag/drop intake instead of the legacy developer dashboard.
-- Multi-file picker/drop queue with independent rows, real XHR upload progress, retry/removal, duplicate guard.
-- `/developer` preserves manual Stage controls.
-- `/workspace` remains the detailed evidence/review route.
+## 12F RC2 acceptance
 
-## 12B — Application-owned background pipeline orchestrator
-
-**Status: complete.**
+RC2 identity:
 
 ```text
-ingest
- -> OCR only where required
- -> canonical structure
- -> deterministic rules
- -> Stage 7 legal retrieval/context inside Stage 8
- -> DeepSeek primary audit
- -> Kimi secondary review
- -> deterministic comparison
- -> bounded Agent follow-up
- -> review report ready
+version: 0.8.0-rc2
+target: Windows x64
+distribution: portable PyInstaller onedir ZIP
+publication_state: NOT_PUBLISHED
 ```
 
-- Every Job has versioned local `pipeline.json` state.
-- POST starts/queues; GET polls read-only/provider-free; retry resumes with original settings.
-- Valid persisted artifacts are reused rather than blindly rerun.
-- Missing OCR/provider configuration stops in explicit waiting states.
-- Normal intake automatically starts the pipeline and shows real persisted stage progress.
+Final clean-runner validation used the **extracted final ZIP** and passed:
 
-## 12C — 500 MiB streaming upload + bounded batch scheduling
+- Windows Credential Manager synthetic write/read/resolve/delete;
+- provider configuration response secret non-leak checks;
+- first-run local-only skip persistence;
+- updated RC2 bundled Windows guide checks;
+- private/runtime data scan of the release bundle;
+- deterministic synthetic native-text PDF recognized as `NATIVE_TEXT_USABLE`;
+- native PDF ingestion + packaged PDFium page rendering;
+- 64 MiB synthetic PDF upload, proving the packaged path exceeds the retired 50 MiB ceiling;
+- two independent Jobs registered to one persistent batch;
+- packaged `/results?batch=...` route;
+- provider-free automatic pipeline progressing through structure/rules and stopping at `WAITING_CONFIGURATION / DEEPSEEK_NOT_CONFIGURED` before any paid model call;
+- simulated prior-process `RUNNING` state converted on restart to `APPLICATION_RESTARTED_RETRY_REQUIRED`;
+- explicit retry safely returning to the missing-provider boundary;
+- setup state/latest batch persistence across process restart;
+- RC ZIP SHA/manifest verification and fresh-directory extraction smoke;
+- backend regressions, public deterministic quality gates and locked frontend build green.
 
-**Status: complete.**
+RC2 validation proves product-flow and packaging mechanics. It does **not** establish real-contract legal accuracy, comprehensive Chinese-law coverage, real-provider audit quality or zero-setup scanned-contract OCR.
 
-Large-file intake:
+## Post-Stage-12 priorities
 
-- exact per-file limit 500 MiB front/back;
-- fixed 1 MiB streamed writes;
-- expected size + 512 MiB disk reserve preflight;
-- HTTP 507 on insufficient space;
-- partial-file cleanup for oversize/write exhaustion;
-- content signature and empty-file checks remain fail-closed.
+See [`docs/POST_STAGE12_PRODUCT_REVIEW.md`](docs/POST_STAGE12_PRODUCT_REVIEW.md).
 
-Resource-aware execution:
+Highest-priority gaps identified there:
 
 ```text
-pipeline worker pool                  4 Jobs
-local structure/rules/report work    2 concurrent
-OCR                                  1 concurrent
-DeepSeek + Kimi combined             2 concurrent
+P0-1  OCR distribution + scan reliability
+P0-2  legal corpus expansion / update coverage
+P0-3  private expert-labeled real legal benchmark
+P0-4  explicit provider-boundary pause/cancel control
+
+P1    tray/graceful quit, batch history/storage cleanup,
+      at-rest privacy policy, DOCX intake, professional export
 ```
 
-The browser still uploads files sequentially by design; already-uploaded Jobs can process concurrently under the fixed backend limits.
-
-## 12D — First-run DeepSeek/Kimi configuration guide
-
-**Status: complete.**
-
-- Focused first-run modal with password inputs for DeepSeek and Kimi/Moonshot.
-- Saved keys are never returned/repopulated; normal UI shows configured/not configured only.
-- Windows desktop uses Generic Credentials in Windows Credential Manager.
-- Environment variables remain a development/CI override and take precedence.
-- Runtime stores only non-secret setup-completion state.
-- Explicit test-connection sends one fixed tiny non-contract message and never echoes key/provider body.
-- Users may skip and reopen API settings later.
-- Packaged Windows synthetic `write -> read -> resolve -> delete` Credential Manager smoke is green.
-- Development CORS now explicitly allows the PUT/DELETE methods required by the configuration UI.
-
-## 12E — Batch result landing page
-
-**Status: complete.**
-
-Implemented:
-
-- every intake session gets a local `batch_id` and a versioned runtime batch manifest;
-- the manifest stores only Job IDs and timestamps, never duplicate contract text;
-- each successfully uploaded Job is registered independently, so one failure cannot remove siblings;
-- GET `/api/batches/{batch_id}` rebuilds its summary from current `pipeline.json` and `review-report.json` rather than persisting a second truth;
-- GET `/api/batches/recent` restores the latest batch entry after browser/application restart;
-- `/results?batch=<id>` is a dedicated compact result landing page;
-- cards are deterministically sorted by human-review requirement, material disagreement, serious/high/medium risk and possible omissions;
-- critical/high/medium/low counts and possible omission/material-disagreement flags remain explicit;
-- failed, invalid, waiting and still-processing Jobs stay visible instead of being omitted;
-- no aggregate correctness/legal-validity score is generated;
-- complete Jobs link into the existing `/workspace?job=<id>` detailed evidence/review UI;
-- all-success batches automatically open the result page; partial failure/waiting batches keep an explicit result-page button rather than silently navigating away;
-- the intake home exposes a small `recent batch` recovery link when no new queue is active;
-- backend regressions, public deterministic quality gates and locked frontend production build are green.
-
-## 12F — Windows RC2 validation
-
-**Status: active.**
-
-RC2 config:
-
-```text
-0.8.0-rc2
-portable Windows x64 onedir ZIP
-publication_state = NOT_PUBLISHED
-```
-
-The final extracted RC must pass all earlier Stage 11D/11E checks plus a new packaged user-flow smoke:
-
-- fresh first-run provider setup state;
-- protected synthetic DeepSeek/Kimi credential save through the packaged HTTP API;
-- no secret value in returned configuration JSON;
-- protected credential deletion;
-- explicit local-only skip state;
-- one normal PDF plus one 64 MiB synthetic padded PDF, proving packaged intake exceeds the old 50 MiB limit;
-- two Jobs registered into one persistent batch;
-- `/results?batch=...` route served by the packaged SPA;
-- application process stopped and restarted against the same runtime;
-- provider onboarding completion survives restart;
-- deleted synthetic keys remain absent;
-- latest batch and both Job IDs survive restart;
-- existing diagnostics, private-data scan, PDFium render, RC hash/manifest and extracted-ZIP smoke remain green.
-
-Default CI remains provider-free and does not use paid model keys. Full real-provider desktop UAT remains a manual step.
-
-Installer work remains deferred unless RC2 testing demonstrates a concrete need.
+Installer work remains lower priority than those product/quality gaps.
 
 ## Current implementation boundary
 
-Proceed with **12F validation only**. If the Windows RC2 clean-runner fails, fix only the release/user-flow regression that caused the failure. After RC2 is green, close Stage 12 and perform an end-to-end product-gap review before adding any new feature stage.
+**No active feature stage.**
+
+Before editing product code again, select one post-Stage-12 priority explicitly. The recommended next item is **OCR distribution + scan reliability** because scanned/image contracts are a direct intended use case while PaddleOCR is still optional and not bundled in the base RC2.
