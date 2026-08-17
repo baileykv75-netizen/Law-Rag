@@ -130,6 +130,13 @@ input {
   letter-spacing: 0.08em;
 }
 
+.intake-transmission-note {
+  margin: 14px 6px 0;
+  color: #7d8798;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .intake-queue-wrap {
   margin-top: 18px;
   border-top: 1px solid #edf0f4;
@@ -196,8 +203,18 @@ input {
   background: #fffafa;
 }
 
-.intake-row.state-received {
+.intake-row.state-waiting {
+  border-color: #eadfbf;
+  background: #fffdf7;
+}
+
+.intake-row.state-complete {
+  border-color: #d8e6dc;
   background: #fbfdfb;
+}
+
+.intake-row.state-complete .intake-row-progress > div {
+  background: #4d7658;
 }
 
 .intake-file-copy,
@@ -231,6 +248,15 @@ input {
   color: #a44747;
 }
 
+.intake-row.state-waiting .intake-row-status > span {
+  color: #826d31;
+}
+
+.intake-row.state-complete .intake-row-status > span {
+  color: #456c50;
+  font-weight: 650;
+}
+
 .intake-row-progress {
   width: min(210px, 100%);
   height: 4px;
@@ -239,9 +265,11 @@ input {
 .intake-row-actions {
   display: flex;
   gap: 6px;
+  align-items: center;
 }
 
-.intake-row-actions button {
+.intake-row-actions button,
+.intake-result-link {
   border: 1px solid #d9dee7;
   background: #ffffff;
   color: #33405a;
@@ -249,11 +277,20 @@ input {
   padding: 7px 10px;
   cursor: pointer;
   font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 .intake-row-actions button:hover,
-.intake-row-actions button:focus-visible {
+.intake-row-actions button:focus-visible,
+.intake-result-link:hover,
+.intake-result-link:focus-visible {
   border-color: #9ca7b8;
+}
+
+.intake-result-link {
+  border-color: #aeb9ca;
+  color: #26364e;
 }
 
 .intake-row-actions button.quiet {
