@@ -47,7 +47,7 @@ def _wait(job_id, terminal: set[str], timeout: float = 3.0) -> dict:
     raise AssertionError("pipeline did not reach expected state")
 
 
-def _complete_stage(stage: PipelineStage, calls: list[PipelineStage] | None = None):
+def _complete_stage(stage: PipelineStage, calls: list[object] | None = None):
     def runner(report: PipelineReport) -> None:
         if calls is not None:
             calls.append(stage)
@@ -57,7 +57,7 @@ def _complete_stage(stage: PipelineStage, calls: list[PipelineStage] | None = No
     return runner
 
 
-def _patch_local_stages(monkeypatch, calls: list[PipelineStage]) -> None:
+def _patch_local_stages(monkeypatch, calls: list[object]) -> None:
     import app.pipeline as pipeline
 
     monkeypatch.setattr(pipeline, "_run_ocr_stage", _complete_stage(PipelineStage.OCR, calls))
@@ -65,22 +65,40 @@ def _patch_local_stages(monkeypatch, calls: list[PipelineStage]) -> None:
     monkeypatch.setattr(pipeline, "_run_rules_stage", _complete_stage(PipelineStage.RULES, calls))
 
 
-def test_require_approval_finishes_local_work_without_provider_call(tmp_path: Path, monkeypatch) -> None:
+def _patch_primary_context(monkeypatch, calls: list[object]) -> None:
+    """Simulate Stage 8 local context construction before its outbound hooks."""
+
+    import app.pipeline as pipeline
+
+    def fake_primary(job_id, request, *, provider_override=None, provider_gate=None, before_provider_generate=None):
+        calls.append("PRIMARY_LOCAL_CONTEXT")
+        assert provider_gate is not None
+        assert before_provider_generate is not None
+        provider_gate()
+        calls.append("PRIMARY_GATE_ALLOWED")
+        before_provider_generate()
+        calls.append(PipelineStage.PRIMARY_AUDIT)
+        return object()
+
+    monkeypatch.setattr(pipeline, "run_primary_ai_audit", fake_primary)
+
+
+def test_require_approval_finishes_local_work_and_context_without_provider_call(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
     _seed_job(tmp_path, job_id)
 
     import app.pipeline as pipeline
 
-    calls: list[PipelineStage] = []
+    calls: list[object] = []
     _patch_local_stages(monkeypatch, calls)
+    _patch_primary_context(monkeypatch, calls)
 
-    def forbidden_provider(*args, **kwargs):
-        raise AssertionError("provider stage must not run before explicit approval")
+    def forbidden_provider_stage(*args, **kwargs):
+        raise AssertionError("secondary/review stages must not run before explicit approval")
 
-    monkeypatch.setattr(pipeline, "_run_primary_stage", forbidden_provider)
-    monkeypatch.setattr(pipeline, "_run_secondary_stage", forbidden_provider)
-    monkeypatch.setattr(pipeline, "_run_review_stage", forbidden_provider)
+    monkeypatch.setattr(pipeline, "_run_secondary_stage", forbidden_provider_stage)
+    monkeypatch.setattr(pipeline, "_run_review_stage", forbidden_provider_stage)
 
     response = client.post(
         f"/api/documents/{job_id}/pipeline",
@@ -96,19 +114,26 @@ def test_require_approval_finishes_local_work_without_provider_call(tmp_path: Pa
     assert paused["current_stage"] == "PRIMARY_AUDIT"
     assert paused["failure_code"] == "PROVIDER_APPROVAL_REQUIRED"
     assert paused["progress_percent"] == 55
-    assert calls == [PipelineStage.OCR, PipelineStage.STRUCTURE, PipelineStage.RULES]
+    assert calls == [
+        PipelineStage.OCR,
+        PipelineStage.STRUCTURE,
+        PipelineStage.RULES,
+        "PRIMARY_LOCAL_CONTEXT",
+    ]
+    control = get_pipeline_control(job_id)
+    assert control.active_provider is None
 
 
-def test_local_only_stops_at_provider_boundary_and_can_be_approved_later(tmp_path: Path, monkeypatch) -> None:
+def test_local_only_stops_after_local_context_and_can_be_approved_later(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
     _seed_job(tmp_path, job_id)
 
     import app.pipeline as pipeline
 
-    calls: list[PipelineStage] = []
+    calls: list[object] = []
     _patch_local_stages(monkeypatch, calls)
-    monkeypatch.setattr(pipeline, "_run_primary_stage", _complete_stage(PipelineStage.PRIMARY_AUDIT, calls))
+    _patch_primary_context(monkeypatch, calls)
     monkeypatch.setattr(pipeline, "_run_secondary_stage", _complete_stage(PipelineStage.SECONDARY_REVIEW, calls))
     monkeypatch.setattr(pipeline, "_run_review_stage", _complete_stage(PipelineStage.REVIEW_REPORT, calls))
 
@@ -120,6 +145,7 @@ def test_local_only_stops_at_provider_boundary_and_can_be_approved_later(tmp_pat
     paused = _wait(job_id, {"PAUSED_BEFORE_PROVIDER"})
     assert paused["failure_code"] == "LOCAL_ONLY_PROVIDER_DISABLED"
     assert PipelineStage.PRIMARY_AUDIT not in calls
+    assert "PRIMARY_LOCAL_CONTEXT" in calls
 
     approved = client.post(f"/api/documents/{job_id}/pipeline/approve-provider")
     assert approved.status_code == 202
@@ -139,9 +165,9 @@ def test_cancelled_pipeline_requires_explicit_resume_and_does_not_bypass_gate(tm
 
     import app.pipeline as pipeline
 
-    calls: list[PipelineStage] = []
+    calls: list[object] = []
     _patch_local_stages(monkeypatch, calls)
-    monkeypatch.setattr(pipeline, "_run_primary_stage", _complete_stage(PipelineStage.PRIMARY_AUDIT, calls))
+    _patch_primary_context(monkeypatch, calls)
     monkeypatch.setattr(pipeline, "_run_secondary_stage", _complete_stage(PipelineStage.SECONDARY_REVIEW, calls))
     monkeypatch.setattr(pipeline, "_run_review_stage", _complete_stage(PipelineStage.REVIEW_REPORT, calls))
 
