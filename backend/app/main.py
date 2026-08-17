@@ -48,12 +48,18 @@ from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
 from .pipeline_api import router as pipeline_router
 from .release_frontend import router as release_frontend_router
 from .runtime_health_api import router as runtime_health_router
-from .storage import job_upload_dir, legal_db_path, legal_retrieval_index_path
+from .storage import legal_db_path, legal_retrieval_index_path, runtime_dir
+from .upload_streaming import (
+    UploadInsufficientStorageError,
+    UploadStreamError,
+    UploadTooLargeError,
+    declared_upload_size,
+    ensure_upload_capacity,
+    stream_upload_to_path,
+)
 
 APP_NAME = "Law-Rag Local API"
 APP_VERSION = "0.8.0"
-CHUNK_SIZE = 1024 * 1024
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 EXPECTED_MEDIA_TYPES = {
@@ -115,6 +121,14 @@ def _signature_matches(extension: str, header: bytes) -> bool:
     if extension == ".png":
         return header.startswith(b"\x89PNG\r\n\x1a\n")
     return False
+
+
+def _cleanup_upload(stored_path: Path) -> None:
+    stored_path.unlink(missing_ok=True)
+    try:
+        stored_path.parent.rmdir()
+    except OSError:
+        pass
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -204,55 +218,46 @@ def legal_retrieve(request: RetrievalRequest) -> RetrievalResponse:
 
 @app.post("/api/documents", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
 async def ingest_document(
-    file: Annotated[UploadFile, File(description="One PDF/JPG/JPEG/PNG test document")],
+    file: Annotated[UploadFile, File(description="One PDF/JPG/JPEG/PNG contract document")],
 ) -> IngestResponse:
     original_filename = file.filename or ""
     extension = _extension(original_filename)
     _validate_declared_media_type(extension, file.content_type)
 
+    expected_size = declared_upload_size(file)
+    try:
+        ensure_upload_capacity(runtime_dir(), expected_size)
+    except UploadTooLargeError as exc:
+        await file.close()
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)) from exc
+    except UploadInsufficientStorageError as exc:
+        await file.close()
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
+
     job_id = uuid4()
-    upload_dir = job_upload_dir(job_id)
+    upload_dir = runtime_dir() / "uploads" / str(job_id)
     stored_path = upload_dir / f"source{extension}"
-    size_bytes = 0
-    header = b""
 
     try:
-        with stored_path.open("wb") as destination:
-            while chunk := await file.read(CHUNK_SIZE):
-                if not header:
-                    header = chunk[:16]
-                size_bytes += len(chunk)
-                if size_bytes > MAX_UPLOAD_BYTES:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail="File exceeds the current 50 MiB limit.",
-                    )
-                destination.write(chunk)
-    except Exception:
-        if stored_path.exists():
-            stored_path.unlink()
-        try:
-            upload_dir.rmdir()
-        except OSError:
-            pass
-        raise
+        size_bytes, header = await stream_upload_to_path(file, stored_path)
+    except UploadTooLargeError as exc:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)) from exc
+    except UploadInsufficientStorageError as exc:
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
+    except UploadStreamError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The uploaded file could not be stored safely on the local machine.",
+        ) from exc
     finally:
         await file.close()
 
     if size_bytes == 0:
-        stored_path.unlink(missing_ok=True)
-        try:
-            upload_dir.rmdir()
-        except OSError:
-            pass
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        _cleanup_upload(stored_path)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
 
     if not _signature_matches(extension, header):
-        stored_path.unlink(missing_ok=True)
-        try:
-            upload_dir.rmdir()
-        except OSError:
-            pass
+        _cleanup_upload(stored_path)
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="File contents do not match the selected file type.",
