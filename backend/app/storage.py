@@ -111,6 +111,10 @@ def job_issue_legal_context_path(job_id: UUID) -> Path:
     return _AtomicArtifactPath(job_output_dir(job_id) / "issue-legal-context.json")
 
 
+def job_issue_primary_audit_path(job_id: UUID) -> Path:
+    return _AtomicArtifactPath(job_output_dir(job_id) / "issue-primary-audit.json")
+
+
 def job_ai_audit_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "ai-audit.json"
 
