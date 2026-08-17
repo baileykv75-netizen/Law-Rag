@@ -4,7 +4,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000
 const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 const CURRENT_MAX_BYTES = 50 * 1024 * 1024
 
-type QueueState = 'queued' | 'uploading' | 'inspecting' | 'received' | 'error'
+type QueueState =
+  | 'queued'
+  | 'uploading'
+  | 'inspecting'
+  | 'processing'
+  | 'waiting'
+  | 'complete'
+  | 'error'
 
 type UploadResponse = {
   job_id: string
@@ -14,6 +21,32 @@ type UploadResponse = {
   ocr_required_pages: number
 }
 
+type PipelineStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'WAITING_CONFIGURATION'
+  | 'WAITING_OPTIONAL_COMPONENT'
+  | 'FAILED'
+  | 'COMPLETE'
+
+type PipelineStage =
+  | 'INGEST'
+  | 'OCR'
+  | 'STRUCTURE'
+  | 'RULES'
+  | 'PRIMARY_AUDIT'
+  | 'SECONDARY_REVIEW'
+  | 'REVIEW_REPORT'
+  | 'COMPLETE'
+
+type PipelineReport = {
+  status: PipelineStatus
+  current_stage: PipelineStage
+  progress_percent: number
+  failure_code: string | null
+  failure_detail: string | null
+}
+
 type QueueItem = {
   id: string
   file: File
@@ -21,6 +54,7 @@ type QueueItem = {
   progress: number
   error: string | null
   result: UploadResponse | null
+  pipeline: PipelineReport | null
 }
 
 function extensionOf(name: string) {
@@ -40,16 +74,42 @@ function validateFile(file: File): string | null {
   }
   if (file.size === 0) return '文件为空。'
   if (file.size > CURRENT_MAX_BYTES) {
-    return '当前版本单文件上限仍为 50 MB；500 MB 流式上传将在下一阶段接入。'
+    return '当前版本单文件上限仍为 50 MB；500 MB 流式上传将在 12C 接入。'
   }
   return null
+}
+
+function localToday() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function pipelineStageLabel(stage: PipelineStage) {
+  if (stage === 'INGEST') return '文件已接收'
+  if (stage === 'OCR') return '正在识别扫描文本'
+  if (stage === 'STRUCTURE') return '正在整理合同结构'
+  if (stage === 'RULES') return '正在执行合同检查'
+  if (stage === 'PRIMARY_AUDIT') return '正在检索法律依据并进行主审'
+  if (stage === 'SECONDARY_REVIEW') return '正在进行独立二审'
+  if (stage === 'REVIEW_REPORT') return '正在比较结果并整理报告'
+  return '审计完成'
 }
 
 function stateLabel(item: QueueItem) {
   if (item.state === 'queued') return '等待上传'
   if (item.state === 'uploading') return `正在上传 ${Math.round(item.progress)}%`
   if (item.state === 'inspecting') return '正在读取文档'
-  if (item.state === 'received') return '文件已接收'
+  if (item.state === 'processing') {
+    return item.pipeline ? pipelineStageLabel(item.pipeline.current_stage) : '正在启动后台审计'
+  }
+  if (item.state === 'waiting') {
+    if (item.pipeline?.status === 'WAITING_OPTIONAL_COMPONENT') return '等待可选组件'
+    return '等待 API 配置'
+  }
+  if (item.state === 'complete') return '审计完成'
   return '处理失败'
 }
 
@@ -62,6 +122,7 @@ function createQueueItem(file: File): QueueItem {
     progress: 0,
     error,
     result: null,
+    pipeline: null,
   }
 }
 
@@ -70,21 +131,174 @@ function IntakeApp() {
   const [items, setItems] = useState<QueueItem[]>([])
   const [dragging, setDragging] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const pollingIds = useRef(new Set<string>())
+  const mounted = useRef(true)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const queuedCount = items.filter((item) => item.state === 'queued').length
-  const receivedCount = items.filter((item) => item.state === 'received').length
+  const completeCount = items.filter((item) => item.state === 'complete').length
+  const waitingCount = items.filter((item) => item.state === 'waiting').length
   const errorCount = items.filter((item) => item.state === 'error').length
+
+  const itemProgress = (item: QueueItem) => {
+    if (item.state === 'complete') return 100
+    if (item.pipeline) return item.pipeline.progress_percent
+    if (item.state === 'inspecting') return 9
+    if (item.state === 'uploading') return Math.min(8, item.progress * 0.08)
+    return 0
+  }
 
   const batchProgress = useMemo(() => {
     if (!items.length) return 0
-    const total = items.reduce((sum, item) => {
-      if (item.state === 'received') return sum + 100
-      if (item.state === 'inspecting') return sum + 95
-      if (item.state === 'uploading') return sum + Math.min(item.progress * 0.9, 90)
-      return sum
-    }, 0)
-    return Math.round(total / items.length)
+    return Math.round(items.reduce((sum, item) => sum + itemProgress(item), 0) / items.length)
   }, [items])
+
+  const updatePipelineItem = (id: string, pipeline: PipelineReport) => {
+    setItems((current) =>
+      current.map((item) => {
+        if (item.id !== id) return item
+        if (pipeline.status === 'COMPLETE') {
+          return { ...item, state: 'complete', progress: 100, pipeline, error: null }
+        }
+        if (pipeline.status === 'WAITING_CONFIGURATION' || pipeline.status === 'WAITING_OPTIONAL_COMPONENT') {
+          return {
+            ...item,
+            state: 'waiting',
+            progress: pipeline.progress_percent,
+            pipeline,
+            error: pipeline.failure_detail,
+          }
+        }
+        if (pipeline.status === 'FAILED') {
+          return {
+            ...item,
+            state: 'error',
+            progress: pipeline.progress_percent,
+            pipeline,
+            error: pipeline.failure_detail ?? '后台审计失败。',
+          }
+        }
+        return {
+          ...item,
+          state: 'processing',
+          progress: pipeline.progress_percent,
+          pipeline,
+          error: null,
+        }
+      }),
+    )
+  }
+
+  const pollPipeline = async (id: string, jobId: string) => {
+    if (pollingIds.current.has(id)) return
+    pollingIds.current.add(id)
+    try {
+      while (mounted.current) {
+        const response = await fetch(`${API_BASE_URL}/api/documents/${jobId}/pipeline`)
+        if (!response.ok) {
+          throw new Error(`无法读取后台审计状态（HTTP ${response.status}）。`)
+        }
+        const pipeline = (await response.json()) as PipelineReport
+        if (!mounted.current) return
+        updatePipelineItem(id, pipeline)
+        if (
+          pipeline.status === 'COMPLETE' ||
+          pipeline.status === 'FAILED' ||
+          pipeline.status === 'WAITING_CONFIGURATION' ||
+          pipeline.status === 'WAITING_OPTIONAL_COMPONENT'
+        ) {
+          return
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 800))
+      }
+    } catch (error) {
+      if (!mounted.current) return
+      setItems((current) =>
+        current.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                state: 'error',
+                error: error instanceof Error ? error.message : '无法读取后台审计状态。',
+              }
+            : item,
+        ),
+      )
+    } finally {
+      pollingIds.current.delete(id)
+    }
+  }
+
+  const beginPipeline = async (id: string, jobId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/${jobId}/pipeline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ as_of: localToday(), use_semantic: false }),
+      })
+      if (!response.ok) {
+        let message = `无法启动后台审计（HTTP ${response.status}）。`
+        try {
+          const payload = (await response.json()) as { detail?: string }
+          if (payload.detail) message = payload.detail
+        } catch {
+          // Keep the safe generic message.
+        }
+        throw new Error(message)
+      }
+      const pipeline = (await response.json()) as PipelineReport
+      updatePipelineItem(id, pipeline)
+      void pollPipeline(id, jobId)
+    } catch (error) {
+      setItems((current) =>
+        current.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                state: 'error',
+                error: error instanceof Error ? error.message : '无法启动后台审计。',
+              }
+            : item,
+        ),
+      )
+    }
+  }
+
+  const retryPipeline = async (item: QueueItem) => {
+    if (!item.result) return
+    setItems((current) =>
+      current.map((candidate) =>
+        candidate.id === item.id ? { ...candidate, state: 'processing', error: null } : candidate,
+      ),
+    )
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/${item.result.job_id}/pipeline/retry`, {
+        method: 'POST',
+      })
+      if (!response.ok) throw new Error(`重试失败（HTTP ${response.status}）。`)
+      const pipeline = (await response.json()) as PipelineReport
+      updatePipelineItem(item.id, pipeline)
+      void pollPipeline(item.id, item.result.job_id)
+    } catch (error) {
+      setItems((current) =>
+        current.map((candidate) =>
+          candidate.id === item.id
+            ? {
+                ...candidate,
+                state: 'error',
+                error: error instanceof Error ? error.message : '无法重试后台审计。',
+              }
+            : candidate,
+        ),
+      )
+    }
+  }
 
   const addFiles = (files: File[]) => {
     if (!files.length) return
@@ -149,13 +363,31 @@ function IntakeApp() {
         } catch {
           result = null
         }
-        setItems((current) =>
-          current.map((candidate) =>
-            candidate.id === activeId
-              ? { ...candidate, state: 'received', progress: 100, result, error: null }
-              : candidate,
-          ),
-        )
+        if (!result) {
+          setItems((current) =>
+            current.map((candidate) =>
+              candidate.id === activeId
+                ? { ...candidate, state: 'error', error: '本地服务返回了无法读取的文档结果。' }
+                : candidate,
+            ),
+          )
+        } else {
+          setItems((current) =>
+            current.map((candidate) =>
+              candidate.id === activeId
+                ? {
+                    ...candidate,
+                    state: 'processing',
+                    progress: 10,
+                    result,
+                    pipeline: null,
+                    error: null,
+                  }
+                : candidate,
+            ),
+          )
+          void beginPipeline(activeId, result.job_id)
+        }
       } else {
         let message = `上传失败（HTTP ${xhr.status}）。`
         try {
@@ -200,11 +432,11 @@ function IntakeApp() {
     addFiles(Array.from(event.dataTransfer.files))
   }
 
-  const retry = (id: string) => {
+  const retryUpload = (id: string) => {
     setItems((current) =>
       current.map((item) =>
         item.id === id && validateFile(item.file) === null
-          ? { ...item, state: 'queued', progress: 0, error: null, result: null }
+          ? { ...item, state: 'queued', progress: 0, error: null, result: null, pipeline: null }
           : item,
       ),
     )
@@ -261,13 +493,18 @@ function IntakeApp() {
           <span>PDF · JPG · PNG</span>
         </div>
 
+        <p className="intake-transmission-note">
+          文件接收后会自动执行完整审计。DeepSeek 主审与 Kimi 二审会把经过边界限制的合同/法律证据上下文发送到对应外部 API；未配置时流程会停下等待，不会静默跳过。
+        </p>
+
         {items.length > 0 && (
           <div className="intake-queue-wrap">
             <div className="intake-batch-summary">
               <div>
-                <strong>{receivedCount}/{items.length}</strong>
-                <span> 文件已接收</span>
-                {queuedCount > 0 && <span> · {queuedCount} 个等待</span>}
+                <strong>{completeCount}/{items.length}</strong>
+                <span> 审计完成</span>
+                {queuedCount > 0 && <span> · {queuedCount} 个等待上传</span>}
+                {waitingCount > 0 && <span> · {waitingCount} 个等待配置</span>}
                 {errorCount > 0 && <span className="intake-error-text"> · {errorCount} 个失败</span>}
               </div>
               <span>{batchProgress}%</span>
@@ -277,41 +514,55 @@ function IntakeApp() {
             </div>
 
             <div className="intake-queue" aria-live="polite">
-              {items.map((item) => (
-                <article className={`intake-row state-${item.state}`} key={item.id}>
-                  <div className="intake-file-copy">
-                    <strong title={item.file.name}>{item.file.name}</strong>
-                    <span>{formatBytes(item.file.size)}</span>
-                  </div>
-                  <div className="intake-row-status">
-                    <span>{stateLabel(item)}</span>
-                    {(item.state === 'uploading' || item.state === 'inspecting') && (
-                      <div className="intake-row-progress" aria-hidden="true">
-                        <div style={{ width: `${Math.max(item.progress, item.state === 'inspecting' ? 100 : 0)}%` }} />
-                      </div>
-                    )}
-                    {item.error && <small>{item.error}</small>}
-                    {item.result && (
-                      <small>
-                        {item.result.page_count} 页
-                        {item.result.ocr_required_pages > 0 ? ` · ${item.result.ocr_required_pages} 页需要 OCR` : ''}
-                      </small>
-                    )}
-                  </div>
-                  <div className="intake-row-actions">
-                    {item.state === 'error' && validateFile(item.file) === null && (
-                      <button type="button" onClick={() => retry(item.id)}>重试</button>
-                    )}
-                    {item.id !== activeId && item.state !== 'uploading' && item.state !== 'inspecting' && (
-                      <button type="button" className="quiet" onClick={() => remove(item.id)}>移除</button>
-                    )}
-                  </div>
-                </article>
-              ))}
+              {items.map((item) => {
+                const rowProgress = itemProgress(item)
+                const pipelineRetry = Boolean(item.result && (item.pipeline || item.state === 'waiting'))
+                const busy = ['uploading', 'inspecting', 'processing'].includes(item.state)
+                return (
+                  <article className={`intake-row state-${item.state}`} key={item.id}>
+                    <div className="intake-file-copy">
+                      <strong title={item.file.name}>{item.file.name}</strong>
+                      <span>{formatBytes(item.file.size)}</span>
+                    </div>
+                    <div className="intake-row-status">
+                      <span>{stateLabel(item)}</span>
+                      {(busy || item.state === 'waiting' || item.state === 'complete') && (
+                        <div className="intake-row-progress" aria-label={`文件进度 ${Math.round(rowProgress)}%`}>
+                          <div style={{ width: `${rowProgress}%` }} />
+                        </div>
+                      )}
+                      {item.error && <small>{item.error}</small>}
+                      {item.result && !item.error && item.state !== 'complete' && (
+                        <small>
+                          {item.result.page_count} 页
+                          {item.result.ocr_required_pages > 0 ? ` · ${item.result.ocr_required_pages} 页需要 OCR` : ''}
+                          {item.pipeline ? ` · ${item.pipeline.progress_percent}%` : ''}
+                        </small>
+                      )}
+                    </div>
+                    <div className="intake-row-actions">
+                      {item.state === 'complete' && item.result && (
+                        <a className="intake-result-link" href={`/workspace?job=${encodeURIComponent(item.result.job_id)}`}>
+                          查看结果
+                        </a>
+                      )}
+                      {(item.state === 'waiting' || item.state === 'error') && pipelineRetry && (
+                        <button type="button" onClick={() => void retryPipeline(item)}>重试审计</button>
+                      )}
+                      {item.state === 'error' && !item.result && validateFile(item.file) === null && (
+                        <button type="button" onClick={() => retryUpload(item.id)}>重试上传</button>
+                      )}
+                      {!busy && item.state !== 'waiting' && item.id !== activeId && (
+                        <button type="button" className="quiet" onClick={() => remove(item.id)}>移除</button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
             </div>
 
             <div className="intake-footnote">
-              当前页面只显示真实上传/文档读取状态；完整后台审计进度将在下一阶段接入，不显示虚假百分比。
+              进度来自本地上传与持久化后台阶段状态，不使用自动缓慢增长的假进度。当前单文件仍限 50 MB；500 MB 与批量并发调度留在 12C。
             </div>
           </div>
         )}
