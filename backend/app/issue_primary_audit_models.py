@@ -32,6 +32,12 @@ class IssueContextRelation(str, Enum):
     RELATED = "RELATED"
 
 
+class IssueTargetSelectionMethod(str, Enum):
+    EXPLICIT_PLAN = "EXPLICIT_PLAN"
+    DETERMINISTIC_CONTRACT_RETRIEVAL = "DETERMINISTIC_CONTRACT_RETRIEVAL"
+    NONE = "NONE"
+
+
 class IssuePrimaryContractItem(BaseModel):
     canonical_object_id: str
     object_type: str
@@ -73,6 +79,7 @@ class IssuePrimaryAuditContext(BaseModel):
     audit_plan_fingerprint: str
     issue_legal_context_fingerprint: str
     legal_support_state: IssueLegalSupportState
+    target_selection_method: IssueTargetSelectionMethod
     target_items: list[IssuePrimaryContractItem] = Field(default_factory=list)
     related_items: list[IssuePrimaryContractItem] = Field(default_factory=list)
     global_facts: list[IssuePrimaryGlobalFact] = Field(default_factory=list)
