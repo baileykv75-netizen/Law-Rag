@@ -16,6 +16,7 @@ Required checks:
 - persistent batch creation and two independent Job registrations;
 - packaged `/results?batch=...` SPA route;
 - one provider-free background pipeline reaches `WAITING_CONFIGURATION` without a paid provider call;
+- pipeline acceptance polling records state/stage transitions and allows up to 90 seconds without weakening the required terminal state;
 - simulated interrupted `RUNNING` state is reconciled on restart to `APPLICATION_RESTARTED_RETRY_REQUIRED`;
 - explicit retry resumes safely and stops again at the missing-provider boundary;
 - provider setup completion and latest useful batch survive process restart;
