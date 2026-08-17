@@ -7,8 +7,8 @@
 ```text
 Stage 11A–11E  COMPLETE / validated release foundations
 Stage 12A–12F  COMPLETE / RC2 VALIDATED
-Stage 13A       VALIDATION — provider boundary + pause/cancel control
-Stage 13B       PENDING — Windows tray + graceful quit
+Stage 13A       COMPLETE — provider boundary + pause/cancel control validated
+Stage 13B       NEXT — Windows tray + graceful quit
 Stage 13C       PENDING — batch history + local storage management
 ```
 
@@ -16,9 +16,9 @@ Stage 13 addresses the operational-control gaps identified after RC2. It does no
 
 ## Stage 13A — Provider boundary + pause/cancel
 
-### Goal
+**Status: complete.**
 
-A successfully uploaded contract must remain under explicit application/user control before external model transmission. The control plane must survive refresh/restart and must not rely on killing worker threads.
+A successfully uploaded contract remains under explicit application/user control before external model transmission. Provider/cancel intent is persisted independently from ordinary pipeline progress and survives browser/application restart.
 
 ### Provider modes
 
@@ -36,11 +36,9 @@ CANCEL_REQUESTED
 CANCELLED
 ```
 
-Provider/cancel intent is persisted separately in `pipeline-control.json` so worker progress writes cannot silently overwrite user intent.
+`runtime/jobs/<job-id>/pipeline-control.json` stores only operational control metadata; it contains no contract text or API secret.
 
-### Outbound boundary semantics
-
-The primary path is now:
+### Validated outbound semantics
 
 ```text
 ingest
@@ -49,7 +47,8 @@ ingest
  -> deterministic rules
  -> build local Stage 8 legal retrieval / bounded Evidence context
  -> provider policy gate
- -> provider slot
+ -> provider configuration check
+ -> bounded provider slot
  -> atomic cancel/policy recheck + active-provider record
  -> DeepSeek generate
  -> cancellation checkpoint
@@ -61,18 +60,18 @@ ingest
  -> local comparison / bounded Agent / review report
 ```
 
-No DeepSeek/Kimi `generate()` call may start before the final atomic control check.
+No DeepSeek/Kimi `generate()` call starts before the final atomic control check. Local legal retrieval/context preparation may complete before the outbound pause, so user approval controls transmission rather than preventing useful local preparation.
 
-### Cancellation rules
+### Cancellation semantics
 
 1. Cancellation before the provider boundary prevents provider generation.
-2. Cancellation during local work is cooperative and stops at the next safe checkpoint; completed artifacts are preserved.
-3. A provider request that has already started cannot be recalled. The UI must say so explicitly.
-4. If cancellation is requested while a provider request is in flight, Law-Rag records the provider as active and blocks every subsequent provider/stage after the current request returns.
-5. `CANCELLED` Jobs do not restart through ordinary retry; they require an explicit resume action.
-6. Explicit resume keeps the Job's existing provider policy. A cancelled `REQUIRE_APPROVAL` Job therefore pauses again before cloud transmission until approved.
-7. If the application exits after cancellation was requested, startup recovery resolves the Job to `CANCELLED`; it never becomes an automatic provider resume.
-8. Legacy Jobs without `pipeline-control.json` are read as `AUTO_CONTINUE` for compatibility, and read-only control inspection does not create a new file.
+2. Cancellation during local work is cooperative and stops at a safe checkpoint; completed artifacts are preserved.
+3. A provider request that has already started cannot be recalled or made unsent. The UI states this explicitly.
+4. If cancellation is requested while a provider request is in flight, Law-Rag records the active provider and blocks every subsequent provider/stage after the current request returns.
+5. `CANCELLED` Jobs cannot restart through ordinary retry; they require explicit resume.
+6. Explicit resume keeps the Job's existing provider policy. A cancelled `REQUIRE_APPROVAL` Job therefore pauses again before cloud transmission until explicitly approved.
+7. If the application exits after cancellation was requested, startup recovery resolves the Job to `CANCELLED`; no provider work silently resumes.
+8. Legacy Jobs without `pipeline-control.json` are synthesized as `AUTO_CONTINUE` for compatibility, and read-only control inspection does not create a file.
 
 ### Normal UI
 
@@ -82,38 +81,37 @@ The intake page defaults to:
 发送前确认（推荐）
 ```
 
-Before a batch has files, users may instead select:
+Users may deliberately select before adding files:
 
 ```text
 本地完成后自动继续
 仅本地处理
 ```
 
-Per-Job controls support:
+Per-Job controls are available on intake/result surfaces:
 
-- `批准云端审计` at a paused provider boundary;
-- `发送前暂停` for not-yet-started future provider calls;
+- `批准云端审计`;
+- `发送前暂停` for future not-yet-started provider calls;
 - `取消` / `取消审计`;
 - explicit `重新开始` for cancelled Jobs.
 
-The batch result page keeps cancelled/paused work visible and never converts these states into a legal-risk score.
+Paused and cancelled Jobs remain visible in batch summaries and are never converted into a legal-risk/correctness score.
 
-### Regression coverage
+### Validation completed
 
-Backend tests cover:
+Backend regressions cover:
 
-- local OCR/structure/rules plus local primary Evidence-context preparation before approval pause;
-- `REQUIRE_APPROVAL` preventing outbound provider start;
-- `LOCAL_ONLY` preventing outbound provider start;
+- local OCR/structure/rules plus local Stage 8 Evidence/legal-context preparation before approval pause;
+- `REQUIRE_APPROVAL` and `LOCAL_ONLY` preventing outbound generation;
 - explicit approval/resume;
-- cancel terminal state and generic-retry rejection;
-- provider in-flight cancellation blocking the next provider;
+- cancellation terminal state and generic-retry rejection;
+- in-flight DeepSeek cancellation blocking Kimi/subsequent stages;
 - restart reconciliation from cancel-requested to cancelled;
 - legacy control reads remaining non-mutating.
 
-Frontend production build covers the new provider-policy selector and intake/result actions.
+Frontend TypeScript/production build validates the provider-policy selector and intake/result actions.
 
-Clean Windows final-ZIP validation must additionally prove, without real provider keys or paid calls:
+The clean Windows final-ZIP smoke passed, without provider keys or paid model calls:
 
 ```text
 REQUIRE_APPROVAL
@@ -126,17 +124,46 @@ REQUIRE_APPROVAL
  -> PAUSED_BEFORE_PROVIDER again
 ```
 
+The same run also passed the existing Credential Manager, base packaged runtime, PDFium, Stage 12 user-flow, deterministic RC archive and final extracted-ZIP checks.
+
+See [`docs/PROVIDER_BOUNDARY.md`](docs/PROVIDER_BOUNDARY.md) for the security model.
+
 ## Hard boundaries retained
 
 - no private contract/API secret in Git or release bundles;
 - no hidden provider call;
 - no arbitrary thread kill as cancellation semantics;
-- no claim that an already-started provider request can be unsent;
+- no claim that an already-started provider request can be revoked;
 - no destructive cleanup of prior valid artifacts;
 - no OCR/legal-corpus expansion in Stage 13A;
 - public/default CI remains provider-free;
 - Stage 11 quality gate and Stage 12 product regressions remain green.
 
+## Stage 13B — Windows tray + graceful quit
+
+**Status: next; not started in the Stage 13A iteration.**
+
+Goal for the next iteration:
+
+```text
+hidden-console Law-Rag.exe
+ -> Windows tray icon
+ -> Open Law-Rag
+ -> show useful running/waiting task state
+ -> Exit Law-Rag
+ -> stop accepting/starting new work
+ -> persist fail-closed pipeline state
+ -> gracefully stop local FastAPI process
+```
+
+Quit must not delete runtime data, silently continue provider work, or pretend an in-flight provider transmission can be revoked.
+
+## Stage 13C — Batch history + local storage management
+
+Pending until 13B is independently complete and validated.
+
 ## Current implementation boundary
 
-Finish **Stage 13A Windows validation only**. If the clean-runner passes, mark 13A complete and proceed next to **13B Windows tray + graceful quit** as a separate iteration.
+**Stage 13A is closed.**
+
+The next explicit implementation task is **Stage 13B Windows tray + graceful quit**. Do not start Stage 13C or later roadmap work in the same iteration.
