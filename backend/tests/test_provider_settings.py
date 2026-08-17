@@ -6,7 +6,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.provider_settings import ProviderName, ProviderTestRequest, test_provider_connection
+from app.provider_settings import (
+    ProviderName,
+    ProviderTestRequest,
+    test_provider_connection as run_provider_connection,
+)
 
 client = TestClient(app)
 
@@ -106,7 +110,7 @@ def test_connectivity_probe_uses_only_fixed_non_contract_message(monkeypatch) ->
             return FakeResponse()
 
     monkeypatch.setattr(settings.httpx, "Client", FakeClient)
-    result = test_provider_connection(
+    result = run_provider_connection(
         ProviderTestRequest(provider=ProviderName.DEEPSEEK, api_key="probe-secret")
     )
     assert result.success is True
