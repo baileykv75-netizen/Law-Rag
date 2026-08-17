@@ -83,9 +83,6 @@ _STAGE_SPECS: list[tuple[PipelineStage, str, int]] = [
     (PipelineStage.REVIEW_REPORT, "比较双模型并整理结果", 100),
 ]
 
-# Stage 12C replaces the Stage 12B one-thread-per-job/global-serialization model
-# with a bounded worker pool plus resource-specific gates. These limits are
-# intentionally conservative until real desktop measurements justify changes.
 PIPELINE_MAX_WORKERS = 4
 LOCAL_STAGE_CONCURRENCY = 2
 OCR_STAGE_CONCURRENCY = 1
@@ -93,7 +90,10 @@ EXTERNAL_PROVIDER_CONCURRENCY = 2
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=PIPELINE_MAX_WORKERS, thread_name_prefix="law-rag-pipeline")
 _FUTURES: dict[str, Future[None]] = {}
-_FUTURES_LOCK = threading.Lock()
+# Callback registration can race with an extremely fast completed Future. Use
+# an RLock so an immediate add_done_callback cannot deadlock while registration
+# still owns this guard.
+_FUTURES_LOCK = threading.RLock()
 _LOCAL_STAGE_SEMAPHORE = threading.Semaphore(LOCAL_STAGE_CONCURRENCY)
 _OCR_STAGE_SEMAPHORE = threading.Semaphore(OCR_STAGE_CONCURRENCY)
 _EXTERNAL_PROVIDER_SEMAPHORE = threading.Semaphore(EXTERNAL_PROVIDER_CONCURRENCY)
@@ -494,7 +494,7 @@ def _run_pipeline(job_id: UUID) -> None:
     ) as exc:
         report = load_pipeline_report(job_id)
         _mark_failed(report, report.current_stage, type(exc).__name__, str(exc))
-    except Exception as exc:  # fail closed without persisting arbitrary exception payloads
+    except Exception as exc:
         report = load_pipeline_report(job_id)
         _mark_failed(
             report,
