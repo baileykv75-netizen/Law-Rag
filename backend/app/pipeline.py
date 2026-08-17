@@ -445,8 +445,19 @@ def _run_pipeline_serialized(job_id: UUID) -> None:
 def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineReport:
     _ensure_job_exists(job_id)
     existing = _load_report_if_present(job_id)
-    if existing is not None and existing.status == PipelineStatus.COMPLETE:
-        return existing
+
+    if existing is not None:
+        if existing.as_of != request.as_of or existing.use_semantic != request.use_semantic:
+            raise PipelineError(
+                "A pipeline already exists for this job with different as_of/use_semantic settings. "
+                "Create a new job or use the existing pipeline settings."
+            )
+        if existing.status == PipelineStatus.COMPLETE:
+            return existing
+        with _THREADS_LOCK:
+            active = _THREADS.get(str(job_id))
+            if active is not None and active.is_alive():
+                return existing
 
     if existing is None:
         now = _now()
@@ -463,11 +474,6 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
         )
     else:
         report = existing
-        if report.as_of != request.as_of or report.use_semantic != request.use_semantic:
-            raise PipelineError(
-                "A pipeline already exists for this job with different as_of/use_semantic settings. "
-                "Create a new job or use the existing pipeline settings."
-            )
         report.status = PipelineStatus.QUEUED
         report.failure_code = None
         report.failure_detail = None
