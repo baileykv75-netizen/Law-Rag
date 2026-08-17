@@ -16,6 +16,7 @@ from .secondary_review_models import (
     SecondaryAssessment,
     SecondaryReviewContext,
 )
+from .secret_store import SecretStoreError, resolve_provider_secret
 
 DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1"
 DEFAULT_KIMI_MODEL = "kimi-k3"
@@ -92,7 +93,12 @@ class KimiSecondaryReviewProvider(SecondaryReviewProvider):
     provider_name = "kimi"
 
     def __init__(self) -> None:
-        self.api_key = os.getenv("MOONSHOT_API_KEY", "").strip()
+        try:
+            resolved = resolve_provider_secret("kimi")
+        except SecretStoreError as exc:
+            raise SecondaryReviewProviderError(f"Kimi credential store could not be read: {exc}") from exc
+        self.api_key = resolved.value or ""
+        self.credential_source = resolved.source
         self.base_url = os.getenv("MOONSHOT_BASE_URL", DEFAULT_KIMI_BASE_URL).rstrip("/")
         self.model_name = os.getenv("MOONSHOT_MODEL", DEFAULT_KIMI_MODEL).strip() or DEFAULT_KIMI_MODEL
 
@@ -103,7 +109,7 @@ class KimiSecondaryReviewProvider(SecondaryReviewProvider):
                 configured=False,
                 model=self.model_name,
                 base_url=self.base_url,
-                detail="MOONSHOT_API_KEY is not configured in the local environment.",
+                detail="Kimi API key is not configured. Use Law-Rag API Settings or MOONSHOT_API_KEY for development.",
             )
         return ProviderHealth(
             provider=self.provider_name,
@@ -115,7 +121,7 @@ class KimiSecondaryReviewProvider(SecondaryReviewProvider):
 
     def generate(self, context: SecondaryReviewContext) -> ProviderAuditResult:
         if not self.api_key:
-            raise SecondaryReviewProviderError("MOONSHOT_API_KEY is not configured.")
+            raise SecondaryReviewProviderError("Kimi API key is not configured.")
 
         payload = {
             "model": self.model_name,
