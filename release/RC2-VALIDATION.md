@@ -11,6 +11,7 @@ Required checks:
 - first-run setup state and explicit local-only skip persistence;
 - protected `API 设置` remains reachable on both intake and batch-result surfaces;
 - base runtime diagnostics and private-data scan;
+- deterministic synthetic PDF fixture has a real native text layer and passes Stage 2 `NATIVE_TEXT_USABLE` routing;
 - native PDF ingestion and packaged PDFium rendering;
 - 64 MiB synthetic PDF ingestion, proving the packaged path is above the retired 50 MiB ceiling;
 - persistent batch creation and two independent Job registrations;
