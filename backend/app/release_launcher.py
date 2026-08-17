@@ -109,6 +109,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[ERROR] http://{host}:{args.port} is already in use. Law-Rag was not started twice.")
         return 2
 
+    # Process-local background futures cannot survive an application exit. Before
+    # serving the desktop UI, fail closed for transient states left by the prior
+    # process. This performs no OCR/provider/Agent work; the user must explicitly
+    # retry, and already completed artifacts are reused by the normal pipeline.
+    from .pipeline_recovery import reconcile_interrupted_pipelines
+
+    recovered = reconcile_interrupted_pipelines()
+    if recovered:
+        print(f"[Law-Rag] Marked {recovered} interrupted Job(s) as retry-required after restart.")
+
     url = f"http://{host}:{args.port}/"
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
