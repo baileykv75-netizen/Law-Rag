@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 BATCH_SCHEMA_VERSION = "1.0.0"
-BATCH_RESULT_SCHEMA_VERSION = "1.0.0"
+BATCH_RESULT_SCHEMA_VERSION = "1.1.0"
 
 
 class BatchManifest(BaseModel):
@@ -20,6 +20,7 @@ class BatchManifest(BaseModel):
 class BatchJobState(str, Enum):
     PROCESSING = "PROCESSING"
     WAITING = "WAITING"
+    CANCELLED = "CANCELLED"
     FAILED = "FAILED"
     COMPLETE = "COMPLETE"
     INVALID = "INVALID"
@@ -58,6 +59,7 @@ class BatchResultSummary(BaseModel):
     total_jobs: int = Field(ge=0)
     complete_jobs: int = Field(ge=0)
     waiting_jobs: int = Field(ge=0)
+    cancelled_jobs: int = Field(default=0, ge=0)
     failed_jobs: int = Field(ge=0)
     human_review_required_jobs: int = Field(ge=0)
     processing_jobs: int = Field(ge=0)
