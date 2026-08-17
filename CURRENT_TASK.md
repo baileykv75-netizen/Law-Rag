@@ -10,7 +10,12 @@ Stage 11B  COMPLETE — layered metrics + failure diagnostics + deterministic CI
 Stage 11C  COMPLETE — runtime/startup/data-integrity hardening
 Stage 11D  COMPLETE — reproducible Windows onedir bundle + clean-runner validation
 Stage 11E  RC1 VALIDATED — portable Windows RC runs successfully; installer remains deferred
-Stage 12   ACTIVE — user-facing intake, queue, guided configuration and automated pipeline
+Stage 12A  COMPLETE — minimal intake home + real multi-file upload queue shell
+Stage 12B  NEXT — application-owned background pipeline orchestrator
+Stage 12C  PENDING — 500 MiB streaming upload + bounded batch scheduling
+Stage 12D  PENDING — guided DeepSeek/Kimi configuration + protected local secrets
+Stage 12E  PENDING — batch result landing page
+Stage 12F  PENDING — Windows RC2 validation
 ```
 
 The first portable RC validated the packaging/runtime path on CI and on a real Windows desktop. User feedback showed the next highest-value work is not an installer: simplify intake, automate the pipeline, support large/batch files, and guide API configuration.
@@ -43,20 +48,27 @@ Internal stages, debug buttons, provider implementation details and development 
 
 ## 12A — Minimal intake home + batch queue shell
 
-Replace the legacy developer-heavy root page with a minimal intake surface:
+**Status: complete.**
 
-- large drag/drop target;
-- multi-file selection;
-- one queue row per file;
-- filename, size, state and real upload progress;
-- independent failure/retry/removal semantics;
-- current supported formats remain explicit;
-- old developer controls move to `/developer`;
-- `/workspace` remains the detailed review route.
+Implemented and validated:
 
-12A may use the existing one-file upload API repeatedly; it must not fake downstream audit completion before the orchestrator exists.
+- `/` is now a minimal drag/drop intake instead of the legacy developer dashboard;
+- multi-file picker/drop queue;
+- one independent queue row per file;
+- sequential use of the existing single-file upload API so one failure does not cancel the batch;
+- real XHR upload progress, followed by explicit server-side document-reading state;
+- independent retry/removal semantics;
+- duplicate selection guard;
+- legacy Stage controls preserved under `/developer`;
+- `/workspace` remains the detailed evidence/review route;
+- no downstream audit-completion state is fabricated before 12B exists;
+- frontend locked production build, backend regressions and public quality gates green.
+
+The current 50 MiB backend limit remains visible only when encountered; raising it safely belongs to 12C.
 
 ## 12B — Application-owned background pipeline orchestrator
+
+**Status: next.**
 
 Create one server-owned pipeline state machine per Job. The normal path should automatically execute the required stages in order:
 
@@ -146,4 +158,4 @@ Installer work remains deferred unless RC2 testing demonstrates a concrete need.
 
 ## Current implementation boundary
 
-Start with **12A only**. Do not combine the UI rewrite, background orchestrator, protected secret storage and large-file scheduling into one unreviewable patch.
+Proceed with **12B only** next. Do not combine the pipeline orchestrator, 500 MiB upload changes and protected secret storage into one patch.
