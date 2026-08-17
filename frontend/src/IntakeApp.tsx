@@ -58,6 +58,19 @@ type QueueItem = {
   pipeline: PipelineReport | null
 }
 
+type BatchManifest = {
+  batch_id: string
+}
+
+type BatchSummary = {
+  batch_id: string
+  total_jobs: number
+  complete_jobs: number
+  waiting_jobs: number
+  failed_jobs: number
+  processing_jobs: number
+}
+
 function extensionOf(name: string) {
   const index = name.lastIndexOf('.')
   return index >= 0 ? name.slice(index).toLowerCase() : ''
@@ -74,9 +87,7 @@ function validateFile(file: File): string | null {
     return '暂支持 PDF、JPG、JPEG、PNG。'
   }
   if (file.size === 0) return '文件为空。'
-  if (file.size > CURRENT_MAX_BYTES) {
-    return '单文件上限为 500 MB。'
-  }
+  if (file.size > CURRENT_MAX_BYTES) return '单文件上限为 500 MB。'
   return null
 }
 
@@ -135,15 +146,48 @@ function IntakeApp() {
   const [items, setItems] = useState<QueueItem[]>([])
   const [dragging, setDragging] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [batchId, setBatchId] = useState<string | null>(null)
+  const [batchError, setBatchError] = useState<string | null>(null)
+  const [recentBatch, setRecentBatch] = useState<BatchSummary | null>(null)
   const pollingIds = useRef(new Set<string>())
   const mounted = useRef(true)
+  const batchIdRef = useRef<string | null>(null)
+  const batchPromiseRef = useRef<Promise<string> | null>(null)
+  const autoOpenedResults = useRef(false)
 
   useEffect(() => {
     mounted.current = true
+    void fetch(`${API_BASE_URL}/api/batches/recent`)
+      .then(async (response) => (response.ok ? ((await response.json()) as BatchSummary | null) : null))
+      .then((summary) => {
+        if (mounted.current && summary?.total_jobs) setRecentBatch(summary)
+      })
+      .catch(() => undefined)
     return () => {
       mounted.current = false
     }
   }, [])
+
+  const ensureBatch = async () => {
+    if (batchIdRef.current) return batchIdRef.current
+    if (!batchPromiseRef.current) {
+      batchPromiseRef.current = fetch(`${API_BASE_URL}/api/batches`, { method: 'POST' })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`无法创建本地批次（HTTP ${response.status}）。`)
+          const manifest = (await response.json()) as BatchManifest
+          batchIdRef.current = manifest.batch_id
+          if (mounted.current) {
+            setBatchId(manifest.batch_id)
+            setBatchError(null)
+          }
+          return manifest.batch_id
+        })
+        .finally(() => {
+          batchPromiseRef.current = null
+        })
+    }
+    return batchPromiseRef.current
+  }
 
   const queuedCount = items.filter((item) => item.state === 'queued').length
   const completeCount = items.filter((item) => item.state === 'complete').length
@@ -162,6 +206,14 @@ function IntakeApp() {
     if (!items.length) return 0
     return Math.round(items.reduce((sum, item) => sum + itemProgress(item), 0) / items.length)
   }, [items])
+
+  useEffect(() => {
+    if (!batchId || !items.length || autoOpenedResults.current) return
+    if (items.every((item) => item.state === 'complete')) {
+      autoOpenedResults.current = true
+      window.location.assign(`/results?batch=${encodeURIComponent(batchId)}`)
+    }
+  }, [batchId, items])
 
   const updatePipelineItem = (id: string, pipeline: PipelineReport) => {
     setItems((current) =>
@@ -205,9 +257,7 @@ function IntakeApp() {
     try {
       while (mounted.current) {
         const response = await fetch(`${API_BASE_URL}/api/documents/${jobId}/pipeline`)
-        if (!response.ok) {
-          throw new Error(`无法读取后台审计状态（HTTP ${response.status}）。`)
-        }
+        if (!response.ok) throw new Error(`无法读取后台审计状态（HTTP ${response.status}）。`)
         const pipeline = (await response.json()) as PipelineReport
         if (!mounted.current) return
         updatePipelineItem(id, pipeline)
@@ -226,11 +276,7 @@ function IntakeApp() {
       setItems((current) =>
         current.map((item) =>
           item.id === id
-            ? {
-                ...item,
-                state: 'error',
-                error: error instanceof Error ? error.message : '无法读取后台审计状态。',
-              }
+            ? { ...item, state: 'error', error: error instanceof Error ? error.message : '无法读取后台审计状态。' }
             : item,
         ),
       )
@@ -263,15 +309,21 @@ function IntakeApp() {
       setItems((current) =>
         current.map((item) =>
           item.id === id
-            ? {
-                ...item,
-                state: 'error',
-                error: error instanceof Error ? error.message : '无法启动后台审计。',
-              }
+            ? { ...item, state: 'error', error: error instanceof Error ? error.message : '无法启动后台审计。' }
             : item,
         ),
       )
     }
+  }
+
+  const registerAndBeginPipeline = async (id: string, jobId: string) => {
+    const currentBatchId = batchIdRef.current ?? (await ensureBatch())
+    const response = await fetch(
+      `${API_BASE_URL}/api/batches/${encodeURIComponent(currentBatchId)}/jobs/${encodeURIComponent(jobId)}`,
+      { method: 'POST' },
+    )
+    if (!response.ok) throw new Error(`无法登记批次结果（HTTP ${response.status}）。`)
+    await beginPipeline(id, jobId)
   }
 
   const retryPipeline = async (item: QueueItem) => {
@@ -282,9 +334,7 @@ function IntakeApp() {
       ),
     )
     try {
-      const response = await fetch(`${API_BASE_URL}/api/documents/${item.result.job_id}/pipeline/retry`, {
-        method: 'POST',
-      })
+      const response = await fetch(`${API_BASE_URL}/api/documents/${item.result.job_id}/pipeline/retry`, { method: 'POST' })
       if (!response.ok) throw new Error(`重试失败（HTTP ${response.status}）。`)
       const pipeline = (await response.json()) as PipelineReport
       updatePipelineItem(item.id, pipeline)
@@ -293,23 +343,24 @@ function IntakeApp() {
       setItems((current) =>
         current.map((candidate) =>
           candidate.id === item.id
-            ? {
-                ...candidate,
-                state: 'error',
-                error: error instanceof Error ? error.message : '无法重试后台审计。',
-              }
+            ? { ...candidate, state: 'error', error: error instanceof Error ? error.message : '无法重试后台审计。' }
             : candidate,
         ),
       )
     }
   }
 
-  const addFiles = (files: File[]) => {
+  const addFiles = async (files: File[]) => {
     if (!files.length) return
+    try {
+      await ensureBatch()
+    } catch (error) {
+      setBatchError(error instanceof Error ? error.message : '无法创建本地审计批次。')
+      return
+    }
+    setRecentBatch(null)
     setItems((current) => {
-      const existing = new Set(
-        current.map((item) => `${item.file.name}::${item.file.size}::${item.file.lastModified}`),
-      )
+      const existing = new Set(current.map((item) => `${item.file.name}::${item.file.size}::${item.file.lastModified}`))
       const additions = files
         .filter((file) => !existing.has(`${file.name}::${file.size}::${file.lastModified}`))
         .map(createQueueItem)
@@ -318,13 +369,13 @@ function IntakeApp() {
   }
 
   useEffect(() => {
-    if (activeId) return
+    if (activeId || !batchId) return
     const next = items.find((item) => item.state === 'queued')
     if (next) setActiveId(next.id)
-  }, [activeId, items])
+  }, [activeId, batchId, items])
 
   useEffect(() => {
-    if (!activeId) return
+    if (!activeId || !batchId) return
     const item = items.find((candidate) => candidate.id === activeId)
     if (!item || item.state !== 'queued') {
       setActiveId(null)
@@ -337,9 +388,7 @@ function IntakeApp() {
 
     setItems((current) =>
       current.map((candidate) =>
-        candidate.id === activeId
-          ? { ...candidate, state: 'uploading', progress: 0, error: null }
-          : candidate,
+        candidate.id === activeId ? { ...candidate, state: 'uploading', progress: 0, error: null } : candidate,
       ),
     )
 
@@ -349,72 +398,60 @@ function IntakeApp() {
       setItems((current) =>
         current.map((candidate) =>
           candidate.id === activeId
-            ? {
-                ...candidate,
-                state: progress >= 100 ? 'inspecting' : 'uploading',
-                progress,
-              }
+            ? { ...candidate, state: progress >= 100 ? 'inspecting' : 'uploading', progress }
             : candidate,
         ),
       )
     }
 
     xhr.onload = () => {
-      if (xhr.status === 201) {
-        let result: UploadResponse | null = null
+      void (async () => {
         try {
-          result = JSON.parse(xhr.responseText) as UploadResponse
-        } catch {
-          result = null
-        }
-        if (!result) {
+          if (xhr.status !== 201) {
+            let message = `上传失败（HTTP ${xhr.status}）。`
+            try {
+              const payload = JSON.parse(xhr.responseText) as { detail?: string }
+              if (payload.detail) message = payload.detail
+            } catch {
+              // Keep the safe generic message; never surface an arbitrary HTML response.
+            }
+            throw new Error(message)
+          }
+
+          let result: UploadResponse | null = null
+          try {
+            result = JSON.parse(xhr.responseText) as UploadResponse
+          } catch {
+            result = null
+          }
+          if (!result) throw new Error('本地服务返回了无法读取的文档结果。')
+
           setItems((current) =>
             current.map((candidate) =>
               candidate.id === activeId
-                ? { ...candidate, state: 'error', error: '本地服务返回了无法读取的文档结果。' }
+                ? { ...candidate, state: 'processing', progress: 10, result, pipeline: null, error: null }
                 : candidate,
             ),
           )
-        } else {
+          await registerAndBeginPipeline(activeId, result.job_id)
+        } catch (error) {
           setItems((current) =>
             current.map((candidate) =>
               candidate.id === activeId
-                ? {
-                    ...candidate,
-                    state: 'processing',
-                    progress: 10,
-                    result,
-                    pipeline: null,
-                    error: null,
-                  }
+                ? { ...candidate, state: 'error', error: error instanceof Error ? error.message : '本地处理失败。' }
                 : candidate,
             ),
           )
-          void beginPipeline(activeId, result.job_id)
+        } finally {
+          setActiveId(null)
         }
-      } else {
-        let message = `上传失败（HTTP ${xhr.status}）。`
-        try {
-          const payload = JSON.parse(xhr.responseText) as { detail?: string }
-          if (payload.detail) message = payload.detail
-        } catch {
-          // Keep the safe generic message; never surface an arbitrary HTML response.
-        }
-        setItems((current) =>
-          current.map((candidate) =>
-            candidate.id === activeId ? { ...candidate, state: 'error', error: message } : candidate,
-          ),
-        )
-      }
-      setActiveId(null)
+      })()
     }
 
     xhr.onerror = () => {
       setItems((current) =>
         current.map((candidate) =>
-          candidate.id === activeId
-            ? { ...candidate, state: 'error', error: '无法连接本地 Law-Rag 服务。' }
-            : candidate,
+          candidate.id === activeId ? { ...candidate, state: 'error', error: '无法连接本地 Law-Rag 服务。' } : candidate,
         ),
       )
       setActiveId(null)
@@ -426,14 +463,13 @@ function IntakeApp() {
     return () => {
       if (xhr.readyState !== XMLHttpRequest.DONE) xhr.abort()
     }
-    // The selected queue item is intentionally captured once for this upload lifecycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId])
+  }, [activeId, batchId])
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     setDragging(false)
-    addFiles(Array.from(event.dataTransfer.files))
+    void addFiles(Array.from(event.dataTransfer.files))
   }
 
   const retryUpload = (id: string) => {
@@ -458,18 +494,20 @@ function IntakeApp() {
           <p className="intake-eyebrow">LAW-RAG</p>
           <h1>合同审计</h1>
         </div>
-        <a className="intake-developer-link" href="/developer" aria-label="打开高级调试模式">
-          高级模式
-        </a>
+        <a className="intake-developer-link" href="/developer" aria-label="打开高级调试模式">高级模式</a>
       </header>
 
       <section className="intake-card" aria-label="合同文件导入">
+        {items.length === 0 && recentBatch && (
+          <a className="batch-recent-link" href={`/results?batch=${encodeURIComponent(recentBatch.batch_id)}`}>
+            查看最近批次 · {recentBatch.complete_jobs}/{recentBatch.total_jobs} 已完成
+          </a>
+        )}
+        {batchError && <p className="intake-error-text">{batchError}</p>}
+
         <div
           className={`intake-dropzone${dragging ? ' is-dragging' : ''}`}
-          onDragEnter={(event) => {
-            event.preventDefault()
-            setDragging(true)
-          }}
+          onDragEnter={(event) => { event.preventDefault(); setDragging(true) }}
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
@@ -487,7 +525,7 @@ function IntakeApp() {
             multiple
             accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
             onChange={(event) => {
-              addFiles(Array.from(event.target.files ?? []))
+              void addFiles(Array.from(event.target.files ?? []))
               event.currentTarget.value = ''
             }}
           />
@@ -516,6 +554,13 @@ function IntakeApp() {
             <div className="intake-batch-progress" aria-label={`批次进度 ${batchProgress}%`}>
               <div style={{ width: `${batchProgress}%` }} />
             </div>
+
+            {(completeCount > 0 || waitingCount > 0 || errorCount > 0) && batchId && (
+              <div className="batch-result-entry">
+                <a href={`/results?batch=${encodeURIComponent(batchId)}`}>查看批次结果</a>
+                <span>全部正常完成时会自动进入结果页。</span>
+              </div>
+            )}
 
             <div className="intake-queue" aria-live="polite">
               {items.map((item) => {
@@ -546,9 +591,7 @@ function IntakeApp() {
                     </div>
                     <div className="intake-row-actions">
                       {item.state === 'complete' && item.result && (
-                        <a className="intake-result-link" href={`/workspace?job=${encodeURIComponent(item.result.job_id)}`}>
-                          查看结果
-                        </a>
+                        <a className="intake-result-link" href={`/workspace?job=${encodeURIComponent(item.result.job_id)}`}>详细审计</a>
                       )}
                       {(item.state === 'waiting' || item.state === 'error') && pipelineRetry && (
                         <button type="button" onClick={() => void retryPipeline(item)}>重试审计</button>
@@ -566,7 +609,7 @@ function IntakeApp() {
             </div>
 
             <div className="intake-footnote">
-              进度来自真实上传字节和后台持久化阶段状态。大文件按 1 MB 分块写入本机；后台任务使用受控并发，不会把 OCR 或模型请求无限并行。
+              进度来自真实上传字节和后台持久化阶段状态。批次只保存 Job ID，不复制合同正文；刷新或重启后可从“最近批次”恢复结果入口。
             </div>
           </div>
         )}
