@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID
 
@@ -221,17 +222,32 @@ def run_primary_ai_audit(
     request: AiAuditRunRequest,
     *,
     provider_override: PrimaryAuditProvider | None = None,
+    provider_gate: Callable[[], None] | None = None,
+    before_provider_generate: Callable[[], None] | None = None,
 ) -> AiAuditReport:
+    """Build the complete local Stage 8 context before crossing the provider boundary.
+
+    provider_gate is called after deterministic local context/retrieval construction
+    but before provider configuration/generation. before_provider_generate is then
+    called immediately before provider.generate(), allowing the application control
+    plane to atomically recheck cancellation and record an in-flight request.
+    """
+
     try:
         context = build_audit_context(job_id, as_of=request.as_of, use_semantic=request.use_semantic)
     except AiAuditContextError as exc:
         raise AiAuditError(str(exc)) from exc
+
+    if provider_gate is not None:
+        provider_gate()
 
     try:
         provider = provider_override or provider_from_name(request.provider)
         health = provider.health()
         if not health.configured:
             raise AiAuditConfigurationError(health.detail)
+        if before_provider_generate is not None:
+            before_provider_generate()
         provider_result = provider.generate(context)
     except PrimaryAuditProviderError as exc:
         raise AiAuditError(str(exc)) from exc
