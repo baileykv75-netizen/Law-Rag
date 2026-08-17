@@ -6,8 +6,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-PIPELINE_SCHEMA_VERSION = "1.1.0"
-PIPELINE_ENGINE_VERSION = "stage12c-1.0.0"
+from .pipeline_control_models import ProviderExecutionMode
+
+PIPELINE_SCHEMA_VERSION = "1.2.0"
+PIPELINE_ENGINE_VERSION = "stage13a-1.0.0"
 
 
 class PipelineStatus(str, Enum):
@@ -16,6 +18,9 @@ class PipelineStatus(str, Enum):
     RUNNING = "RUNNING"
     WAITING_CONFIGURATION = "WAITING_CONFIGURATION"
     WAITING_OPTIONAL_COMPONENT = "WAITING_OPTIONAL_COMPONENT"
+    PAUSED_BEFORE_PROVIDER = "PAUSED_BEFORE_PROVIDER"
+    CANCEL_REQUESTED = "CANCEL_REQUESTED"
+    CANCELLED = "CANCELLED"
     FAILED = "FAILED"
     COMPLETE = "COMPLETE"
 
@@ -37,12 +42,14 @@ class PipelineStageState(str, Enum):
     COMPLETE = "COMPLETE"
     SKIPPED = "SKIPPED"
     WAITING = "WAITING"
+    CANCELLED = "CANCELLED"
     FAILED = "FAILED"
 
 
 class PipelineStartRequest(BaseModel):
     as_of: date = Field(default_factory=date.today)
     use_semantic: bool = False
+    provider_mode: ProviderExecutionMode = ProviderExecutionMode.AUTO_CONTINUE
 
 
 class PipelineStageRecord(BaseModel):
