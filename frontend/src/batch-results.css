@@ -23,7 +23,8 @@
   color: var(--muted, #667085);
 }
 
-.batch-results-header-actions {
+.batch-results-header-actions,
+.batch-result-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -31,6 +32,7 @@
 
 .batch-results-header-actions a,
 .batch-result-actions a,
+.batch-result-actions button,
 .batch-result-entry a,
 .batch-recent-link {
   display: inline-flex;
@@ -42,15 +44,23 @@
   border: 1px solid #d0d5dd;
   background: #fff;
   color: #101828;
+  font: inherit;
   font-weight: 650;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .batch-results-header-actions a:hover,
 .batch-result-actions a:hover,
+.batch-result-actions button:hover:not(:disabled),
 .batch-result-entry a:hover,
 .batch-recent-link:hover {
   border-color: #98a2b3;
+}
+
+.batch-result-actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .batch-results-header-actions .quiet-link {
