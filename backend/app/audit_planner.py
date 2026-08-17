@@ -12,7 +12,12 @@ from pydantic import ValidationError
 from .audit_plan_models import (
     AuditPlan,
     AuditPlanIssue,
+    AuditPlanPass,
+    AuditPlanPassType,
+    AuditPlanPlanningMode,
     AuditPlanSource,
+    AuditPlanningCoverage,
+    AuditPlanningCoverageState,
     AuditPlannerInput,
     ContractType,
     ModelAuditPlanDraft,
@@ -466,7 +471,7 @@ def merge_audit_plan(planner_input: AuditPlannerInput, draft: ModelAuditPlanDraf
             "Planner did not select one specific contract type; Law-Rag applied the conservative GENERAL baseline checklist."
         )
     warnings.append(
-        "Stage 13B creates review scope only. Final legal conclusions remain disabled until later issue-based retrieval/audit stages."
+        "Stage 13C creates review scope only. Final legal conclusions remain disabled until later issue-based retrieval/audit stages."
     )
 
     priority_rank = {ReviewPriority.HIGH_ATTENTION: 0, ReviewPriority.IMPORTANT: 1, ReviewPriority.NORMAL: 2}
@@ -489,14 +494,44 @@ def merge_audit_plan(planner_input: AuditPlannerInput, draft: ModelAuditPlanDraf
     )
 
 
+def _direct_coverage(planner_input: AuditPlannerInput, plan: AuditPlan) -> list[AuditPlanningCoverage]:
+    issues_by_object: dict[str, list[str]] = {item.canonical_object_id: [] for item in planner_input.contract_items}
+    for issue in plan.issues:
+        for object_id in issue.contract_object_ids:
+            if object_id in issues_by_object:
+                issues_by_object[object_id].append(issue.issue_id)
+    output: list[AuditPlanningCoverage] = []
+    for item in planner_input.contract_items:
+        issue_ids = _unique(issues_by_object[item.canonical_object_id])
+        output.append(
+            AuditPlanningCoverage(
+                canonical_object_id=item.canonical_object_id,
+                object_type=item.object_type,
+                chunk_ids=["direct-0001"],
+                state=(
+                    AuditPlanningCoverageState.REVIEWED_WITH_ISSUE
+                    if issue_ids
+                    else AuditPlanningCoverageState.REVIEWED_NO_SPECIFIC_ISSUE
+                ),
+                issue_ids=issue_ids,
+            )
+        )
+    return output
+
+
 def run_audit_planner(
     job_id: UUID,
     *,
     provider_name: str = "deepseek",
     provider: AuditPlannerProvider | None = None,
 ) -> AuditPlan:
-    planner_input = build_planner_input(job_id)
     selected = provider or planner_provider_from_name(provider_name)
+    try:
+        planner_input = build_planner_input(job_id)
+    except AuditPlannerSizeError:
+        from .audit_planner_hierarchical import run_hierarchical_audit_planner
+
+        return run_hierarchical_audit_planner(job_id, provider=selected)
 
     ensure_pipeline_control(job_id, ProviderExecutionMode.REQUIRE_APPROVAL)
     boundary_name = f"{selected.provider_name}-planner"
@@ -512,6 +547,20 @@ def run_audit_planner(
         raise AuditPlannerValidationError("Planner returned JSON that does not match the strict AuditPlan draft schema.") from exc
 
     plan = merge_audit_plan(planner_input, draft, provider_result)
+    plan.planning_mode = AuditPlanPlanningMode.DIRECT
+    plan.planner_passes = [
+        AuditPlanPass(
+            pass_id="direct-0001",
+            pass_type=AuditPlanPassType.DIRECT,
+            contract_object_ids=[item.canonical_object_id for item in planner_input.contract_items],
+            input_fingerprint=planner_input.input_fingerprint,
+            response_hash=provider_result.raw_response_hash,
+            provider_request_id=provider_result.request_id,
+            provider_usage=provider_result.usage,
+        )
+    ]
+    plan.coverage = _direct_coverage(planner_input, plan)
+    plan.coverage_complete = len(plan.coverage) == len(planner_input.contract_items)
     atomic_write_text(Path(job_audit_plan_path(job_id)), plan.model_dump_json(indent=2))
     return plan
 
