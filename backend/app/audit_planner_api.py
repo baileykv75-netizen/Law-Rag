@@ -4,10 +4,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from .audit_plan_models import AuditPlan, AuditPlannerRunRequest, HierarchicalPlanningRequired
+from .audit_plan_models import AuditPlan, AuditPlannerRunRequest
 from .audit_planner import (
     AuditPlannerError,
-    AuditPlannerSizeError,
     AuditPlannerValidationError,
     load_audit_plan,
     run_audit_planner,
@@ -20,22 +19,15 @@ router = APIRouter()
 
 @router.post("/api/documents/{job_id}/audit-plan", response_model=AuditPlan)
 def create_audit_plan(job_id: UUID, request: AuditPlannerRunRequest) -> AuditPlan:
-    """Run the bounded Stage 13B Planner.
+    """Create the evidence-bounded Audit Plan.
 
-    This is an external-model boundary. New jobs default to REQUIRE_APPROVAL and
-    must be explicitly approved through the Stage 13A pipeline-control API before
-    a live Planner request can leave the machine.
+    Contracts within the direct budget use one Planner pass. Larger contracts
+    automatically use Stage 13C hierarchical chunk planning plus a global
+    synthesis pass. Every external pass crosses the Stage 13A provider boundary.
     """
 
     try:
         return run_audit_planner(job_id, provider_name=request.provider)
-    except AuditPlannerSizeError as exc:
-        detail = HierarchicalPlanningRequired(
-            detail=str(exc),
-            total_text_chars=exc.total_text_chars,
-            direct_text_char_limit=exc.direct_text_char_limit,
-        ).model_dump(mode="json")
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail) from exc
     except ProviderBoundaryPaused as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
