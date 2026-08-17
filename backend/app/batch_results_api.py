@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+from uuid import UUID
+
+from fastapi import APIRouter, HTTPException, status
+
+from .batch_results import (
+    BatchNotFoundError,
+    BatchResultError,
+    create_batch,
+    register_batch_job,
+    summarize_batch,
+    summarize_latest_batch,
+)
+from .batch_results_models import BatchManifest, BatchResultSummary
+
+router = APIRouter(prefix="/api/batches", tags=["batch-results"])
+
+
+@router.post("", response_model=BatchManifest, status_code=status.HTTP_201_CREATED)
+def create_batch_api() -> BatchManifest:
+    return create_batch()
+
+
+@router.post("/{batch_id}/jobs/{job_id}", response_model=BatchManifest)
+def register_batch_job_api(batch_id: UUID, job_id: UUID) -> BatchManifest:
+    try:
+        return register_batch_job(batch_id, job_id)
+    except BatchNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except BatchResultError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@router.get("/recent", response_model=BatchResultSummary | None)
+def latest_batch_results_api() -> BatchResultSummary | None:
+    try:
+        return summarize_latest_batch()
+    except BatchResultError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@router.get("/{batch_id}", response_model=BatchResultSummary)
+def batch_results_api(batch_id: UUID) -> BatchResultSummary:
+    try:
+        return summarize_batch(batch_id)
+    except BatchNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except BatchResultError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
