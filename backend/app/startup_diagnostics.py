@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 
+from .provider_settings import ProviderConfigurationError, provider_overview
 from .runtime_health import inspect_runtime_health
 from .runtime_health_models import (
     RuntimeHealthCheck,
@@ -82,11 +83,52 @@ def _temporary_residue_check() -> RuntimeHealthCheck:
     )
 
 
+def _apply_protected_provider_status(checks: list[RuntimeHealthCheck]) -> list[RuntimeHealthCheck]:
+    try:
+        overview = provider_overview()
+    except ProviderConfigurationError:
+        return checks
+    by_provider = {item.provider.value: item for item in overview.providers}
+    check_to_provider = {
+        "deepseek-provider": "deepseek",
+        "kimi-provider": "kimi",
+    }
+    updated: list[RuntimeHealthCheck] = []
+    for check in checks:
+        provider_name = check_to_provider.get(check.check_id)
+        item = by_provider.get(provider_name) if provider_name else None
+        if item is not None and item.configured and item.source == "windows_credential_manager":
+            metadata = dict(check.metadata)
+            metadata.update(
+                {
+                    "configured": True,
+                    "credential_source": "windows_credential_manager",
+                    "base_url": item.base_url,
+                    "model": item.model,
+                }
+            )
+            updated.append(
+                check.model_copy(
+                    update={
+                        "state": RuntimeHealthState.OK,
+                        "severity": RuntimeHealthSeverity.INFO,
+                        "detail": "Provider configuration is present in Windows Credential Manager. The secret value was not returned and no network request was made.",
+                        "action": None,
+                        "metadata": metadata,
+                    }
+                )
+            )
+        else:
+            updated.append(check)
+    return updated
+
+
 def inspect_startup_health() -> RuntimeHealthReport:
     report = inspect_runtime_health()
     native_pdf = _native_pdf_check()
     residue = _temporary_residue_check()
-    checks = [report.checks[0], native_pdf, residue, *report.checks[1:]] if report.checks else [native_pdf, residue]
+    base_checks = [report.checks[0], native_pdf, residue, *report.checks[1:]] if report.checks else [native_pdf, residue]
+    checks = _apply_protected_provider_status(base_checks)
     base_ready = report.base_app_ready and native_pdf.state == RuntimeHealthState.OK
     action_required = (
         report.action_required
