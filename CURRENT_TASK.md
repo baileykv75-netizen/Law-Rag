@@ -11,8 +11,8 @@ Stage 11C  COMPLETE — runtime/startup/data-integrity hardening
 Stage 11D  COMPLETE — reproducible Windows onedir bundle + clean-runner validation
 Stage 11E  RC1 VALIDATED — portable Windows RC runs successfully; installer remains deferred
 Stage 12A  COMPLETE — minimal intake home + real multi-file upload queue shell
-Stage 12B  NEXT — application-owned background pipeline orchestrator
-Stage 12C  PENDING — 500 MiB streaming upload + bounded batch scheduling
+Stage 12B  COMPLETE — persisted background audit pipeline + real progress/retry semantics
+Stage 12C  NEXT — 500 MiB streaming upload + bounded batch scheduling
 Stage 12D  PENDING — guided DeepSeek/Kimi configuration + protected local secrets
 Stage 12E  PENDING — batch result landing page
 Stage 12F  PENDING — Windows RC2 validation
@@ -61,23 +61,20 @@ Implemented and validated:
 - duplicate selection guard;
 - legacy Stage controls preserved under `/developer`;
 - `/workspace` remains the detailed evidence/review route;
-- no downstream audit-completion state is fabricated before 12B exists;
 - frontend locked production build, backend regressions and public quality gates green.
-
-The current 50 MiB backend limit remains visible only when encountered; raising it safely belongs to 12C.
 
 ## 12B — Application-owned background pipeline orchestrator
 
-**Status: next.**
+**Status: complete.**
 
-Create one server-owned pipeline state machine per Job. The normal path should automatically execute the required stages in order:
+Implemented and validated:
 
 ```text
 ingest
  -> OCR only where required
  -> canonical structure
  -> deterministic rules
- -> legal retrieval/context
+ -> Stage 7 legal retrieval/context inside Stage 8
  -> DeepSeek primary audit
  -> Kimi secondary review
  -> deterministic comparison
@@ -85,16 +82,29 @@ ingest
  -> review report ready
 ```
 
-Requirements:
+Behavior:
 
-- persisted pipeline state/progress;
-- retryable stage failures without rerunning already valid immutable work unnecessarily;
-- explicit optional/unavailable states for OCR/provider configuration;
-- no open-ended Agent loop;
-- API/UI polling must be read-only and provider-free;
-- a completed Job exposes the existing professional workstation.
+- every Job has versioned local `pipeline.json` state;
+- POST `/api/documents/{job}/pipeline` queues work and returns immediately;
+- GET `/api/documents/{job}/pipeline` is read-only/provider-free polling;
+- POST `/api/documents/{job}/pipeline/retry` resumes using the original `as_of`/semantic settings;
+- successful persisted OCR/structure/rules/primary/secondary/review artifacts are reused when valid rather than blindly rerun;
+- native-text documents explicitly skip OCR;
+- missing PaddleOCR stops at `WAITING_OPTIONAL_COMPONENT` rather than crashing the whole queue;
+- missing DeepSeek/Kimi configuration stops at `WAITING_CONFIGURATION` with the completed local stages preserved;
+- unexpected failures fail closed with persisted stage/error state;
+- duplicate start/retry while a Job thread is already alive returns the current state rather than resetting it;
+- normal intake automatically starts the pipeline after upload and polls real state;
+- user-visible progress is derived from upload bytes + persisted stage milestones only;
+- completed rows expose the existing `/workspace?job=<id>` result surface;
+- external DeepSeek/Kimi transmission is disclosed on the intake page before processing;
+- Stage 12B deliberately serializes complete pipelines with concurrency = 1 so multi-file intake cannot fan out OCR/provider calls before 12C introduces measured per-resource limits;
+- pipeline concurrency, retry/configuration, read-only polling and artifact-reuse regressions are covered;
+- backend regressions, public quality gates and locked frontend production build are green.
 
 ## 12C — 500 MiB streaming upload + bounded batch scheduling
+
+**Status: next.**
 
 Raise the per-file limit from 50 MiB to 500 MiB while preserving chunked streaming and cleanup-on-failure.
 
@@ -102,11 +112,13 @@ Batch policy:
 
 - one Job per file;
 - frontend/client queue may contain many files;
-- bounded concurrent local parsing;
-- OCR default concurrency 1 unless measured otherwise;
+- add explicit disk-space preflight/failure states for large local uploads;
+- keep upload streaming/chunked and never buffer a 500 MiB file in memory;
+- split the conservative Stage 12B global concurrency=1 into bounded resource-specific scheduling only where measured/safe;
+- OCR default concurrency remains 1 unless measured otherwise;
 - external model calls default to a small bounded concurrency;
-- disk-space and oversize failures are explicit per file;
-- one failed Job does not abort the batch.
+- one failed Job does not abort the batch;
+- queue status must distinguish waiting-for-worker from actively processing.
 
 ## 12D — First-run DeepSeek/Kimi configuration guide
 
@@ -158,4 +170,4 @@ Installer work remains deferred unless RC2 testing demonstrates a concrete need.
 
 ## Current implementation boundary
 
-Proceed with **12B only** next. Do not combine the pipeline orchestrator, 500 MiB upload changes and protected secret storage into one patch.
+Proceed with **12C only** next. Do not combine 500 MiB upload/scheduling, protected secret storage and result-summary redesign into one patch.
