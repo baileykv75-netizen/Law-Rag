@@ -33,6 +33,22 @@ try {
         throw "Extracted RC does not contain Law-Rag/Law-Rag.exe."
     }
 
+    $BundledGuidePath = Join-Path $ExtractedBundle "README-WINDOWS.md"
+    if (-not (Test-Path $BundledGuidePath)) {
+        throw "Extracted RC does not contain README-WINDOWS.md."
+    }
+    $BundledGuide = Get-Content $BundledGuidePath -Raw
+    foreach ($RequiredGuideText in @(
+        "0.8.0-rc2",
+        "Windows Credential Manager",
+        "500 MiB",
+        "继续 / 重试审计"
+    )) {
+        if (-not $BundledGuide.Contains($RequiredGuideText)) {
+            throw "Bundled README-WINDOWS.md is stale or incomplete; missing: $RequiredGuideText"
+        }
+    }
+
     $BundledMetadataPath = Join-Path $ExtractedBundle "_internal\release\release-metadata.json"
     $BundledMetadata = Get-Content $BundledMetadataPath -Raw | ConvertFrom-Json
     if ($BundledMetadata.source_commit_sha -ne $Manifest.source_commit_sha) {
@@ -52,7 +68,7 @@ try {
         throw "Extracted portable RC Stage 12F user-flow smoke failed with exit code $LASTEXITCODE"
     }
 
-    Write-Host "[Law-Rag] Extracted RC hash/metadata/runtime/PDFium and Stage 12F user-flow smoke passed."
+    Write-Host "[Law-Rag] Extracted RC hash/metadata/bundled-guide/runtime/PDFium and Stage 12F user-flow smoke passed."
 }
 finally {
     if (Test-Path $ExtractRoot) {
