@@ -119,6 +119,10 @@ def job_human_review_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "human-review.json"
 
 
+def job_pipeline_path(job_id: UUID) -> Path:
+    return job_output_dir(job_id) / "pipeline.json"
+
+
 def find_source_path(job_id: UUID) -> Path:
     upload_dir = runtime_dir() / "uploads" / str(job_id)
     candidates = sorted(upload_dir.glob("source.*"))
