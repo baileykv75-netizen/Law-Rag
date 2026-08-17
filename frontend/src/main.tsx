@@ -5,6 +5,7 @@ import IntakeApp from './IntakeApp'
 import LegalKnowledgePanel from './LegalKnowledgePanel'
 import LegalRetrievalPanel from './LegalRetrievalPanel'
 import PrimaryAuditPanel from './PrimaryAuditPanel'
+import ProviderSetupGate from './ProviderSetupGate'
 import SecondaryReviewPanel from './SecondaryReviewPanel'
 import WorkspaceApp from './WorkspaceApp'
 import './styles.css'
@@ -14,6 +15,7 @@ import './audit-workstation.css'
 import './human-review.css'
 import './workstation-polish.css'
 import './intake.css'
+import './provider-setup.css'
 
 const pathname = window.location.pathname
 const isWorkspaceRoute = pathname === '/workspace' || pathname.startsWith('/workspace/')
@@ -37,7 +39,9 @@ createRoot(document.getElementById('root')!).render(
         <SecondaryReviewPanel />
       </>
     ) : (
-      <IntakeApp />
+      <ProviderSetupGate>
+        <IntakeApp />
+      </ProviderSetupGate>
     )}
   </StrictMode>,
 )
