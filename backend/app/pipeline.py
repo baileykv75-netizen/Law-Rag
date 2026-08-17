@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -82,13 +83,20 @@ _STAGE_SPECS: list[tuple[PipelineStage, str, int]] = [
     (PipelineStage.REVIEW_REPORT, "比较双模型并整理结果", 100),
 ]
 
-_THREADS: dict[str, threading.Thread] = {}
-_THREADS_LOCK = threading.Lock()
-# Stage 12B chooses the safest batch behavior: one complete audit pipeline at a
-# time. Stage 12C may split this into measured local/OCR/provider concurrency
-# limits, but ordinary multi-file intake must never create unbounded model/OCR
-# fan-out in the meantime.
-_EXECUTION_SEMAPHORE = threading.Semaphore(1)
+# Stage 12C replaces the Stage 12B one-thread-per-job/global-serialization model
+# with a bounded worker pool plus resource-specific gates. These limits are
+# intentionally conservative until real desktop measurements justify changes.
+PIPELINE_MAX_WORKERS = 4
+LOCAL_STAGE_CONCURRENCY = 2
+OCR_STAGE_CONCURRENCY = 1
+EXTERNAL_PROVIDER_CONCURRENCY = 2
+
+_EXECUTOR = ThreadPoolExecutor(max_workers=PIPELINE_MAX_WORKERS, thread_name_prefix="law-rag-pipeline")
+_FUTURES: dict[str, Future[None]] = {}
+_FUTURES_LOCK = threading.Lock()
+_LOCAL_STAGE_SEMAPHORE = threading.Semaphore(LOCAL_STAGE_CONCURRENCY)
+_OCR_STAGE_SEMAPHORE = threading.Semaphore(OCR_STAGE_CONCURRENCY)
+_EXTERNAL_PROVIDER_SEMAPHORE = threading.Semaphore(EXTERNAL_PROVIDER_CONCURRENCY)
 
 
 def _now() -> datetime:
@@ -175,6 +183,30 @@ def _mark_done(
     _persist(report)
 
 
+def _mark_waiting_worker(report: PipelineReport, stage: PipelineStage, detail: str) -> None:
+    item = _stage(report, stage)
+    item.state = PipelineStageState.WAITING
+    item.detail = detail
+    item.finished_at = None
+    report.status = PipelineStatus.WAITING_WORKER
+    report.current_stage = stage
+    report.failure_code = None
+    report.failure_detail = None
+    _persist(report)
+
+
+def _acquire_resource(
+    report: PipelineReport,
+    stage: PipelineStage,
+    semaphore: threading.Semaphore,
+    wait_detail: str,
+) -> None:
+    if semaphore.acquire(blocking=False):
+        return
+    _mark_waiting_worker(report, stage, wait_detail)
+    semaphore.acquire()
+
+
 def _mark_waiting(
     report: PipelineReport,
     stage: PipelineStage,
@@ -237,14 +269,18 @@ def _run_ocr_stage(report: PipelineReport) -> None:
         _mark_done(report, PipelineStage.OCR, detail="复用已完成 OCR 结果。", reused=True)
         return
 
-    _mark_running(report, PipelineStage.OCR, "正在识别需要 OCR 的页面。")
-    result = run_ocr_for_job(job_id)
-    if result.status != "complete":
-        raise _StageFailure(
-            "OCR_INCOMPLETE",
-            "OCR 未完整完成；请检查无文本/失败页面后重试，已有其他合同任务不会受影响。",
-        )
-    _mark_done(report, PipelineStage.OCR, detail="OCR 已完成。")
+    _acquire_resource(report, PipelineStage.OCR, _OCR_STAGE_SEMAPHORE, "等待 OCR 处理名额。")
+    try:
+        _mark_running(report, PipelineStage.OCR, "正在识别需要 OCR 的页面。")
+        result = run_ocr_for_job(job_id)
+        if result.status != "complete":
+            raise _StageFailure(
+                "OCR_INCOMPLETE",
+                "OCR 未完整完成；请检查无文本/失败页面后重试，已有其他合同任务不会受影响。",
+            )
+        _mark_done(report, PipelineStage.OCR, detail="OCR 已完成。")
+    finally:
+        _OCR_STAGE_SEMAPHORE.release()
 
 
 def _run_structure_stage(report: PipelineReport) -> None:
@@ -256,9 +292,14 @@ def _run_structure_stage(report: PipelineReport) -> None:
             return
         except Exception:
             pass
-    _mark_running(report, PipelineStage.STRUCTURE, "正在整理合同条款与关键字段。")
-    build_contract_structure(job_id)
-    _mark_done(report, PipelineStage.STRUCTURE, detail="合同结构已生成。")
+
+    _acquire_resource(report, PipelineStage.STRUCTURE, _LOCAL_STAGE_SEMAPHORE, "等待本地处理名额。")
+    try:
+        _mark_running(report, PipelineStage.STRUCTURE, "正在整理合同条款与关键字段。")
+        build_contract_structure(job_id)
+        _mark_done(report, PipelineStage.STRUCTURE, detail="合同结构已生成。")
+    finally:
+        _LOCAL_STAGE_SEMAPHORE.release()
 
 
 def _run_rules_stage(report: PipelineReport) -> None:
@@ -270,9 +311,14 @@ def _run_rules_stage(report: PipelineReport) -> None:
             return
         except Exception:
             pass
-    _mark_running(report, PipelineStage.RULES, "正在执行确定性合同检查。")
-    run_audit_rules(job_id)
-    _mark_done(report, PipelineStage.RULES, detail="确定性检查已完成。")
+
+    _acquire_resource(report, PipelineStage.RULES, _LOCAL_STAGE_SEMAPHORE, "等待本地处理名额。")
+    try:
+        _mark_running(report, PipelineStage.RULES, "正在执行确定性合同检查。")
+        run_audit_rules(job_id)
+        _mark_done(report, PipelineStage.RULES, detail="确定性检查已完成。")
+    finally:
+        _LOCAL_STAGE_SEMAPHORE.release()
 
 
 def _run_primary_stage(report: PipelineReport) -> None:
@@ -290,12 +336,22 @@ def _run_primary_stage(report: PipelineReport) -> None:
                 return
         except Exception:
             pass
-    _mark_running(report, PipelineStage.PRIMARY_AUDIT, "正在检索法律依据并进行 DeepSeek 主审。")
-    run_primary_ai_audit(
-        job_id,
-        AiAuditRunRequest(as_of=report.as_of, provider="deepseek", use_semantic=report.use_semantic),
+
+    _acquire_resource(
+        report,
+        PipelineStage.PRIMARY_AUDIT,
+        _EXTERNAL_PROVIDER_SEMAPHORE,
+        "等待外部模型调用名额。",
     )
-    _mark_done(report, PipelineStage.PRIMARY_AUDIT, detail="法律检索与 DeepSeek 主审已完成。")
+    try:
+        _mark_running(report, PipelineStage.PRIMARY_AUDIT, "正在检索法律依据并进行 DeepSeek 主审。")
+        run_primary_ai_audit(
+            job_id,
+            AiAuditRunRequest(as_of=report.as_of, provider="deepseek", use_semantic=report.use_semantic),
+        )
+        _mark_done(report, PipelineStage.PRIMARY_AUDIT, detail="法律检索与 DeepSeek 主审已完成。")
+    finally:
+        _EXTERNAL_PROVIDER_SEMAPHORE.release()
 
 
 def _run_secondary_stage(report: PipelineReport) -> None:
@@ -317,12 +373,22 @@ def _run_secondary_stage(report: PipelineReport) -> None:
                 return
         except Exception:
             pass
-    _mark_running(report, PipelineStage.SECONDARY_REVIEW, "正在进行 Kimi 独立二审。")
-    run_secondary_review(
-        job_id,
-        SecondaryReviewRunRequest(provider="kimi", use_semantic=report.use_semantic),
+
+    _acquire_resource(
+        report,
+        PipelineStage.SECONDARY_REVIEW,
+        _EXTERNAL_PROVIDER_SEMAPHORE,
+        "等待外部模型调用名额。",
     )
-    _mark_done(report, PipelineStage.SECONDARY_REVIEW, detail="Kimi 二审已完成。")
+    try:
+        _mark_running(report, PipelineStage.SECONDARY_REVIEW, "正在进行 Kimi 独立二审。")
+        run_secondary_review(
+            job_id,
+            SecondaryReviewRunRequest(provider="kimi", use_semantic=report.use_semantic),
+        )
+        _mark_done(report, PipelineStage.SECONDARY_REVIEW, detail="Kimi 二审已完成。")
+    finally:
+        _EXTERNAL_PROVIDER_SEMAPHORE.release()
 
 
 def _run_review_stage(report: PipelineReport) -> None:
@@ -346,9 +412,14 @@ def _run_review_stage(report: PipelineReport) -> None:
                 return
         except Exception:
             pass
-    _mark_running(report, PipelineStage.REVIEW_REPORT, "正在比较双模型结果并执行受限本地补证据。")
-    build_review_report(job_id)
-    _mark_done(report, PipelineStage.REVIEW_REPORT, detail="双模型比较与最终复核报告已生成。")
+
+    _acquire_resource(report, PipelineStage.REVIEW_REPORT, _LOCAL_STAGE_SEMAPHORE, "等待本地处理名额。")
+    try:
+        _mark_running(report, PipelineStage.REVIEW_REPORT, "正在比较双模型结果并执行受限本地补证据。")
+        build_review_report(job_id)
+        _mark_done(report, PipelineStage.REVIEW_REPORT, detail="双模型比较与最终复核报告已生成。")
+    finally:
+        _LOCAL_STAGE_SEMAPHORE.release()
 
 
 def _run_pipeline(job_id: UUID) -> None:
@@ -362,6 +433,7 @@ def _run_pipeline(job_id: UUID) -> None:
             ingest.started_at = ingest.started_at or report.started_at
             ingest.finished_at = _now()
             report.progress_percent = max(report.progress_percent, ingest.progress_percent)
+            report.status = PipelineStatus.RUNNING
             _persist(report)
 
         _run_ocr_stage(report)
@@ -430,16 +502,20 @@ def _run_pipeline(job_id: UUID) -> None:
             "UNEXPECTED_PIPELINE_ERROR",
             f"Unexpected pipeline failure: {type(exc).__name__}.",
         )
-    finally:
-        with _THREADS_LOCK:
-            current = _THREADS.get(str(job_id))
-            if current is threading.current_thread():
-                _THREADS.pop(str(job_id), None)
 
 
-def _run_pipeline_serialized(job_id: UUID) -> None:
-    with _EXECUTION_SEMAPHORE:
-        _run_pipeline(job_id)
+def _active_future(job_id: UUID) -> Future[None] | None:
+    with _FUTURES_LOCK:
+        future = _FUTURES.get(str(job_id))
+        if future is not None and not future.done():
+            return future
+    return None
+
+
+def _forget_future(job_key: str, completed: Future[None]) -> None:
+    with _FUTURES_LOCK:
+        if _FUTURES.get(job_key) is completed:
+            _FUTURES.pop(job_key, None)
 
 
 def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineReport:
@@ -454,13 +530,13 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
             )
         if existing.status == PipelineStatus.COMPLETE:
             return existing
-        with _THREADS_LOCK:
-            active = _THREADS.get(str(job_id))
-            if active is not None and active.is_alive():
-                return existing
+        if _active_future(job_id) is not None:
+            return existing
 
     if existing is None:
         now = _now()
+        stages = _initial_stages()
+        stages[0].detail = "等待后台处理名额。"
         report = PipelineReport(
             job_id=job_id,
             status=PipelineStatus.QUEUED,
@@ -470,7 +546,7 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
             use_semantic=request.use_semantic,
             started_at=now,
             updated_at=now,
-            stages=_initial_stages(),
+            stages=stages,
         )
     else:
         report = existing
@@ -483,21 +559,20 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
                 item.state = PipelineStageState.PENDING
                 item.detail = ""
                 item.finished_at = None
+        pending = next((item for item in report.stages if item.state == PipelineStageState.PENDING), None)
+        if pending is not None:
+            report.current_stage = pending.stage
+            pending.detail = "等待后台处理名额。"
 
     _persist(report)
 
-    with _THREADS_LOCK:
-        active = _THREADS.get(str(job_id))
-        if active is not None and active.is_alive():
+    with _FUTURES_LOCK:
+        active = _FUTURES.get(str(job_id))
+        if active is not None and not active.done():
             return load_pipeline_report(job_id)
-        thread = threading.Thread(
-            target=_run_pipeline_serialized,
-            args=(job_id,),
-            name=f"law-rag-pipeline-{job_id}",
-            daemon=True,
-        )
-        _THREADS[str(job_id)] = thread
-        thread.start()
+        future = _EXECUTOR.submit(_run_pipeline, job_id)
+        _FUTURES[str(job_id)] = future
+        future.add_done_callback(lambda done, key=str(job_id): _forget_future(key, done))
     return load_pipeline_report(job_id)
 
 
