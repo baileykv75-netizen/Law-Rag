@@ -49,6 +49,25 @@ def configure_release_environment() -> dict[str, str]:
     return {key: os.environ[key] for key in defaults}
 
 
+def _format_exception_chain(exc: BaseException) -> str:
+    """Render chained runtime failures without losing the provider root cause."""
+
+    parts: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        detail = str(current).strip()
+        parts.append(f"{type(current).__name__}: {detail}" if detail else type(current).__name__)
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif not current.__suppress_context__:
+            current = current.__context__
+        else:
+            current = None
+    return " <- ".join(parts)
+
+
 def _port_available(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.5)
@@ -150,7 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             blocks = PaddleOcrProvider().recognize(image_path, page_number=1)
         except Exception as exc:
-            print(f"[ERROR] Offline OCR inference failed: {type(exc).__name__}: {exc}")
+            print(f"[ERROR] Offline OCR inference failed: {_format_exception_chain(exc)}")
             return 4
         payload = {
             "ready": bool(blocks),
