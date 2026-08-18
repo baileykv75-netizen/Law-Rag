@@ -14,6 +14,7 @@ DEFAULT_OUTPUT = REPO_ROOT / "release" / ".build" / "release-metadata.json"
 DEFAULT_PUBLIC_ASSETS_METADATA = REPO_ROOT / "release" / ".build" / "public-assets-metadata.json"
 DEFAULT_DEPENDENCY_INVENTORY = REPO_ROOT / "release" / "dependency-inventory.json"
 DEFAULT_PYTHON_LOCK = REPO_ROOT / "backend" / "requirements-release-lock-windows.txt"
+DEFAULT_OCR_PYTHON_LOCK = REPO_ROOT / "backend" / "requirements-release-ocr-lock-windows.txt"
 DEFAULT_FRONTEND_LOCK = REPO_ROOT / "frontend" / "package-lock.json"
 
 
@@ -51,6 +52,7 @@ def build_release_metadata(
     public_assets_metadata_path: Path = DEFAULT_PUBLIC_ASSETS_METADATA,
     dependency_inventory_path: Path = DEFAULT_DEPENDENCY_INVENTORY,
     python_lock_path: Path = DEFAULT_PYTHON_LOCK,
+    ocr_python_lock_path: Path = DEFAULT_OCR_PYTHON_LOCK,
     frontend_lock_path: Path = DEFAULT_FRONTEND_LOCK,
     pyinstaller_version: str | None = None,
 ) -> dict[str, object]:
@@ -60,9 +62,11 @@ def build_release_metadata(
 
     public_assets = json.loads(public_assets_metadata_path.read_text(encoding="utf-8"))
     resolved_pyinstaller = pyinstaller_version or importlib_metadata.version("pyinstaller")
+    base_lock_sha = _sha256(python_lock_path)
+    ocr_lock_sha = _sha256(ocr_python_lock_path)
     metadata: dict[str, object] = {
-        "schema_version": "1.0.0",
-        "release_profile": "stage11d-windows-base-onedir",
+        "schema_version": "1.1.0",
+        "release_profile": "stage14-4-windows-ocr-onedir",
         "application_version": APP_VERSION,
         "source_commit_sha": source_commit_sha,
         "target": "windows-x64",
@@ -77,7 +81,13 @@ def build_release_metadata(
             "package_lock_sha256": _sha256(frontend_lock_path),
             "versions": _frontend_versions(frontend_lock_path),
         },
-        "python_release_lock_sha256": _sha256(python_lock_path),
+        # Keep the Stage 11 field for older readers while fingerprinting the new
+        # Stage 14.4 OCR lock independently.
+        "python_release_lock_sha256": base_lock_sha,
+        "python_release_locks": {
+            "base_sha256": base_lock_sha,
+            "ocr_sha256": ocr_lock_sha,
+        },
         "dependency_inventory_sha256": _sha256(dependency_inventory_path),
         "public_assets": {
             "metadata_sha256": _sha256(public_assets_metadata_path),
@@ -88,8 +98,8 @@ def build_release_metadata(
         },
         "wall_clock_build_timestamp": None,
         "reproducible_content_policy": (
-            "No wall-clock timestamp is embedded. Metadata fingerprints source/toolchain/locks/public assets; "
-            "Stage 11D does not claim byte-identical PE output across arbitrary host/toolchain changes."
+            "No wall-clock timestamp is embedded. Metadata fingerprints source/toolchain/base+OCR locks/public assets; "
+            "the release does not claim byte-identical PE output across arbitrary host/toolchain changes."
         ),
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -98,7 +108,7 @@ def build_release_metadata(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate safe Stage 11D Windows release reproducibility metadata.")
+    parser = argparse.ArgumentParser(description="Generate safe Windows release reproducibility metadata.")
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--node-version", required=True)
     parser.add_argument("--npm-version", required=True)
