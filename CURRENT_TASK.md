@@ -20,7 +20,8 @@ Stage 13G       IN PROGRESS — end-to-end audit architecture regression + migra
                 13G.4 RC2 / Issue V1 compatibility boundary COMPLETE
                 13G.5 Workspace migration COMPLETE
                 13G.6 Human Review migration COMPLETE
-                13G.7 Results + Home migration NEXT
+                13G.7 Results + Home migration COMPLETE
+                13G.8 Developer migration NEXT
 ```
 
 Stage 13 prioritizes complete, evidence-bounded and auditable review scope before returning to desktop tray/history work.
@@ -216,7 +217,7 @@ See `docs/ISSUE_SECONDARY_REVIEW.md`.
 
 ## Stage 13G — End-to-end audit architecture regression + migration
 
-**Status: in progress; 13G.1–13G.6 complete, 13G.7 next.**
+**Status: in progress; 13G.1–13G.7 complete, 13G.8 next.**
 
 Stage 13G validates and connects the complete new chain:
 
@@ -242,11 +243,14 @@ Completed in the current Stage 13G migration branch:
 - architecture-aware human review: Issue V1 decisions bind to AuditPlan `issue_id`, while historical Legacy RC2 finding/omission revisions stay append-only and readable without conversion;
 - Issue human decisions snapshot server-derived Contract Evidence, Legal Evidence and the current `issue-review-report.json` artifact fingerprint; stale decisions cannot close the current review;
 - Workspace now reports mandatory Issue review progress and becomes complete only after every required Issue has a fresh final `CONFIRMED` or `REJECTED` decision; `NEEDS_MORE_REVIEW`, `UNREVIEWED` and stale revisions remain outstanding;
-- incomplete AuditPlan planning coverage cannot be waived by Issue-level human decisions.
+- incomplete AuditPlan planning coverage cannot be waived by Issue-level human decisions;
+- `/results` now resolves the authoritative audit architecture per Job: Issue V1 summaries use AuditPlan coverage, supported primary risk findings, deterministic comparison counts and current human-review closure, while Legacy RC2 keeps its old report semantics;
+- result queue priority is deterministic workload ordering only: unresolved human review > possible omission > material disagreement > critical > high > insufficient evidence > medium > low; it is never presented as a legal risk score;
+- provider-free regression proves Batch Results reads existing Stage 13 artifacts without external HTTP and reflects human-review closure after fresh Issue decisions;
+- `/` intake now displays the authoritative Stage 13 production sequence and correctly places `REQUIRE_APPROVAL` before the Audit Planner's first cloud call, while retaining Legacy RC2 stage labels for persisted historical jobs.
 
 Still required before Stage 13G closes:
 
-- update batch results and home/intake surfaces to consume/display the new authoritative chain;
 - update developer diagnostics for Stage 13 issue artifacts;
 - run final provider-free full regression plus clean Windows packaged smoke;
 - decide from regression evidence whether Stage 13F needs an additional bounded global coverage-synthesis pass; do not add it merely for symmetry.
@@ -264,6 +268,6 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 13G.6 Human Review migration is closed at the implementation boundary.**
+**Stage 13G.7 Results + Home migration is closed at the implementation boundary.**
 
-The next explicit implementation task is **Stage 13G.7 Results + Home migration**. Do not begin Stage 13G.8 or Stage 14 in the same iteration.
+The next explicit implementation task is **Stage 13G.8 Developer migration**. Do not begin Stage 13G.9 or Stage 14 in the same iteration.
