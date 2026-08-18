@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class DocumentKind(str, Enum):
     PDF = "pdf"
     IMAGE = "image"
+    DOCX = "docx"
 
 
 class PageRoute(str, Enum):
@@ -25,11 +26,20 @@ class DocumentRoute(str, Enum):
 
 class SourceMethod(str, Enum):
     NATIVE_PDF_TEXT = "native_pdf_text"
+    NATIVE_DOCX_TEXT = "native_docx_text"
     IMAGE_SOURCE = "image_source"
     OCR = "ocr"
 
 
 class PageEvidence(BaseModel):
+    """Legacy Stage 2 page-shaped evidence.
+
+    Stage 14 keeps this schema readable for existing PDF/image jobs. New
+    cross-format evidence uses ``SourceEvidence`` and typed source anchors in
+    ``evidence_models.py`` rather than fabricating pages for non-paginated
+    formats such as DOCX.
+    """
+
     evidence_id: str
     page_number: int = Field(ge=1)
     source_method: SourceMethod
@@ -52,6 +62,13 @@ class PageEvidenceSummary(BaseModel):
 
 
 class DocumentInspection(BaseModel):
+    """Legacy paginated inspection artifact for PDF/image inputs.
+
+    DOCX is intentionally not forced through this page-shaped artifact. Stage
+    14 DOCX ingestion will emit the cross-format source-document/evidence
+    representation while legacy jobs remain parseable through this model.
+    """
+
     job_id: UUID
     filename: str
     media_type: str
