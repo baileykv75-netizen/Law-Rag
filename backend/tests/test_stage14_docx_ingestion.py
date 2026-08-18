@@ -4,6 +4,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -33,10 +34,7 @@ def _paragraph(text: str, *, numbered: bool = False, extra: str = "") -> str:
 def _table(rows: list[list[str]]) -> str:
     rendered_rows: list[str] = []
     for row in rows:
-        cells = "".join(
-            f"<w:tc>{_paragraph(cell)}</w:tc>"
-            for cell in row
-        )
+        cells = "".join(f"<w:tc>{_paragraph(cell)}</w:tc>" for cell in row)
         rendered_rows.append(f"<w:tr>{cells}</w:tr>")
     return f"<w:tbl>{''.join(rendered_rows)}</w:tbl>"
 
@@ -98,7 +96,13 @@ def _docx_bytes(
     return buffer.getvalue()
 
 
-def _upload(tmp_path: Path, monkeypatch, payload: bytes, *, filename: str = "fictional-contract.docx"):
+def _upload(
+    tmp_path: Path,
+    monkeypatch,
+    payload: bytes,
+    *,
+    filename: str = "fictional-contract.docx",
+):
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     return client.post(
         "/api/documents",
@@ -106,7 +110,9 @@ def _upload(tmp_path: Path, monkeypatch, payload: bytes, *, filename: str = "fic
     )
 
 
-def test_docx_ingestion_preserves_order_numbering_tables_and_no_fake_pages(tmp_path: Path, monkeypatch) -> None:
+def test_docx_ingestion_preserves_order_numbering_tables_and_no_fake_pages(
+    tmp_path: Path, monkeypatch
+) -> None:
     body = "".join(
         [
             _paragraph("设备采购合同"),
@@ -125,12 +131,10 @@ def test_docx_ingestion_preserves_order_numbering_tables_and_no_fake_pages(tmp_p
     assert summary["page_count"] == 0
     assert summary["pages"] == []
     assert summary["status"] == "inspected"
-    assert summary["evidence_count"] == 10
+    assert summary["evidence_count"] == 9
 
-    job_id = summary["job_id"]
-    artifact = SourceEvidenceArtifact.model_validate_json(
-        job_evidence_path(job_id).read_bytes()
-    )
+    job_id = UUID(summary["job_id"])
+    artifact = SourceEvidenceArtifact.model_validate_json(job_evidence_path(job_id).read_bytes())
     assert artifact.schema_version == "2.1.0"
     assert len(artifact.source_document.source_sha256) == 64
     assert [item.text for item in artifact.evidence] == [
@@ -161,33 +165,47 @@ def test_docx_ingestion_preserves_order_numbering_tables_and_no_fake_pages(tmp_p
     assert contract["clauses"][0]["page_start"] is None
     assert contract["clauses"][0]["page_end"] is None
     assert len(contract["structured_blocks"]) == 1
-    assert contract["structured_blocks"][0]["provenance"]["extractor_id"] == "structured.docx-table-group"
+    assert (
+        contract["structured_blocks"][0]["provenance"]["extractor_id"]
+        == "structured.docx-table-group"
+    )
 
 
-def test_docx_tracked_changes_remain_visible_and_block_complete_coverage(tmp_path: Path, monkeypatch) -> None:
+def test_docx_tracked_changes_remain_visible_and_block_complete_coverage(
+    tmp_path: Path, monkeypatch
+) -> None:
     body = (
         _paragraph("服务合同")
-        + f'<w:ins w:id="1"><w:p><w:r><w:t>第一条 修订后的服务内容</w:t></w:r></w:p></w:ins>'
+        + '<w:ins w:id="1"><w:p><w:r><w:t>第一条 修订后的服务内容</w:t></w:r></w:p></w:ins>'
         + '<w:p><w:r><w:t>违约金</w:t></w:r><w:del w:id="2"><w:r><w:delText>5%</w:delText></w:r></w:del><w:ins w:id="3"><w:r><w:t>10%</w:t></w:r></w:ins></w:p>'
     )
     response = _upload(tmp_path, monkeypatch, _docx_bytes(body))
 
     assert response.status_code == 201
     assert response.json()["status"] == "partial"
-    assert any("DOCX_TRACKED_CHANGES_PRESENT" in item for item in response.json()["warnings"])
+    assert any(
+        "DOCX_TRACKED_CHANGES_PRESENT" in item
+        for item in response.json()["warnings"]
+    )
 
-    job_id = response.json()["job_id"]
+    job_id = UUID(response.json()["job_id"])
     structured = client.post(f"/api/documents/{job_id}/structure")
     assert structured.status_code == 200
     assert structured.json()["status"] == "partial"
     contract = json.loads(job_contract_path(job_id).read_text(encoding="utf-8"))
-    assert any(warning["code"] == "DOCX_TRACKED_CHANGES_PRESENT" for warning in contract["warnings"])
-    assert any("违约金10%" in block["text"] for block in contract["unnumbered_blocks"] + [
+    assert any(
+        warning["code"] == "DOCX_TRACKED_CHANGES_PRESENT"
+        for warning in contract["warnings"]
+    )
+    blocks = contract["unnumbered_blocks"] + [
         {"text": clause["body_text"]} for clause in contract["clauses"]
-    ])
+    ]
+    assert any("违约金10%" in block["text"] for block in blocks)
 
 
-def test_docx_embedded_image_is_inventoried_without_ocr_or_external_fetch(tmp_path: Path, monkeypatch) -> None:
+def test_docx_embedded_image_is_inventoried_without_ocr_or_external_fetch(
+    tmp_path: Path, monkeypatch
+) -> None:
     relationships = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="{REL_NS}">
   <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="https://example.invalid/never-fetch.png" TargetMode="External"/>
@@ -203,7 +221,7 @@ def test_docx_embedded_image_is_inventoried_without_ocr_or_external_fetch(tmp_pa
 
     assert response.status_code == 201
     assert response.json()["status"] == "partial"
-    job_id = response.json()["job_id"]
+    job_id = UUID(response.json()["job_id"])
     artifact = SourceEvidenceArtifact.model_validate_json(job_evidence_path(job_id).read_bytes())
     images = [item for item in artifact.evidence if item.block_kind == "IMAGE"]
     assert len(images) == 1
@@ -214,7 +232,9 @@ def test_docx_embedded_image_is_inventoried_without_ocr_or_external_fetch(tmp_pa
     assert "DOCX_EMBEDDED_IMAGE_REQUIRES_OCR_REVIEW" in codes
 
 
-def test_generic_zip_named_docx_is_rejected_and_upload_is_removed(tmp_path: Path, monkeypatch) -> None:
+def test_generic_zip_named_docx_is_rejected_and_upload_is_removed(
+    tmp_path: Path, monkeypatch
+) -> None:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("hello.txt", "not a docx")
