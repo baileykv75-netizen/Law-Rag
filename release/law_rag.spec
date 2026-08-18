@@ -54,13 +54,13 @@ datas = [
     (str(BUILD_ASSETS / "THIRD-PARTY-NOTICES"), "THIRD-PARTY-NOTICES"),
     (str(BUILD_ASSETS / "ocr-models"), "ocr-models"),
     (str(REPO_ROOT / "release" / "ocr-models-manifest.json"), "release"),
-    # PaddleX resolves its default OCR pipeline relative to paddlex.__file__.
-    # PyInstaller may not preserve that package data path automatically, so
-    # place Law-Rag's fixed two-model config at the exact path PaddleX 3.7
-    # expects. This avoids any runtime model/config download fallback.
+    # Keep Law-Rag's fixed two-model PaddleX config outside PaddleX package
+    # data. PaddleOcrProvider passes this path explicitly via paddlex_config,
+    # so collect_all("paddlex") cannot overwrite it with PaddleX's default
+    # OCR.yaml and no package-relative lookup is required at runtime.
     (
         str(REPO_ROOT / "release" / "paddlex" / "configs" / "pipelines" / "OCR.yaml"),
-        "paddlex/configs/pipelines",
+        "release/ocr-pipeline",
     ),
     (str(REPO_ROOT / "release" / "dependency-inventory.json"), "release"),
     (str(REPO_ROOT / "docs" / "WINDOWS_PACKAGING.md"), "docs"),
