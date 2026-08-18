@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12.10'
-      - name: Probe official Paddle OCR inference archives
+      - name: Fetch and strictly verify locked Paddle OCR inference archives
         working-directory: backend
         env:
           PYTHONPATH: .
@@ -25,12 +25,16 @@ jobs:
         run: |
           python -m app.ocr_model_assets `
             --manifest ../release/ocr-models-manifest.json `
-            --output-dir ../release/.ocr-model-probe `
-            --probe
-          Get-Content ../release/.ocr-model-probe/ocr-models-resolved.json
-      - name: Ensure probe output is not tracked as a repository model cache
+            --output-dir ../release/.ocr-model-verify
+          Get-Content ../release/.ocr-model-verify/ocr-models-resolved.json
+      - name: Ensure verified model payload remains untracked
         shell: pwsh
         run: |
-          git status --short
-          $tracked = git ls-files release/.ocr-model-probe
-          if ($tracked) { throw "OCR model probe output must never be tracked" }
+          $tracked = git ls-files release/.ocr-model-verify
+          if ($tracked) { throw "OCR model verification payload must never be tracked" }
+          $status = git status --short
+          if ($status) { Write-Host $status }
+      - name: Remove transient verified model payload
+        if: always()
+        shell: pwsh
+        run: Remove-Item release/.ocr-model-verify -Recurse -Force -ErrorAction SilentlyContinue
