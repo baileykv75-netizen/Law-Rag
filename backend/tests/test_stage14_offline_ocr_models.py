@@ -102,6 +102,24 @@ def test_frozen_paddlex_ocr_config_uses_only_approved_models() -> None:
     assert "PP-LCNet" not in text
 
 
+def test_windows_spec_preserves_paddlex_ocr_core_distribution_metadata() -> None:
+    spec_path = Path(__file__).resolve().parents[2] / "release" / "law_rag.spec"
+    text = spec_path.read_text(encoding="utf-8")
+
+    # PaddleX 3.7 checks the OCR extra with importlib.metadata.version().
+    # Frozen modules alone are therefore insufficient: each distribution's
+    # .dist-info metadata must also be present in the onedir bundle.
+    for distribution in (
+        "imagesize",
+        "opencv-contrib-python",
+        "pyclipper",
+        "pypdfium2",
+        "python-bidi",
+        "shapely",
+    ):
+        assert f'collect_metadata("{distribution}")' in text
+
+
 def test_model_resolver_requires_exact_files_and_hashes(tmp_path: Path) -> None:
     root, manifest = _fixture_models(tmp_path)
     paths = resolve_ocr_model_paths(model_root=root, manifest_path=manifest)
