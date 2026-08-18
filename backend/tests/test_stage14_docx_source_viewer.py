@@ -162,6 +162,28 @@ def test_docx_evidence_resolves_to_typed_anchor_without_fake_page(tmp_path: Path
     ]
 
 
+def test_docx_table_cell_evidence_resolves_exact_structural_coordinates(tmp_path: Path, monkeypatch) -> None:
+    job_id = _persist_docx_viewer_fixture(tmp_path, monkeypatch)
+
+    response = client.get(f"/api/documents/{job_id}/evidence/ev-docx-view-0005")
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["page_number"] is None
+    assert detail["text"] == "20%"
+    assert detail["source_anchor"] == {
+        "kind": "DOCX_TABLE_CELL",
+        "part": "document",
+        "table_index": 1,
+        "row_index": 2,
+        "cell_index": 2,
+        "paragraph_index": 1,
+        "char_start": None,
+        "char_end": None,
+    }
+    assert detail["source_locator"] == "docx:document:table:0001:row:0002:cell:0002:paragraph:0001"
+
+
 def test_docx_logical_source_preserves_paragraph_table_order_and_structure(tmp_path: Path, monkeypatch) -> None:
     job_id = _persist_docx_viewer_fixture(tmp_path, monkeypatch)
 
