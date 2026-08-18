@@ -13,7 +13,13 @@ Stage 13C       COMPLETE — hierarchical long-contract planning + coverage
 Stage 13D       COMPLETE — issue-based Legal RAG
 Stage 13E       COMPLETE — DeepSeek issue-by-issue primary audit
 Stage 13F       COMPLETE — Kimi finding + issue-coverage review
-Stage 13G       NEXT — end-to-end audit architecture regression + migration
+Stage 13G       IN PROGRESS — end-to-end audit architecture regression + migration
+                13G.1 deterministic issue comparison/report COMPLETE
+                13G.2 provider-free new-chain regression COMPLETE
+                13G.3 production Pipeline migration COMPLETE
+                13G.4 RC2 / Issue V1 compatibility boundary COMPLETE
+                13G.5 Workspace migration COMPLETE
+                13G.6 Human Review migration NEXT
 ```
 
 Stage 13 prioritizes complete, evidence-bounded and auditable review scope before returning to desktop tray/history work.
@@ -209,9 +215,9 @@ See `docs/ISSUE_SECONDARY_REVIEW.md`.
 
 ## Stage 13G — End-to-end audit architecture regression + migration
 
-**Status: next; implement this stage only.**
+**Status: in progress; 13G.1–13G.5 complete, 13G.6 next.**
 
-Stage 13G must validate and connect the complete new chain:
+Stage 13G validates and connects the complete new chain:
 
 ```text
 canonical contract
@@ -219,20 +225,26 @@ canonical contract
  -> issue-based Legal RAG
  -> DeepSeek issue primary audit
  -> Kimi issue finding + coverage review
- -> deterministic comparison / review-report
+ -> deterministic issue comparison / issue-review-report
  -> human review / workstation
 ```
 
-Required work:
+Completed in the current Stage 13G migration branch:
 
-- create deterministic comparison semantics between Stage 13E and 13F issue states;
-- preserve one-to-one AuditPlan coverage through final review-report/workstation;
-- define how Kimi `POSSIBLE_OMISSION`, disagreement and insufficient evidence affect human-review priority;
-- prove provider-boundary, cancellation, checkpoint/restart and stale-artifact behavior across the whole new chain;
-- migrate the application-owned background Pipeline away from legacy Stage 8/9 only after new-path regression passes;
-- retain a compatibility boundary during migration so old persisted RC2 jobs remain readable;
-- update batch results/workstation to consume the new authoritative artifacts;
-- run provider-free full regression plus clean Windows packaged smoke;
+- deterministic comparison semantics between Stage 13E and 13F issue states;
+- one-to-one AuditPlan coverage through `issue-review-report.json`;
+- deterministic human-review priority for Kimi omission/disagreement/insufficient-evidence states;
+- provider-free end-to-end new-chain regression;
+- application-owned production Pipeline migration to Stage 13 issue artifacts while preserving per-Issue checkpoints and Stage 13A provider controls;
+- explicit `ISSUE_V1` / `LEGACY_RC2` / fail-closed `CONFLICT` compatibility boundary, including integrity-checked legacy pipeline snapshots for explicit migration;
+- `/workspace` architecture-aware migration: Issue V1 jobs show AuditPlan coverage, every planned Issue, issue Legal RAG, DeepSeek, Kimi, deterministic comparison and evidence links; legacy RC2 jobs retain their original Stage 8/9 view without schema fabrication.
+
+Still required before Stage 13G closes:
+
+- migrate human review from old Finding/Omission identity to Issue identity while preserving append-only legacy decisions and stale detection;
+- update batch results and home/intake surfaces to consume/display the new authoritative chain;
+- update developer diagnostics for Stage 13 issue artifacts;
+- run final provider-free full regression plus clean Windows packaged smoke;
 - decide from regression evidence whether Stage 13F needs an additional bounded global coverage-synthesis pass; do not add it merely for symmetry.
 
 ## Deferred after Stage 13G
@@ -248,6 +260,6 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 13F is closed at the implementation boundary.**
+**Stage 13G.5 Workspace migration is closed at the implementation boundary.**
 
-The next explicit implementation task is **Stage 13G end-to-end regression + migration**. Do not begin Stage 14 in the same iteration.
+The next explicit implementation task is **Stage 13G.6 Human Review migration**. Do not begin Stage 13G.7 or Stage 14 in the same iteration.
