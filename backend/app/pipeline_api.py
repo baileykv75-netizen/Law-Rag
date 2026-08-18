@@ -6,6 +6,12 @@ from fastapi import APIRouter, HTTPException, status
 
 from .audit_planner_api import router as audit_planner_router
 from .issue_legal_context_api import router as issue_legal_context_router
+from .job_architecture import JobArchitectureError, resolve_job_architecture
+from .job_architecture_models import (
+    JobArchitectureSummary,
+    LegacyPipelineMigrationRequest,
+)
+from .legacy_pipeline_migration import LegacyPipelineMigrationError, migrate_legacy_pipeline
 from .pipeline import (
     PipelineError,
     PipelineNotFoundError,
@@ -37,6 +43,18 @@ def _raise_pipeline_http(exc: Exception) -> None:
     if isinstance(exc, PipelineControlError):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.get("/api/documents/{job_id}/architecture", response_model=JobArchitectureSummary)
+def get_document_architecture(job_id: UUID) -> JobArchitectureSummary:
+    """Resolve the authoritative audit artifact family without mutating the job."""
+
+    try:
+        return resolve_job_architecture(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except JobArchitectureError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
 @router.post(
@@ -175,3 +193,27 @@ def retry_document_pipeline(job_id: UUID) -> PipelineReport:
     except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
         _raise_pipeline_http(exc)
         raise AssertionError("unreachable")
+
+
+@router.post(
+    "/api/documents/{job_id}/pipeline/migrate-legacy",
+    response_model=PipelineReport,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def migrate_document_legacy_pipeline(
+    job_id: UUID,
+    request: LegacyPipelineMigrationRequest,
+) -> PipelineReport:
+    """Explicitly move an eligible unfinished RC2 job onto the Issue V1 pipeline.
+
+    The old pipeline state is preserved before replacement. Legacy Stage 8/9
+    reports stay on disk as historical artifacts and are not consumed by the new
+    authoritative chain.
+    """
+
+    try:
+        return migrate_legacy_pipeline(job_id, request)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (JobArchitectureError, LegacyPipelineMigrationError, PipelineControlError, PipelineError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
