@@ -11,10 +11,15 @@ from typing import Any
 MODEL_MANIFEST_SCHEMA_VERSION = "1.0.0"
 MODEL_ROOT_ENV = "LAW_RAG_OCR_MODEL_ROOT"
 MODEL_MANIFEST_ENV = "LAW_RAG_OCR_MODEL_MANIFEST"
+PIPELINE_CONFIG_ENV = "LAW_RAG_OCR_PIPELINE_CONFIG"
 RELEASE_ASSET_ROOT_ENV = "LAW_RAG_RELEASE_ASSET_ROOT"
 
 
 class OcrModelIntegrityError(RuntimeError):
+    pass
+
+
+class OcrPipelineConfigError(RuntimeError):
     pass
 
 
@@ -76,6 +81,32 @@ def default_manifest_path() -> Path:
     if asset_root:
         return (asset_root / "release" / "ocr-models-manifest.json").resolve()
     return (Path(__file__).resolve().parents[2] / "release" / "ocr-models-manifest.json").resolve()
+
+
+def default_pipeline_config_path() -> Path:
+    configured = os.getenv(PIPELINE_CONFIG_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    asset_root = _asset_root()
+    if asset_root:
+        return (asset_root / "release" / "ocr-pipeline" / "OCR.yaml").resolve()
+    return (
+        Path(__file__).resolve().parents[2]
+        / "release"
+        / "paddlex"
+        / "configs"
+        / "pipelines"
+        / "OCR.yaml"
+    ).resolve()
+
+
+def resolve_ocr_pipeline_config_path(*, config_path: Path | None = None) -> Path:
+    path = (config_path or default_pipeline_config_path()).expanduser().resolve()
+    if not path.is_file():
+        raise OcrPipelineConfigError(
+            f"Pinned OCR pipeline config is missing: {path}. Rebuild or reinstall the verified Law-Rag release."
+        )
+    return path
 
 
 def _load_manifest(path: Path) -> dict[str, Any]:
