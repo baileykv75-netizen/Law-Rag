@@ -14,6 +14,7 @@ from app.ocr import OcrProviderUnavailable, PaddleOcrProvider
 from app.ocr_model_assets import OcrModelAssetError, _validated_members
 from app.ocr_models import (
     OcrModelIntegrityError,
+    OcrPipelineConfigError,
     probe_ocr_models,
     resolve_ocr_model_paths,
     resolve_ocr_pipeline_config_path,
@@ -158,7 +159,7 @@ def test_model_resolver_rejects_unexpected_model_payload(tmp_path: Path) -> None
 
 def test_pipeline_config_resolver_fails_closed_when_missing(tmp_path: Path) -> None:
     missing = tmp_path / "missing-OCR.yaml"
-    with pytest.raises(Exception, match="Pinned OCR pipeline config is missing"):
+    with pytest.raises(OcrPipelineConfigError, match="Pinned OCR pipeline config is missing"):
         resolve_ocr_pipeline_config_path(config_path=missing)
 
 
@@ -190,6 +191,7 @@ def test_paddle_provider_passes_verified_local_directories_and_fixed_config(tmp_
     assert captured["text_recognition_model_dir"] == str((root / "PP-OCRv6_medium_rec").resolve())
     assert captured["engine"] == "paddle_static"
     assert captured["device"] == "cpu"
+    assert captured["enable_mkldnn"] is False
 
 
 def test_paddle_provider_fails_before_import_when_fixed_config_missing(tmp_path: Path, monkeypatch) -> None:
