@@ -146,7 +146,6 @@ def _complete_stage9_artifacts(tmp_path: Path, job_id: str) -> None:
 def test_workspace_load_is_read_only_and_explicitly_partial(tmp_path: Path, monkeypatch) -> None:
     job_id = _upload_native_job(tmp_path, monkeypatch)
 
-    # Workspace navigation must not depend on or invoke either external provider.
     def forbidden_provider_call(*args, **kwargs):
         raise AssertionError("workspace GET must not resolve or call an external model provider")
 
@@ -158,6 +157,7 @@ def test_workspace_load_is_read_only_and_explicitly_partial(tmp_path: Path, monk
     body = response.json()
 
     assert body["job_id"] == job_id
+    assert body["architecture"] == "ISSUE_V1"
     assert body["overall_state"] == "INCOMPLETE"
     assert body["source_available"] is True
     assert body["document"]["filename"] == "workspace-fixture.pdf"
@@ -166,19 +166,21 @@ def test_workspace_load_is_read_only_and_explicitly_partial(tmp_path: Path, monk
     assert body["review"]["primary_available"] is False
     assert body["review"]["secondary_available"] is False
     assert body["review"]["comparison_available"] is False
+    assert body["issues"] == []
 
     stages = {item["stage"]: item for item in body["stages"]}
     assert stages["2"]["state"] == "READY"
     assert stages["3"]["state"] == "NOT_REQUIRED"
     assert stages["4"]["state"] == "MISSING"
     assert stages["5"]["state"] == "MISSING"
-    assert stages["8"]["state"] == "MISSING"
-    assert stages["9A/B"]["state"] == "MISSING"
-    assert stages["9C/D"]["state"] == "MISSING"
-    assert stages["10D"]["state"] == "NOT_REQUIRED"
+    assert stages["13B/C"]["state"] == "MISSING"
+    assert stages["13D"]["state"] == "MISSING"
+    assert stages["13E"]["state"] == "MISSING"
+    assert stages["13F"]["state"] == "MISSING"
+    assert stages["13G"]["state"] == "MISSING"
 
 
-def test_complete_workspace_load_never_resolves_external_provider(tmp_path: Path, monkeypatch) -> None:
+def test_complete_legacy_workspace_load_never_resolves_external_provider(tmp_path: Path, monkeypatch) -> None:
     job_id = _upload_native_job(tmp_path, monkeypatch)
     _complete_stage9_artifacts(tmp_path, job_id)
 
@@ -192,6 +194,7 @@ def test_complete_workspace_load_never_resolves_external_provider(tmp_path: Path
 
     assert response.status_code == 200
     body = response.json()
+    assert body["architecture"] == "LEGACY_RC2"
     assert body["overall_state"] == "COMPLETE"
     assert body["review"]["primary_available"] is True
     assert body["review"]["secondary_available"] is True
@@ -231,7 +234,6 @@ def test_workspace_surfaces_invalid_artifact_instead_of_hiding_it(tmp_path: Path
 
 def test_stage9_routes_remain_mounted_on_main_application(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
-    # A missing report should be a domain 404, not a FastAPI route 404 with "Not Found".
     job_id = uuid4()
     response = client.get(f"/api/documents/{job_id}/review-report")
 
