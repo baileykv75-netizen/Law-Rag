@@ -40,18 +40,13 @@ def primary_provider_health(
     try:
         return provider_from_name(provider).health()
     except PrimaryAuditProviderError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
 @router.post("/api/documents/{job_id}/ai-audit", response_model=AiAuditReport)
 def run_document_ai_audit(job_id: UUID, request: AiAuditRunRequest) -> AiAuditReport:
     try:
-        return run_primary_ai_audit(
-            job_id,
-            as_of=request.as_of,
-            provider_name=request.provider,
-            use_semantic=request.use_semantic,
-        )
+        return run_primary_ai_audit(job_id, request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AiAuditConfigurationError as exc:

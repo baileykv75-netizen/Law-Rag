@@ -314,5 +314,5 @@ def test_stage13g_report_fingerprint_and_freshness(tmp_path, monkeypatch) -> Non
 
 
 def test_stage13g_issue_review_report_api_route_is_mounted() -> None:
-    paths = {route.path for route in app.routes}
+    paths = app.openapi()["paths"]
     assert "/api/documents/{job_id}/issue-review-report" in paths
