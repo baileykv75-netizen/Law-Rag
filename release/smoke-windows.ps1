@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Exe = Join-Path $BundleDir "Law-Rag.exe"
 $SmokePdf = Join-Path $PSScriptRoot ".build\smoke-native.pdf"
+$SmokeOcrImage = Join-Path $env:RUNNER_TEMP ("law-rag-stage14-ocr-smoke-" + [guid]::NewGuid().ToString("N") + ".png")
 $SmokeRuntime = Join-Path $env:RUNNER_TEMP ("law-rag-stage14-smoke-runtime-" + [guid]::NewGuid().ToString("N"))
 $PreviousRuntime = $env:LAW_RAG_RUNTIME_DIR
 
@@ -16,8 +17,6 @@ if (-not (Test-Path $SmokePdf)) {
     throw "Synthetic native PDF smoke fixture not found at $SmokePdf"
 }
 
-# Never let CI smoke jobs create private/runtime artifacts inside the bundle
-# that is subsequently uploaded as the release artifact.
 $env:LAW_RAG_RUNTIME_DIR = $SmokeRuntime
 
 function Assert-BundleContents {
@@ -31,6 +30,13 @@ function Assert-BundleContents {
         "_internal\release\public-assets-metadata.json",
         "_internal\release\release-metadata.json",
         "_internal\release\dependency-inventory.json",
+        "_internal\release\ocr-models-manifest.json",
+        "_internal\ocr-models\PP-OCRv6_medium_det\inference.json",
+        "_internal\ocr-models\PP-OCRv6_medium_det\inference.pdiparams",
+        "_internal\ocr-models\PP-OCRv6_medium_det\inference.yml",
+        "_internal\ocr-models\PP-OCRv6_medium_rec\inference.json",
+        "_internal\ocr-models\PP-OCRv6_medium_rec\inference.pdiparams",
+        "_internal\ocr-models\PP-OCRv6_medium_rec\inference.yml",
         "_internal\frontend-dist\third-party-frontend-licenses.json",
         "_internal\THIRD-PARTY-NOTICES\python-third-party-notices.json"
     )
@@ -52,9 +58,6 @@ function Assert-BundleContents {
         throw "Packaged OCR runtime does not contain Paddle native DLL/PYD files"
     }
 
-    # Law-Rag's mutable private data lives beside the executable. Do not reject
-    # dependency-internal Python packages merely because they contain generic
-    # code-directory names such as `runtime` or `logs`.
     foreach ($RootPrivateName in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private")) {
         $PrivatePath = Join-Path $BundleDir $RootPrivateName
         if (Test-Path $PrivatePath) {
@@ -62,16 +65,22 @@ function Assert-BundleContents {
         }
     }
 
-    # OCR caches/model payloads are still forbidden recursively. Stage 14.4
-    # bundles only the Python/native runtime; Stage 14.5 owns fixed model weights.
+    $ApprovedModelRoot = (Join-Path $BundleDir "_internal\ocr-models")
+    $ApprovedModels = @(
+        (Join-Path $ApprovedModelRoot "PP-OCRv6_medium_det"),
+        (Join-Path $ApprovedModelRoot "PP-OCRv6_medium_rec")
+    ) | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\') }
+
     $BannedOcrDirectories = Get-ChildItem -Path $BundleDir -Recurse -Directory | Where-Object {
-        $_.Name.ToLowerInvariant() -in @("model_cache", ".paddlex", ".paddleocr", "official_models") -or
-        $_.Name -like "PP-OCRv6*_det" -or
-        $_.Name -like "PP-OCRv6*_rec"
+        $Full = [System.IO.Path]::GetFullPath($_.FullName).TrimEnd('\')
+        $Lower = $_.Name.ToLowerInvariant()
+        $IsCache = $Lower -in @("model_cache", ".paddlex", ".paddleocr", "official_models")
+        $LooksLikeModel = $_.Name -like "PP-OCRv6*_det" -or $_.Name -like "PP-OCRv6*_rec"
+        $IsCache -or ($LooksLikeModel -and $ApprovedModels -notcontains $Full)
     }
     if ($BannedOcrDirectories) {
         $Found = ($BannedOcrDirectories.FullName -join "; ")
-        throw "Bundle contains banned OCR cache/model directories: $Found"
+        throw "Bundle contains banned OCR cache/unapproved model directories: $Found"
     }
 
     $BannedJobArtifactNames = @(
@@ -95,7 +104,8 @@ function Assert-BundleContents {
         $Name -like "source.pdf" -or
         $Name -like "source.jpg" -or
         $Name -like "source.jpeg" -or
-        $Name -like "source.png"
+        $Name -like "source.png" -or
+        $Name -like "source.docx"
     }
     if ($BannedFiles) {
         $Found = ($BannedFiles.FullName -join "; ")
@@ -110,6 +120,24 @@ function Assert-BundleContents {
     }
 }
 
+function New-OcrSmokeImage {
+    Add-Type -AssemblyName System.Drawing
+    $Bitmap = New-Object System.Drawing.Bitmap 1600, 420
+    $Graphics = [System.Drawing.Graphics]::FromImage($Bitmap)
+    $Font = New-Object System.Drawing.Font("Arial", 120, [System.Drawing.FontStyle]::Bold)
+    $Brush = [System.Drawing.Brushes]::Black
+    try {
+        $Graphics.Clear([System.Drawing.Color]::White)
+        $Graphics.DrawString("LAW RAG 2026", $Font, $Brush, 80, 100)
+        $Bitmap.Save($SmokeOcrImage, [System.Drawing.Imaging.ImageFormat]::Png)
+    }
+    finally {
+        $Font.Dispose()
+        $Graphics.Dispose()
+        $Bitmap.Dispose()
+    }
+}
+
 Assert-BundleContents
 
 & $Exe --diagnose --json
@@ -117,10 +145,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "Packaged runtime diagnostics failed with exit code $LASTEXITCODE"
 }
 
-# Stage 14.4 must prove the frozen executable can import Paddle/PaddleOCR and
-# execute Paddle's local native-op check while network access is unusable. This
-# command never constructs the OCR pipeline, so model selection/download remains
-# outside the runtime smoke.
 $PreviousHttpProxy = $env:HTTP_PROXY
 $PreviousHttpsProxy = $env:HTTPS_PROXY
 $PreviousAllProxy = $env:ALL_PROXY
@@ -130,9 +154,24 @@ try {
     $env:HTTPS_PROXY = "http://127.0.0.1:9"
     $env:ALL_PROXY = "http://127.0.0.1:9"
     $env:NO_PROXY = "127.0.0.1,localhost"
+
     & $Exe --diagnose-ocr-runtime
     if ($LASTEXITCODE -ne 0) {
         throw "Packaged OCR runtime diagnostic failed with exit code $LASTEXITCODE"
+    }
+
+    & $Exe --diagnose-ocr-models
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged OCR model integrity diagnostic failed with exit code $LASTEXITCODE"
+    }
+
+    New-OcrSmokeImage
+    $InferenceOutput = (& $Exe --diagnose-ocr-inference $SmokeOcrImage 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged offline OCR inference failed with exit code $LASTEXITCODE. Output: $InferenceOutput"
+    }
+    if ($InferenceOutput -notmatch "LAW" -or $InferenceOutput -notmatch "2026") {
+        throw "Packaged offline OCR inference did not recognize the fixed smoke text. Output: $InferenceOutput"
     }
 }
 finally {
@@ -140,8 +179,8 @@ finally {
     if ($null -eq $PreviousHttpsProxy) { Remove-Item Env:HTTPS_PROXY -ErrorAction SilentlyContinue } else { $env:HTTPS_PROXY = $PreviousHttpsProxy }
     if ($null -eq $PreviousAllProxy) { Remove-Item Env:ALL_PROXY -ErrorAction SilentlyContinue } else { $env:ALL_PROXY = $PreviousAllProxy }
     if ($null -eq $PreviousNoProxy) { Remove-Item Env:NO_PROXY -ErrorAction SilentlyContinue } else { $env:NO_PROXY = $PreviousNoProxy }
+    Remove-Item $SmokeOcrImage -Force -ErrorAction SilentlyContinue
 }
-# Verify the diagnostic itself did not materialize model caches into the bundle.
 Assert-BundleContents
 
 $Process = Start-Process -FilePath $Exe -ArgumentList @("--no-browser", "--port", "$Port") -PassThru
@@ -185,9 +224,6 @@ try {
         throw "Unknown packaged API route was not an explicit 404. Observed: $MissingApi"
     }
 
-    # Exercise the packaged native PDF ingestion path, then render the uploaded
-    # page through the source-page API. This proves the collected PDFium DLL
-    # remains functional after the OCR runtime is added, without OCR/provider calls.
     $Upload = Invoke-RestMethod -Uri "$BaseUrl/api/documents" -Method Post -Form @{ file = Get-Item $SmokePdf } -TimeoutSec 15
     if (-not $Upload.job_id -or $Upload.page_count -ne 1) {
         throw "Packaged native PDF upload did not return a one-page job."
@@ -197,7 +233,7 @@ try {
         throw "Packaged PDFium source-page rendering did not return image/png."
     }
 
-    Write-Host "[Law-Rag] Packaged OCR runtime, offline diagnostics, all four UI routes, API, native PDF ingestion, PDFium rendering, and private/model-data scan passed."
+    Write-Host "[Law-Rag] Packaged OCR runtime + verified models + offline real inference, all four UI routes, API, native PDF ingestion, PDFium rendering, and privacy scan passed."
 }
 finally {
     if (-not $Process.HasExited) {
@@ -213,4 +249,5 @@ finally {
     if (Test-Path $SmokeRuntime) {
         Remove-Item $SmokeRuntime -Recurse -Force
     }
+    Remove-Item $SmokeOcrImage -Force -ErrorAction SilentlyContinue
 }
