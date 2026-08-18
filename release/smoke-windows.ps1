@@ -52,18 +52,26 @@ function Assert-BundleContents {
         throw "Packaged OCR runtime does not contain Paddle native DLL/PYD files"
     }
 
-    $BannedDirectoryNames = @(
-        "runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private", "model_cache",
-        ".paddlex", ".paddleocr", "official_models"
-    )
-    $BannedDirectories = Get-ChildItem -Path $BundleDir -Recurse -Directory | Where-Object {
-        $BannedDirectoryNames -contains $_.Name.ToLowerInvariant() -or
+    # Law-Rag's mutable private data lives beside the executable. Do not reject
+    # dependency-internal Python packages merely because they contain generic
+    # code-directory names such as `runtime` or `logs`.
+    foreach ($RootPrivateName in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private")) {
+        $PrivatePath = Join-Path $BundleDir $RootPrivateName
+        if (Test-Path $PrivatePath) {
+            throw "Bundle contains private application data directory: $PrivatePath"
+        }
+    }
+
+    # OCR caches/model payloads are still forbidden recursively. Stage 14.4
+    # bundles only the Python/native runtime; Stage 14.5 owns fixed model weights.
+    $BannedOcrDirectories = Get-ChildItem -Path $BundleDir -Recurse -Directory | Where-Object {
+        $_.Name.ToLowerInvariant() -in @("model_cache", ".paddlex", ".paddleocr", "official_models") -or
         $_.Name -like "PP-OCRv6*_det" -or
         $_.Name -like "PP-OCRv6*_rec"
     }
-    if ($BannedDirectories) {
-        $Found = ($BannedDirectories.FullName -join "; ")
-        throw "Bundle contains banned private/runtime/model directories: $Found"
+    if ($BannedOcrDirectories) {
+        $Found = ($BannedOcrDirectories.FullName -join "; ")
+        throw "Bundle contains banned OCR cache/model directories: $Found"
     }
 
     $BannedJobArtifactNames = @(
