@@ -1,0 +1,33 @@
+# Law-Rag frozen PaddleX OCR pipeline configuration.
+#
+# This is intentionally smaller than PaddleX's default OCR.yaml. Law-Rag
+# disables document-orientation, unwarping and text-line-orientation models,
+# and permits only the separately SHA-256-verified PP-OCRv6 medium detector
+# and recognizer distributed by the Stage 14.5 release build.
+#
+# The structure follows PaddleX 3.7's Apache-2.0 OCR pipeline configuration.
+
+pipeline_name: OCR
+text_type: general
+
+use_doc_preprocessor: false
+use_textline_orientation: false
+
+SubModules:
+  TextDetection:
+    module_name: text_detection
+    model_name: PP-OCRv6_medium_det
+    model_dir: null
+    limit_side_len: 64
+    limit_type: min
+    max_side_limit: 4000
+    thresh: 0.3
+    box_thresh: 0.6
+    unclip_ratio: 1.5
+
+  TextRecognition:
+    module_name: text_recognition
+    model_name: PP-OCRv6_medium_rec
+    model_dir: null
+    batch_size: 6
+    score_thresh: 0.0
