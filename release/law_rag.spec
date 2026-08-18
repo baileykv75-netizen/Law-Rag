@@ -29,9 +29,8 @@ paddle_datas, paddle_binaries, paddle_hidden = collect_package("paddle")
 paddleocr_datas, paddleocr_binaries, paddleocr_hidden = collect_package("paddleocr")
 paddlex_datas, paddlex_binaries, paddlex_hidden = collect_package("paddlex")
 
-# Stage 14.4 validates runtime versions through importlib.metadata inside the
-# frozen executable. Keep distribution metadata alongside the collected Python
-# modules/native libraries; no OCR model weights are collected here.
+# Runtime versions are validated through importlib.metadata inside the frozen
+# executable. Keep distribution metadata alongside collected Python/native code.
 ocr_metadata = [
     *collect_metadata("paddlepaddle"),
     *collect_metadata("paddleocr"),
@@ -44,6 +43,8 @@ datas = [
     (str(BUILD_ASSETS / "public-assets-metadata.json"), "release"),
     (str(BUILD_ASSETS / "release-metadata.json"), "release"),
     (str(BUILD_ASSETS / "THIRD-PARTY-NOTICES"), "THIRD-PARTY-NOTICES"),
+    (str(BUILD_ASSETS / "ocr-models"), "ocr-models"),
+    (str(REPO_ROOT / "release" / "ocr-models-manifest.json"), "release"),
     (str(REPO_ROOT / "release" / "dependency-inventory.json"), "release"),
     (str(REPO_ROOT / "docs" / "WINDOWS_PACKAGING.md"), "docs"),
     (str(REPO_ROOT / ".env.example"), "."),
@@ -99,10 +100,6 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    # Keep a console-enabled executable so PowerShell/CMD diagnostics still
-    # receive stdout/stderr, but hide the console automatically when Law-Rag
-    # owns it (the normal double-click launch path). This prevents users from
-    # accidentally closing the local server by closing a visible console.
     console=True,
     hide_console="hide-early",
     disable_windowed_traceback=False,
