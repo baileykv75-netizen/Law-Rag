@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 REPO_ROOT = Path(SPECPATH).resolve().parent
 BACKEND = REPO_ROOT / "backend"
@@ -16,8 +16,27 @@ def collect_package(name: str):
         return ([], [], [])
 
 
+def collect_metadata(name: str):
+    try:
+        return copy_metadata(name)
+    except Exception:
+        return []
+
+
 pypdfium_datas, pypdfium_binaries, pypdfium_hidden = collect_package("pypdfium2")
 raw_datas, raw_binaries, raw_hidden = collect_package("pypdfium2_raw")
+paddle_datas, paddle_binaries, paddle_hidden = collect_package("paddle")
+paddleocr_datas, paddleocr_binaries, paddleocr_hidden = collect_package("paddleocr")
+paddlex_datas, paddlex_binaries, paddlex_hidden = collect_package("paddlex")
+
+# Stage 14.4 validates runtime versions through importlib.metadata inside the
+# frozen executable. Keep distribution metadata alongside the collected Python
+# modules/native libraries; no OCR model weights are collected here.
+ocr_metadata = [
+    *collect_metadata("paddlepaddle"),
+    *collect_metadata("paddleocr"),
+    *collect_metadata("paddlex"),
+]
 
 datas = [
     (str(REPO_ROOT / "frontend" / "dist"), "frontend-dist"),
@@ -30,10 +49,26 @@ datas = [
     (str(REPO_ROOT / ".env.example"), "."),
     *pypdfium_datas,
     *raw_datas,
+    *paddle_datas,
+    *paddleocr_datas,
+    *paddlex_datas,
+    *ocr_metadata,
 ]
 
-binaries = [*pypdfium_binaries, *raw_binaries]
-hiddenimports = [*pypdfium_hidden, *raw_hidden]
+binaries = [
+    *pypdfium_binaries,
+    *raw_binaries,
+    *paddle_binaries,
+    *paddleocr_binaries,
+    *paddlex_binaries,
+]
+hiddenimports = [
+    *pypdfium_hidden,
+    *raw_hidden,
+    *paddle_hidden,
+    *paddleocr_hidden,
+    *paddlex_hidden,
+]
 
 a = Analysis(
     [str(BACKEND / "release_entry.py")],
@@ -46,8 +81,6 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         "pytest",
-        "paddle",
-        "paddleocr",
         "sentence_transformers",
         "torch",
     ],
