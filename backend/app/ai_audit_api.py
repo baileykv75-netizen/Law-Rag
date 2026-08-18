@@ -16,6 +16,7 @@ from .ai_audit_providers import PrimaryAuditProviderError, provider_from_name
 from .audit_planner_api import router as audit_planner_router
 from .issue_legal_context_api import router as issue_legal_context_router
 from .issue_primary_audit_api import router as issue_primary_audit_router
+from .issue_review_report_api import router as issue_review_report_router
 from .issue_secondary_review_api import router as issue_secondary_review_router
 from .provider_settings_api import router as provider_settings_router
 from .secondary_review_api import router as secondary_review_router
@@ -27,6 +28,7 @@ router.include_router(audit_planner_router)
 router.include_router(issue_legal_context_router)
 router.include_router(issue_primary_audit_router)
 router.include_router(issue_secondary_review_router)
+router.include_router(issue_review_report_router)
 router.include_router(secondary_review_router)
 router.include_router(workspace_router)
 
