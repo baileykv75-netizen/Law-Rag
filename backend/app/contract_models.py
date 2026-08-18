@@ -3,12 +3,13 @@ from __future__ import annotations
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from .evidence_models import SourceAnchor, source_anchor_page_number
 from .models import SourceMethod
 
-CONTRACT_SCHEMA_VERSION = "1.0.0"
-EXTRACTOR_VERSION = "stage4-1.0.0"
+CONTRACT_SCHEMA_VERSION = "1.1.0"
+EXTRACTOR_VERSION = "stage14-1.0.0"
 
 
 class ExtractionConfidence(str, Enum):
@@ -25,15 +26,29 @@ class ResolutionState(str, Enum):
 
 
 class SourceSpan(BaseModel):
-    page_number: int = Field(ge=1)
+    page_number: int | None = Field(default=None, ge=1)
     evidence_ids: list[str] = Field(min_length=1)
     source_method: SourceMethod
     quote: str
+    source_anchor: SourceAnchor | None = None
     char_start: int | None = Field(default=None, ge=0)
     char_end: int | None = Field(default=None, ge=0)
     bbox: list[int] | None = None
     polygon: list[list[int]] | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_source_location(self) -> "SourceSpan":
+        anchor_page = source_anchor_page_number(self.source_anchor)
+        if self.page_number is None and anchor_page is not None:
+            self.page_number = anchor_page
+        elif self.page_number is not None and anchor_page is not None and self.page_number != anchor_page:
+            raise ValueError("page_number must match the typed source anchor")
+        if self.page_number is None and self.source_anchor is None:
+            raise ValueError("a source span requires either a page_number or a typed source_anchor")
+        if self.char_start is not None and self.char_end is not None and self.char_end < self.char_start:
+            raise ValueError("char_end must be greater than or equal to char_start")
+        return self
 
 
 class ExtractionProvenance(BaseModel):
@@ -44,16 +59,32 @@ class ExtractionProvenance(BaseModel):
 
 class EvidenceUnit(BaseModel):
     unit_id: str
-    page_number: int = Field(ge=1)
+    page_number: int | None = Field(default=None, ge=1)
     order_index: int = Field(ge=1)
     text: str
     evidence_ids: list[str] = Field(min_length=1)
     source_method: SourceMethod
+    source_anchor: SourceAnchor | None = None
+    block_kind: str = "TEXT"
+    parent_group_id: str | None = None
     char_start: int | None = Field(default=None, ge=0)
     char_end: int | None = Field(default=None, ge=0)
     bbox: list[int] | None = None
     polygon: list[list[int]] | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_source_location(self) -> "EvidenceUnit":
+        anchor_page = source_anchor_page_number(self.source_anchor)
+        if self.page_number is None and anchor_page is not None:
+            self.page_number = anchor_page
+        elif self.page_number is not None and anchor_page is not None and self.page_number != anchor_page:
+            raise ValueError("page_number must match the typed source anchor")
+        if self.page_number is None and self.source_anchor is None:
+            raise ValueError("an evidence unit requires either a page_number or a typed source_anchor")
+        if self.char_start is not None and self.char_end is not None and self.char_end < self.char_start:
+            raise ValueError("char_end must be greater than or equal to char_start")
+        return self
 
 
 class TitleCandidate(BaseModel):
@@ -70,8 +101,8 @@ class Clause(BaseModel):
     body_text: str
     level: int = Field(ge=1)
     parent_clause_id: str | None = None
-    page_start: int = Field(ge=1)
-    page_end: int = Field(ge=1)
+    page_start: int | None = Field(default=None, ge=1)
+    page_end: int | None = Field(default=None, ge=1)
     source_spans: list[SourceSpan] = Field(min_length=1)
     provenance: ExtractionProvenance
 
@@ -79,8 +110,8 @@ class Clause(BaseModel):
 class UnnumberedBlock(BaseModel):
     block_id: str
     text: str
-    page_start: int = Field(ge=1)
-    page_end: int = Field(ge=1)
+    page_start: int | None = Field(default=None, ge=1)
+    page_end: int | None = Field(default=None, ge=1)
     source_spans: list[SourceSpan] = Field(min_length=1)
     provenance: ExtractionProvenance
 
