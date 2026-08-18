@@ -180,10 +180,15 @@ def test_batch_result_prioritizes_human_review_and_high_risk(tmp_path: Path, mon
     summary = summarize_batch(batch.batch_id)
     assert summary.complete_jobs == 2
     assert summary.human_review_required_jobs == 1
+    assert summary.legacy_rc2_jobs == 2
+    assert summary.issue_v1_jobs == 0
     assert summary.jobs[0].job_id == risky_job
+    assert summary.jobs[0].architecture == "LEGACY_RC2"
     assert summary.jobs[0].finding_counts.high == 1
     assert summary.jobs[0].material_disagreement is True
+    assert summary.jobs[0].material_disagreement_count == 1
     assert summary.jobs[0].human_review_required is True
+    assert summary.jobs[1].architecture == "LEGACY_RC2"
     assert summary.jobs[1].needs_attention is False
 
 
