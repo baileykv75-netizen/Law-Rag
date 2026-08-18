@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,6 +13,7 @@ from app.audit_plan_models import AuditPlanningCoverageState
 from app.audit_planner import load_audit_plan, run_audit_planner
 from app.audit_planner_provider import FakeAuditPlannerProvider
 from app.audit_rules import run_audit_rules
+from app.batch_results import create_batch, register_batch_job
 from app.contract_models import CanonicalContract, Clause, ExtractionConfidence, ExtractionProvenance, SourceSpan
 from app.issue_legal_context import build_issue_legal_context
 from app.issue_primary_audit import run_issue_primary_audit
@@ -26,6 +27,7 @@ from app.main import app
 from app.models import DocumentKind, DocumentRoute, PageEvidence, PageRoute, SourceMethod
 from app.pipeline_control import set_provider_mode
 from app.pipeline_control_models import ProviderExecutionMode
+from app.pipeline_models import PipelineReport, PipelineStage, PipelineStageRecord, PipelineStageState, PipelineStatus
 from app.storage import (
     job_ai_audit_path,
     job_audit_plan_path,
@@ -173,6 +175,41 @@ def _run_provider_free_chain(tmp_path: Path, monkeypatch):
     return contract, plan, legal_context, primary, secondary, report
 
 
+def _write_completed_issue_pipeline(tmp_path: Path, job_id) -> None:
+    now = datetime.now(timezone.utc)
+    stages = [
+        PipelineStage.INGEST,
+        PipelineStage.OCR,
+        PipelineStage.STRUCTURE,
+        PipelineStage.RULES,
+        PipelineStage.AUDIT_PLAN,
+        PipelineStage.ISSUE_LEGAL_CONTEXT,
+        PipelineStage.ISSUE_PRIMARY_AUDIT,
+        PipelineStage.ISSUE_SECONDARY_REVIEW,
+        PipelineStage.ISSUE_REVIEW_REPORT,
+    ]
+    report = PipelineReport(
+        job_id=job_id,
+        status=PipelineStatus.COMPLETE,
+        current_stage=PipelineStage.COMPLETE,
+        progress_percent=100,
+        as_of=date(2026, 8, 18),
+        started_at=now,
+        updated_at=now,
+        completed_at=now,
+        stages=[
+            PipelineStageRecord(
+                stage=stage,
+                state=PipelineStageState.COMPLETE,
+                label=stage.value,
+                progress_percent=min(100, 10 + index * 11),
+            )
+            for index, stage in enumerate(stages)
+        ],
+    )
+    (tmp_path / "jobs" / str(job_id) / "pipeline.json").write_text(report.model_dump_json(), encoding="utf-8")
+
+
 def test_stage13g_provider_free_chain_is_complete_and_one_to_one(tmp_path: Path, monkeypatch) -> None:
     contract, plan, legal_context, primary, secondary, report = _run_provider_free_chain(
         tmp_path,
@@ -269,6 +306,55 @@ def test_stage13g_provider_free_workspace_reads_issue_chain_without_provider_wor
     assert detail["secondary"]["issue_id"] == issue_id
     assert detail["comparison"]["issue_id"] == issue_id
     assert detail["legal_support_state"] == legal_context.issues[0].support_state.value
+
+
+def test_stage13g_provider_free_batch_results_use_issue_authority_and_human_progress(tmp_path: Path, monkeypatch) -> None:
+    contract, plan, _, primary, _, report = _run_provider_free_chain(tmp_path, monkeypatch)
+    job_id = contract.job_id
+    _write_completed_issue_pipeline(tmp_path, job_id)
+    batch = create_batch()
+    register_batch_job(batch.batch_id, job_id)
+
+    response = client.get(f"/api/batches/{batch.batch_id}")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["issue_v1_jobs"] == 1
+    assert body["legacy_rc2_jobs"] == 0
+    assert body["human_review_required_jobs"] == 1
+    result = body["jobs"][0]
+    assert result["architecture"] == "ISSUE_V1"
+    assert result["issue_count"] == len(plan.issues)
+    assert result["planning_coverage_complete"] is True
+    assert result["planning_coverage_reviewed_count"] == len(plan.coverage)
+    assert result["planning_coverage_total_count"] == len(plan.coverage)
+    assert result["human_review_outstanding_count"] == report.summary.human_review_required_count
+    assert result["finding_counts"]["high"] == sum(
+        item.state == IssuePrimaryAuditState.SUPPORTED_FINDING and item.severity.value == "HIGH"
+        for item in primary.results
+    )
+
+    for comparison in report.comparisons:
+        if not comparison.requires_human_review:
+            continue
+        decision = client.post(
+            f"/api/documents/{job_id}/human-review/decisions",
+            json={
+                "target_type": "issue",
+                "target_id": comparison.issue_id,
+                "state": "CONFIRMED",
+                "reviewer_note": "provider-free batch result closure",
+            },
+        )
+        assert decision.status_code == 200, decision.text
+
+    closed = client.get(f"/api/batches/{batch.batch_id}")
+    assert closed.status_code == 200, closed.text
+    closed_result = closed.json()["jobs"][0]
+    assert closed.json()["human_review_required_jobs"] == 0
+    assert closed_result["human_review_required"] is False
+    assert closed_result["human_review_outstanding_count"] == 0
+    assert closed_result["human_review_resolved_count"] == report.summary.human_review_required_count
+    assert closed_result["final_review_state"] == "COMPLETE"
 
 
 def test_stage13g_provider_free_report_becomes_stale_when_plan_changes(tmp_path: Path, monkeypatch) -> None:
