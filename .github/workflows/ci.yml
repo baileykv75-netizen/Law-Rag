@@ -116,19 +116,44 @@ jobs:
           if (-not $pdfium) { throw "pdfium.dll missing after OCR runtime packaging" }
           $pdfium | Select-Object -ExpandProperty FullName
           Write-Host "Packaged PDFium native file: OK"
-      - name: Verify no OCR model or cache payloads are bundled
+      - name: Reject private runtime directories in bundle
         shell: pwsh
         run: |
           $bundle = Join-Path $PWD "release\dist\Law-Rag"
-          $banned = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
-            $_.Name.ToLowerInvariant() -in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private", "model_cache", ".paddlex", ".paddleocr", "official_models") -or
-            $_.Name -like "PP-OCRv6*_det" -or $_.Name -like "PP-OCRv6*_rec"
+          $found = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
+            $_.Name.ToLowerInvariant() -in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private")
           }
-          if ($banned) {
-            $banned | Select-Object -ExpandProperty FullName
-            throw "Banned runtime/model directories found in packaged bundle"
+          if ($found) {
+            $found | ForEach-Object { Write-Host ("FOUND_PRIVATE_RUNTIME=" + $_.FullName) }
+            throw "Private runtime directories found in packaged bundle"
           }
-          Write-Host "No OCR model/cache payload directories bundled: OK"
+          Write-Host "Private runtime directory scan: OK"
+      - name: Reject OCR cache directories in bundle
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $PWD "release\dist\Law-Rag"
+          $found = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
+            $_.Name.ToLowerInvariant() -in @("model_cache", ".paddlex", ".paddleocr")
+          }
+          if ($found) {
+            $found | ForEach-Object { Write-Host ("FOUND_OCR_CACHE=" + $_.FullName) }
+            throw "OCR cache directories found in packaged bundle"
+          }
+          Write-Host "OCR cache directory scan: OK"
+      - name: Reject OCR model payload directories in bundle
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $PWD "release\dist\Law-Rag"
+          $found = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
+            $_.Name.ToLowerInvariant() -eq "official_models" -or
+            $_.Name -like "PP-OCRv6*_det" -or
+            $_.Name -like "PP-OCRv6*_rec"
+          }
+          if ($found) {
+            $found | ForEach-Object { Write-Host ("FOUND_OCR_MODEL_DIR=" + $_.FullName) }
+            throw "OCR model payload directories found in packaged bundle"
+          }
+          Write-Host "OCR model directory scan: OK"
       - name: Run frozen base diagnostics
         shell: pwsh
         run: |
