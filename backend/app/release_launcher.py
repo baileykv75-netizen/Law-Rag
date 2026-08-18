@@ -67,10 +67,26 @@ def _print_health(report) -> None:
             print(f"  action: {check.action}")
 
 
+def _print_ocr_probe(probe) -> None:
+    print("Law-Rag OCR Runtime")
+    print(f"ready: {'YES' if probe.ready else 'NO'}")
+    print(f"state: {probe.state}")
+    print(f"paddlepaddle: {probe.paddle_version or 'missing'}")
+    print(f"paddleocr: {probe.paddleocr_version or 'missing'}")
+    print(f"modules_imported: {'YES' if probe.modules_imported else 'NO'}")
+    print(f"native_check_run: {'YES' if probe.native_check_run else 'NO'}")
+    print(probe.detail)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Law-Rag local Windows release launcher")
     parser.add_argument("--diagnose", action="store_true", help="Run non-mutating diagnostics and exit.")
-    parser.add_argument("--json", action="store_true", help="With --diagnose, print machine-readable JSON.")
+    parser.add_argument(
+        "--diagnose-ocr-runtime",
+        action="store_true",
+        help="Import the pinned PaddlePaddle/PaddleOCR runtime, run Paddle's local native self-check, and exit without initializing OCR models.",
+    )
+    parser.add_argument("--json", action="store_true", help="With a diagnostic mode, print machine-readable JSON.")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the local workstation in a browser.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
@@ -80,6 +96,20 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     configure_release_environment()
+
+    if args.diagnose_ocr_runtime:
+        # Stage 14.4 runtime validation is deliberately separate from model
+        # initialization. This imports the packaged Python/native runtime and
+        # executes Paddle's local self-check, but never constructs PaddleOCR,
+        # chooses a model source, or downloads model weights.
+        from .ocr_runtime import probe_ocr_runtime
+
+        probe = probe_ocr_runtime(import_modules=True, run_native_check=True)
+        if args.json:
+            print(json.dumps(probe.model_dump(), ensure_ascii=False, indent=2))
+        else:
+            _print_ocr_probe(probe)
+        return 0 if probe.ready else 3
 
     # Import diagnostics only after release paths are configured. The diagnostic
     # service is provider-free and does not rebuild/download/mutate runtime data.

@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Exe = Join-Path $BundleDir "Law-Rag.exe"
 $SmokePdf = Join-Path $PSScriptRoot ".build\smoke-native.pdf"
-$SmokeRuntime = Join-Path $env:RUNNER_TEMP ("law-rag-stage11d-smoke-runtime-" + [guid]::NewGuid().ToString("N"))
+$SmokeRuntime = Join-Path $env:RUNNER_TEMP ("law-rag-stage14-smoke-runtime-" + [guid]::NewGuid().ToString("N"))
 $PreviousRuntime = $env:LAW_RAG_RUNTIME_DIR
 
 if (-not (Test-Path $Exe)) {
@@ -45,13 +45,33 @@ function Assert-BundleContents {
         throw "Packaged native PDF runtime does not contain pdfium.dll"
     }
 
-    $BannedDirectoryNames = @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private", "model_cache")
-    $BannedDirectories = Get-ChildItem -Path $BundleDir -Recurse -Directory | Where-Object {
-        $BannedDirectoryNames -contains $_.Name.ToLowerInvariant()
+    $PaddleNative = Get-ChildItem -Path $BundleDir -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+        $_.FullName.ToLowerInvariant().Contains("paddle") -and $_.Extension.ToLowerInvariant() -in @(".dll", ".pyd")
     }
-    if ($BannedDirectories) {
-        $Found = ($BannedDirectories.FullName -join "; ")
-        throw "Bundle contains banned private/runtime directories: $Found"
+    if (-not $PaddleNative) {
+        throw "Packaged OCR runtime does not contain Paddle native DLL/PYD files"
+    }
+
+    # Law-Rag's mutable private data lives beside the executable. Do not reject
+    # dependency-internal Python packages merely because they contain generic
+    # code-directory names such as `runtime` or `logs`.
+    foreach ($RootPrivateName in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private")) {
+        $PrivatePath = Join-Path $BundleDir $RootPrivateName
+        if (Test-Path $PrivatePath) {
+            throw "Bundle contains private application data directory: $PrivatePath"
+        }
+    }
+
+    # OCR caches/model payloads are still forbidden recursively. Stage 14.4
+    # bundles only the Python/native runtime; Stage 14.5 owns fixed model weights.
+    $BannedOcrDirectories = Get-ChildItem -Path $BundleDir -Recurse -Directory | Where-Object {
+        $_.Name.ToLowerInvariant() -in @("model_cache", ".paddlex", ".paddleocr", "official_models") -or
+        $_.Name -like "PP-OCRv6*_det" -or
+        $_.Name -like "PP-OCRv6*_rec"
+    }
+    if ($BannedOcrDirectories) {
+        $Found = ($BannedOcrDirectories.FullName -join "; ")
+        throw "Bundle contains banned OCR cache/model directories: $Found"
     }
 
     $BannedJobArtifactNames = @(
@@ -81,6 +101,13 @@ function Assert-BundleContents {
         $Found = ($BannedFiles.FullName -join "; ")
         throw "Bundle contains banned private/job files: $Found"
     }
+
+    $Resolved = Get-Content (Join-Path $BundleDir "python-resolved.txt") -Raw
+    foreach ($Pinned in @("paddlepaddle==3.3.0", "paddleocr==3.7.0", "paddlex==3.7.2", "pypdfium2==5.12.1")) {
+        if ($Resolved -notmatch [regex]::Escape($Pinned)) {
+            throw "Packaged resolved dependency inventory is missing exact pin: $Pinned"
+        }
+    }
 }
 
 Assert-BundleContents
@@ -89,6 +116,33 @@ Assert-BundleContents
 if ($LASTEXITCODE -ne 0) {
     throw "Packaged runtime diagnostics failed with exit code $LASTEXITCODE"
 }
+
+# Stage 14.4 must prove the frozen executable can import Paddle/PaddleOCR and
+# execute Paddle's local native-op check while network access is unusable. This
+# command never constructs the OCR pipeline, so model selection/download remains
+# outside the runtime smoke.
+$PreviousHttpProxy = $env:HTTP_PROXY
+$PreviousHttpsProxy = $env:HTTPS_PROXY
+$PreviousAllProxy = $env:ALL_PROXY
+$PreviousNoProxy = $env:NO_PROXY
+try {
+    $env:HTTP_PROXY = "http://127.0.0.1:9"
+    $env:HTTPS_PROXY = "http://127.0.0.1:9"
+    $env:ALL_PROXY = "http://127.0.0.1:9"
+    $env:NO_PROXY = "127.0.0.1,localhost"
+    & $Exe --diagnose-ocr-runtime
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged OCR runtime diagnostic failed with exit code $LASTEXITCODE"
+    }
+}
+finally {
+    if ($null -eq $PreviousHttpProxy) { Remove-Item Env:HTTP_PROXY -ErrorAction SilentlyContinue } else { $env:HTTP_PROXY = $PreviousHttpProxy }
+    if ($null -eq $PreviousHttpsProxy) { Remove-Item Env:HTTPS_PROXY -ErrorAction SilentlyContinue } else { $env:HTTPS_PROXY = $PreviousHttpsProxy }
+    if ($null -eq $PreviousAllProxy) { Remove-Item Env:ALL_PROXY -ErrorAction SilentlyContinue } else { $env:ALL_PROXY = $PreviousAllProxy }
+    if ($null -eq $PreviousNoProxy) { Remove-Item Env:NO_PROXY -ErrorAction SilentlyContinue } else { $env:NO_PROXY = $PreviousNoProxy }
+}
+# Verify the diagnostic itself did not materialize model caches into the bundle.
+Assert-BundleContents
 
 $Process = Start-Process -FilePath $Exe -ArgumentList @("--no-browser", "--port", "$Port") -PassThru
 try {
@@ -133,7 +187,7 @@ try {
 
     # Exercise the packaged native PDF ingestion path, then render the uploaded
     # page through the source-page API. This proves the collected PDFium DLL
-    # works from the actual onedir executable, without OCR/provider calls.
+    # remains functional after the OCR runtime is added, without OCR/provider calls.
     $Upload = Invoke-RestMethod -Uri "$BaseUrl/api/documents" -Method Post -Form @{ file = Get-Item $SmokePdf } -TimeoutSec 15
     if (-not $Upload.job_id -or $Upload.page_count -ne 1) {
         throw "Packaged native PDF upload did not return a one-page job."
@@ -143,7 +197,7 @@ try {
         throw "Packaged PDFium source-page rendering did not return image/png."
     }
 
-    Write-Host "[Law-Rag] Packaged diagnostics, all four UI routes, API, native PDF ingestion, PDFium rendering, and private-data scan passed."
+    Write-Host "[Law-Rag] Packaged OCR runtime, offline diagnostics, all four UI routes, API, native PDF ingestion, PDFium rendering, and private/model-data scan passed."
 }
 finally {
     if (-not $Process.HasExited) {

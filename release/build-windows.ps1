@@ -11,6 +11,9 @@ $BuildVenv = Join-Path $PSScriptRoot ".build-venv"
 $DistRoot = Join-Path $PSScriptRoot "dist"
 $WorkRoot = Join-Path $PSScriptRoot "work"
 $LockFile = Join-Path $Backend "requirements-release-lock-windows.txt"
+$OcrLockFile = Join-Path $Backend "requirements-release-ocr-lock-windows.txt"
+$PaddleCpuIndex = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
+$PaddleVersion = "3.3.0"
 $NoticeRoot = Join-Path $BuildRoot "THIRD-PARTY-NOTICES"
 $ReleaseMetadata = Join-Path $BuildRoot "release-metadata.json"
 $SmokePdf = Join-Path $BuildRoot "smoke-native.pdf"
@@ -25,16 +28,16 @@ function Invoke-Checked {
 
 $PythonVersion = (& python -c "import sys; print('.'.join(map(str, sys.version_info[:3])))").Trim()
 if ($PythonVersion -ne "3.12.10") {
-    throw "Stage 11D release build requires CPython 3.12.10 exactly; found $PythonVersion"
+    throw "Windows release build requires CPython 3.12.10 exactly; found $PythonVersion"
 }
 
 $NodeVersion = (& node --version).Trim()
 if ($NodeVersion -ne "v22.23.2") {
-    throw "Stage 11D release build requires Node.js v22.23.2 exactly; found $NodeVersion"
+    throw "Windows release build requires Node.js v22.23.2 exactly; found $NodeVersion"
 }
 $NpmVersion = (& npm --version).Trim()
 if ($NpmVersion -ne "10.9.8") {
-    throw "Stage 11D release build requires npm 10.9.8 exactly; found $NpmVersion"
+    throw "Windows release build requires npm 10.9.8 exactly; found $NpmVersion"
 }
 
 $SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim()
@@ -49,14 +52,33 @@ if (Test-Path $WorkRoot) { Remove-Item $WorkRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $BuildRoot | Out-Null
 
 if ($SkipDependencyInstall) {
-    throw "-SkipDependencyInstall is not supported for the reproducible Stage 11D build; use the exact isolated build environment."
+    throw "-SkipDependencyInstall is not supported for the reproducible Windows build; use the exact isolated build environment."
 }
 
 Invoke-Checked { python -m venv $BuildVenv } "Isolated release virtualenv creation"
 $ReleasePython = Join-Path $BuildVenv "Scripts\python.exe"
 Invoke-Checked { & $ReleasePython -m pip install --upgrade pip==26.2.1 } "Release pip pin"
-Invoke-Checked { & $ReleasePython -m pip install --no-deps -r $LockFile } "Exact Windows release lock install"
-Invoke-Checked { & $ReleasePython -m pip check } "Exact Windows release dependency consistency check"
+Invoke-Checked { & $ReleasePython -m pip install --disable-pip-version-check --no-deps -r $LockFile } "Exact base Windows release lock install"
+# PaddlePaddle's Windows CPU wheel is deliberately sourced from the official
+# Paddle index. Installing it before the full OCR lock lets the exact lock keep
+# the package in the notice/version inventory without allowing another index to
+# choose the wheel.
+Invoke-Checked {
+    & $ReleasePython -m pip install --disable-pip-version-check --no-deps "paddlepaddle==$PaddleVersion" -i $PaddleCpuIndex
+} "Exact PaddlePaddle CPU runtime install"
+Invoke-Checked { & $ReleasePython -m pip install --disable-pip-version-check --no-deps -r $OcrLockFile } "Exact Windows OCR runtime lock install"
+Invoke-Checked { & $ReleasePython -m pip check } "Combined exact Windows release dependency consistency check"
+
+Push-Location $Backend
+try {
+    $env:PYTHONPATH = "."
+    Invoke-Checked {
+        & $ReleasePython -c "from app.ocr_runtime import probe_ocr_runtime; p=probe_ocr_runtime(import_modules=True, run_native_check=True); print(p.model_dump()); raise SystemExit(0 if p.ready else 1)"
+    } "Isolated OCR runtime import/native self-check"
+}
+finally {
+    Pop-Location
+}
 
 Push-Location $Frontend
 try {
@@ -75,7 +97,9 @@ Push-Location $Backend
 try {
     $env:PYTHONPATH = "."
     Invoke-Checked { & $ReleasePython -m app.release_assets_cli --output-dir $BuildRoot } "Public legal/retrieval release asset build"
-    Invoke-Checked { & $ReleasePython -m app.release_notices_cli --lock $LockFile --output-dir $NoticeRoot } "Exact installed Python license/NOTICE collection"
+    Invoke-Checked {
+        & $ReleasePython -m app.release_notices_cli --lock $LockFile --lock $OcrLockFile --output-dir $NoticeRoot
+    } "Exact installed Python license/NOTICE collection"
     Invoke-Checked {
         & $ReleasePython -m app.release_metadata_cli --source-sha $SourceSha --node-version $NodeVersion --npm-version $NpmVersion --output $ReleaseMetadata
     } "Release reproducibility metadata generation"
@@ -123,5 +147,6 @@ Write-Host ""
 Write-Host "[Law-Rag] Windows onedir bundle created at: $Bundle"
 Write-Host "[Law-Rag] Source commit: $SourceSha"
 Write-Host "[Law-Rag] Build runtime: CPython $PythonVersion / Node $NodeVersion / npm $NpmVersion"
+Write-Host "[Law-Rag] PaddlePaddle $PaddleVersion + pinned PaddleOCR runtime are included from the isolated release environment."
 Write-Host "[Law-Rag] Exact Python notices and Vite bundled dependency licenses were generated for review."
-Write-Host "[Law-Rag] No API keys, user runtime data, OCR weights, or BGE weights were bundled."
+Write-Host "[Law-Rag] No API keys, user runtime data, OCR model weights, or BGE weights were bundled."

@@ -18,7 +18,7 @@ Local React/Vite UI
 Local FastAPI backend
   |
   +-- ingestion / native PDF + safe DOCX OOXML inspection
-  +-- optional local PaddleOCR / PDFium rendering
+  +-- bundled PaddlePaddle/PaddleOCR runtime + PDFium rendering
   +-- cross-format Source Evidence + canonical contract
   +-- deterministic audit rules
   +-- Audit Planner / complete canonical-object coverage
@@ -34,6 +34,8 @@ Local FastAPI backend
 ```
 
 Source navigation, Results reads, Workspace reads, Stage 13 Developer diagnostics and Human Review do not implicitly execute external providers.
+
+The Stage 14.4 Windows bundle contains the OCR Python/native runtime, but PP-OCR detector/recognizer model weights remain deliberately outside the bundle until Stage 14.5. Therefore bundled runtime availability is not yet the same claim as complete zero-setup offline OCR inference.
 
 ## 3. Authoritative job architectures
 
@@ -108,7 +110,7 @@ The Home/Pipeline product picker is not considered fully rolled out for DOCX unt
 
 Reliable native PDF/DOCX text is preferred. OCR is used only where needed. DOCX native evidence never receives synthetic page numbers.
 
-Current optional OCR implementation:
+Current OCR runtime family:
 
 ```text
 PaddlePaddle CPU 3.3.0
@@ -116,6 +118,8 @@ PaddleOCR 3.7.0
 PP-OCRv6_medium_det
 PP-OCRv6_medium_rec
 ```
+
+PaddlePaddle/PaddleOCR runtime code is bundled in the normal Windows onedir as of Stage 14.4. The PP-OCR model identities above remain a model-layer configuration; their fixed local weights are not redistributed until Stage 14.5.
 
 PDFium/pypdfium2 provides bounded local rasterization for OCR-required PDF pages and source-page rendering.
 
@@ -446,21 +450,25 @@ The shape of `evidence.json` is source-format compatible rather than artificiall
 
 ## 17. Windows distribution boundary
 
-The portable Windows onedir/ZIP build is produced from an isolated exact release lock. Base release content contains public legal/retrieval assets and required third-party notices, not private runtime jobs, source contracts, API keys, OCR model weights or BGE model weights.
+The portable Windows onedir/ZIP build is produced from an isolated exact base release lock plus a separate exact OCR runtime lock. The packaged runtime contains PaddlePaddle CPU `3.3.0`, PaddleOCR `3.7.0`, PaddleX `3.7.2`, their pinned runtime closure and required native DLL/PYD files.
 
-Stage 13G final Windows validation demonstrated:
+The bundle still excludes private runtime jobs, source contracts, API keys, OCR model weights/caches and BGE model weights.
 
-- Windows Credential Manager secret round-trip;
-- isolated onedir build and deterministic portable ZIP packaging;
-- `/`, `/results`, `/workspace`, `/developer` packaged routes;
-- native PDF ingestion and PDFium page rendering;
-- private Stage 13/legacy job-artifact exclusion from the bundle;
-- historical RC2 user-flow/restart compatibility;
-- Stage 13 Audit Planner provider-boundary pause/cancel/resume using a synthetic configured key that is never approved/transmitted;
-- PaddlePaddle/PaddleOCR Windows dependency import/runtime check;
-- real local BGE semantic retrieval smoke.
+Stage 14.4 Windows validation proves:
 
-Stage 14.4 is responsible for moving PaddlePaddle/PaddleOCR from an optional/dependency-smoke capability into the normal packaged Windows runtime. Stage 14.5 then adds fixed local OCR model distribution/integrity/offline behavior.
+- base + OCR exact locks coexist under CPython `3.12.10` with `pip check`;
+- PaddlePaddle/PaddleOCR import and Paddle native CPU self-check succeed with network access unusable;
+- PyInstaller collects the Paddle Python/native runtime into the normal onedir;
+- the frozen executable exposes and passes `--diagnose-ocr-runtime` without model initialization;
+- existing PDFium/native PDF behavior remains functional after OCR runtime packaging;
+- private Law-Rag application data is excluded from the bundle root;
+- Paddle/PaddleOCR cache and PP-OCR model payload identities are recursively excluded;
+- deterministic RC ZIP creation accepts legitimate dependency-internal `runtime` code directories while still rejecting private application data and model/cache payloads;
+- the final extracted RC ZIP passes the existing packaged user-flow smoke.
+
+Third-party notice collection and release metadata cover both exact base and OCR locks. PaddlePaddle/PaddleOCR/PaddleX are bundled runtime components as of Stage 14.4.
+
+Stage 14.5 owns fixed local OCR model distribution, model integrity/licensing and packaged offline inference. Stage 14.6 owns Home/Pipeline exposure of the complete source-format paths. Stage 14.7 owns the final combined packaged regression.
 
 ## 18. Validation and next boundary
 
@@ -476,4 +484,6 @@ AuditPlan
 
 Stage 14.1–14.3 preserve that model/audit topology while extending the source boundary. Stage 14.3 code regression validates typed DOCX paragraph/table-cell navigation, logical table-preserving source rendering, source-warning visibility, DOCX no-fake-page behavior, existing PDF/image source-viewer compatibility, deterministic quality gates and the frontend production build.
 
-Stage 14.1–14.3 are complete. The next implementation scope is **Stage 14.4 — Windows OCR runtime distribution**. Do not begin Stage 14.5–14.7 in the same implementation slice.
+Authoritative Stage 14.4 full Windows CI run #648 (`32125214669`) validates the exact OCR runtime closure, offline import/native self-check, PyInstaller onedir, packaged exact/native scans, frozen diagnostics, HTTP/PDF regression, deterministic RC archive and final extracted-RC user flow. Backend was `304 passed, 5 skipped` with the existing third-party Starlette/httpx warning; deterministic quality gates and frontend build passed.
+
+Stage 14.1–14.4 are complete. The next implementation scope is **Stage 14.5 — offline OCR model distribution**. Do not begin Stage 14.6–14.7 in the same implementation slice.

@@ -6,6 +6,7 @@ import importlib.metadata as metadata
 import json
 import re
 import shutil
+from collections.abc import Iterable
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +30,28 @@ def _parse_lock(lock_path: Path) -> dict[str, str]:
         name, version = line.split("==", 1)
         locked[_normalize_name(name.strip())] = version.strip()
     return locked
+
+
+def _normalize_lock_paths(lock_paths: Path | Iterable[Path]) -> list[Path]:
+    if isinstance(lock_paths, Path):
+        return [lock_paths.resolve()]
+    resolved = [Path(path).resolve() for path in lock_paths]
+    if not resolved:
+        raise ValueError("At least one release lock is required.")
+    return resolved
+
+
+def _merge_locks(lock_paths: list[Path]) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for lock_path in lock_paths:
+        for name, version in _parse_lock(lock_path).items():
+            existing = merged.get(name)
+            if existing is not None and existing != version:
+                raise ValueError(
+                    f"Conflicting exact release lock versions for {name}: {existing} vs {version}."
+                )
+            merged[name] = version
+    return merged
 
 
 def _is_notice_file(path: Path) -> bool:
@@ -57,8 +80,11 @@ def _safe_lock_label(lock_path: Path) -> str:
         return resolved.name
 
 
-def collect_python_notices(lock_path: Path, output_dir: Path) -> dict[str, object]:
-    locked = _parse_lock(lock_path.resolve())
+def collect_python_notices(
+    lock_path: Path | Iterable[Path], output_dir: Path
+) -> dict[str, object]:
+    lock_paths = _normalize_lock_paths(lock_path)
+    locked = _merge_locks(lock_paths)
     output_dir = output_dir.resolve()
     python_dir = output_dir / "python"
     if python_dir.exists():
@@ -123,9 +149,13 @@ def collect_python_notices(lock_path: Path, output_dir: Path) -> dict[str, objec
             "pypdfium2 notice extraction did not expose PDFium/dependency license material from the installed wheel."
         )
 
+    labels = [_safe_lock_label(path) for path in lock_paths]
     report: dict[str, object] = {
-        "schema_version": "1.0.0",
-        "source_lock": _safe_lock_label(lock_path),
+        "schema_version": "1.1.0",
+        # Keep source_lock for backward-compatible readers while recording every
+        # exact Stage 14 release lock used to build the combined runtime.
+        "source_lock": labels[0],
+        "source_locks": labels,
         "distribution_count": len(records),
         "distributions": records,
         "warning": "Collected files are evidence for notice review, not an automatic declaration of license compliance.",
@@ -136,11 +166,18 @@ def collect_python_notices(lock_path: Path, output_dir: Path) -> dict[str, objec
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Collect license/NOTICE files from the exact Stage 11D Python environment.")
-    parser.add_argument("--lock", type=Path, default=DEFAULT_LOCK)
+    parser = argparse.ArgumentParser(description="Collect license/NOTICE files from the exact Windows release environment.")
+    parser.add_argument(
+        "--lock",
+        type=Path,
+        action="append",
+        default=None,
+        help="Exact release lock to include. Repeat for base + optional bundled runtime locks.",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
-    report = collect_python_notices(args.lock, args.output_dir)
+    locks = args.lock if args.lock is not None else [DEFAULT_LOCK]
+    report = collect_python_notices(locks, args.output_dir)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 

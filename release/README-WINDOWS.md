@@ -1,6 +1,6 @@
 # Law-Rag Windows Portable Bundle
 
-This bundle is an inspectable **one-folder** Windows x64 application distributed inside the Law-Rag `0.8.0-rc2` portable ZIP. It is not an installer and not a single-file executable.
+This bundle is an inspectable **one-folder** Windows x64 application distributed inside the Law-Rag portable ZIP. It is not an installer and not a single-file executable.
 
 ## Start
 
@@ -27,14 +27,14 @@ The browser UI and FastAPI backend are served from the same local process. Node.
 ```text
 first-run DeepSeek / Kimi setup (or explicit local-only skip)
   -> choose cloud policy
-  -> drag one or more PDF/JPG/PNG contracts onto the intake page
+  -> drag one or more currently exposed PDF/JPG/PNG contracts onto the intake page
   -> streamed local upload + bounded local processing
   -> explicit provider boundary when required
   -> batch result landing page
   -> detailed evidence/review workstation only where needed
 ```
 
-Normal users do not need internal Stage controls. Manual troubleshooting controls remain under `/developer`.
+DOCX backend ingestion and Workspace source navigation exist in Stage 14, but Home/Pipeline product exposure remains Stage 14.6. Normal users do not need internal Stage controls. Manual troubleshooting controls remain under `/developer`.
 
 ### File intake
 
@@ -46,7 +46,7 @@ Normal users do not need internal Stage controls. Manual troubleshooting control
 
 ## Cloud/provider boundary controls
 
-Stage 13A makes provider transmission application-controlled rather than an automatic side effect of upload. The intake screen exposes three policies:
+The application controls provider transmission rather than treating it as an automatic side effect of upload. The intake screen exposes three policies:
 
 ```text
 发送前确认（推荐）
@@ -54,52 +54,9 @@ Stage 13A makes provider transmission application-controlled rather than an auto
 仅本地处理
 ```
 
-The default normal-user policy is **发送前确认（推荐）**.
+The default normal-user policy is **发送前确认（推荐）**. Local document/OCR handling, canonical structure, deterministic rules and legal-evidence preparation may complete before the Job stops at the outbound provider boundary. No DeepSeek/Kimi generation call starts until the user explicitly approves where approval is required.
 
-With that policy, Law-Rag first runs available local work, including document/OCR handling, canonical structure, deterministic rules and construction of the local legal-retrieval/evidence context. The Job then stops at:
-
-```text
-PAUSED_BEFORE_PROVIDER
-PROVIDER_APPROVAL_REQUIRED
-```
-
-No DeepSeek/Kimi generation call starts until the user explicitly approves cloud auditing for that Job.
-
-`仅本地处理` stops at the same outbound boundary with `LOCAL_ONLY_PROVIDER_DISABLED`. The user can later explicitly approve the Job if cloud review is desired.
-
-`本地完成后自动继续` preserves the older automatic-provider behavior for users who deliberately choose it.
-
-### Pause and cancel semantics
-
-Every DeepSeek/Kimi generation call rechecks persistent provider/cancel state immediately before the outbound request. The application records which provider has actually crossed that boundary.
-
-Users can:
-
-- change not-yet-started provider work to `发送前暂停`;
-- approve a paused Job;
-- cancel a queued/local/paused Job;
-- request cancellation while a provider call is already in flight;
-- explicitly restart a cancelled Job.
-
-A crucial limitation is shown explicitly in the UI: **a provider request that has already started cannot be recalled or made unsent**. If cancellation occurs after that boundary, Law-Rag records the request as in flight, waits for the current call to return, and prevents subsequent provider/stage execution. A cancelled Job never resumes merely because the application restarts.
-
-Cancelled state and cloud policy are persisted separately from ordinary progress so a worker cannot overwrite user intent with stale progress writes.
-
-## Background processing and restart behavior
-
-Progress comes from real upload bytes and persisted pipeline milestones. If OCR/provider configuration is missing, provider approval is pending, a Job is cancelled, or a stage fails, that Job remains visible independently of its siblings.
-
-Closing/restarting Law-Rag never silently continues a process-local provider task. Prior transient `QUEUED/RUNNING/WAITING_WORKER` work becomes explicit retry-required state. A persisted cancellation request becomes `CANCELLED`. Already completed local/model artifacts remain available for safe reuse.
-
-If a Job is interrupted rather than cancelled, reopen its results and use `继续 / 重试审计`. Cancelled Jobs use the separate explicit restart action and retain their original cloud policy.
-
-## Batch results
-
-Each intake session has a local batch ID. Its manifest stores Job IDs/timestamps only; it does not duplicate contract text into another result database.
-
-The result page keeps complete, processing, waiting-for-provider/configuration, cancelled, failed and invalid Jobs visible. Ordering prioritizes human-review requirements, material disagreement/more-evidence states, serious risks and possible omissions. This is **not** a correctness or legal-validity score.
-
-Complete Jobs open the existing evidence-level workstation with contract Evidence, Legal Evidence, separate DeepSeek/Kimi opinions, deterministic comparison, Agent trace and append-only human-review history.
+A provider request that has already started cannot be recalled or made unsent. Persistent pause/cancel state is rechecked before later provider calls, and completed artifacts remain available for safe reuse after restart.
 
 ## First-run DeepSeek / Kimi configuration
 
@@ -128,13 +85,19 @@ Run from PowerShell/CMD:
 ```text
 Law-Rag.exe --diagnose
 Law-Rag.exe --diagnose --json
+Law-Rag.exe --diagnose-ocr-runtime
 ```
 
-Diagnostics are local and non-mutating. They do not call DeepSeek/Kimi, download OCR/BGE models, rebuild databases, or print API key values.
+`--diagnose` is the general non-mutating local runtime check.
 
-## Included base capabilities
+`--diagnose-ocr-runtime` verifies the **bundled** PaddlePaddle/PaddleOCR Python/native runtime and executes Paddle's local native self-check. It deliberately does not construct the OCR pipeline, choose/download PP-OCR models, call DeepSeek/Kimi or mutate contract data.
 
-- PDF/JPG/PNG intake;
+## Included runtime capabilities
+
+- CPython runtime collected by PyInstaller;
+- PaddlePaddle CPU `3.3.0` runtime;
+- PaddleOCR `3.7.0` + pinned PaddleX/runtime dependency closure;
+- PDF/JPG/PNG intake currently exposed by Home;
 - **500 MiB** guarded streamed upload path;
 - native PDF extraction and PDFium rendering;
 - deterministic contract structure and rules;
@@ -150,16 +113,25 @@ Diagnostics are local and non-mutating. They do not call DeepSeek/Kimi, download
 
 The bundled legal seed remains `CURATED_EXCERPT`, not a complete statement of Chinese law. A no-hit result cannot be interpreted as absence of a legal rule.
 
-## Not included in the base bundle
+### OCR runtime versus OCR models
+
+Stage 14.4 removes the need for a release user to install Python, pip, PaddlePaddle or PaddleOCR manually. The Paddle native runtime has been validated inside the frozen `Law-Rag.exe`, including with external network proxies deliberately made unusable.
+
+However, **PP-OCR detector/recognizer model weights are not included yet**. Stage 14.5 owns the exact model identities, licensing/redistribution review, hashes, local model paths and offline inference validation.
+
+Therefore scanned/image-only contracts are **not yet claimed as a complete zero-setup offline path** in this Stage 14.4 bundle. The runtime is present; fixed local model distribution is still pending.
+
+## Not included in the Stage 14.4 bundle
 
 ```text
-PaddleOCR / PaddlePaddle
-OCR model weights
+PP-OCR detector / recognizer model weights
+Paddle/PaddleOCR downloaded model caches
 sentence-transformers / PyTorch
 BAAI/bge-small-zh-v1.5 weights
+user runtime/jobs
+API keys
+private benchmark data
 ```
-
-Therefore scanned/image-only contracts are not yet zero-setup. OCR-required Jobs stop at the explicit optional-component boundary rather than silently producing a low-quality audit.
 
 ## Local data
 
@@ -175,9 +147,11 @@ Do not delete `runtime/` as a first troubleshooting step. Full history/storage m
 
 ## Release metadata and third-party notices
 
-The bundle includes reproducibility metadata, exact Python dependency records, Vite frontend license data and collected Python/PDFium notices under `_internal/`. These support release review; they are not an automatic declaration that every redistribution obligation has been legally satisfied.
+The bundle includes reproducibility metadata, exact Python dependency records, Vite frontend license data and collected Python/PDFium/Paddle notices under `_internal/`. The release metadata fingerprints both the base Windows dependency lock and the Stage 14.4 OCR runtime lock.
 
-The current portable RC files remain:
+These files support release review; they are not an automatic declaration that every redistribution obligation has been legally satisfied.
+
+The portable RC files remain:
 
 ```text
 Law-Rag-0.8.0-rc2-windows-x64.zip
@@ -185,6 +159,6 @@ RC-MANIFEST.json
 SHA256SUMS.txt
 ```
 
-Clean Windows validation extracts the final ZIP and runs base runtime/PDFium checks, the Stage 12 user-flow smoke, and the Stage 13A provider-boundary pause/cancel/resume smoke without real provider keys or paid calls.
+Stage 14.4 clean Windows validation builds the exact onedir, verifies Paddle native files and PDFium, rejects private/model/cache payloads, runs frozen base diagnostics, runs the frozen OCR native diagnostic with network unavailable, exercises native PDF/PDFium HTTP behavior, builds the deterministic RC ZIP, extracts that final ZIP into a fresh directory and reruns the RC user-flow smoke.
 
 Public GitHub Release/tag publication remains a separate explicit owner decision.
