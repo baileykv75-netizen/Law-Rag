@@ -230,6 +230,11 @@ class PaddleOcrProvider:
                 use_textline_orientation=False,
                 device="cpu",
                 engine="paddle_static",
+                # PaddlePaddle 3.3.0 has a known CPU oneDNN/PIR regression
+                # that fails PP-OCR inference on ArrayAttribute<Double>.
+                # PaddleOCR 3.7 maps this to run_mode="paddle" while keeping
+                # the pinned static CPU engine and local model artifacts.
+                enable_mkldnn=False,
             )
         except Exception as exc:
             raise OcrProviderUnavailable(
