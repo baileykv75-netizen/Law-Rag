@@ -119,15 +119,30 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12.10'
-      - name: Install PaddlePaddle CPU
-        run: python -m pip install paddlepaddle==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
-      - name: Install PaddleOCR
-        run: python -m pip install -r backend/requirements-ocr.txt
-      - name: Verify local OCR runtime imports
-        run: python -c "import paddle, paddleocr; paddle.utils.run_check(); print('Paddle', paddle.__version__); print('PaddleOCR', paddleocr.__version__)"
-      - name: Show resolved OCR dependency closure
+      - name: Build isolated exact OCR dependency environment
         shell: pwsh
-        run: python -m pip freeze --all | Sort-Object
+        run: |
+          python -m venv .ocr-venv
+          $python = Join-Path $PWD ".ocr-venv\Scripts\python.exe"
+          & $python -m pip install --disable-pip-version-check --no-deps -r backend/requirements-release-lock-windows.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m pip install --disable-pip-version-check --no-deps paddlepaddle==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m pip install --disable-pip-version-check --no-deps -r backend/requirements-release-ocr-lock-windows.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m pip check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify exact OCR runtime imports without model initialization
+        shell: pwsh
+        run: |
+          $python = Join-Path $PWD ".ocr-venv\Scripts\python.exe"
+          $env:PYTHONPATH = (Join-Path $PWD "backend")
+          & $python -c "from app.ocr_runtime import probe_ocr_runtime; p=probe_ocr_runtime(import_modules=True, run_native_check=True); print(p.model_dump()); raise SystemExit(0 if p.ready else 1)"
+      - name: Show resolved isolated OCR dependency closure
+        shell: pwsh
+        run: |
+          $python = Join-Path $PWD ".ocr-venv\Scripts\python.exe"
+          & $python -m pip freeze --all | Sort-Object
 
   windows-rag-semantic-smoke:
     if: github.event_name == 'push' && contains(github.event.head_commit.message, 'verify RAG semantic')
