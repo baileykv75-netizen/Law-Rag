@@ -4,8 +4,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from .audit_planner_api import router as audit_planner_router
-from .issue_legal_context_api import router as issue_legal_context_router
 from .job_architecture import JobArchitectureError, resolve_job_architecture
 from .job_architecture_models import (
     JobArchitectureSummary,
@@ -33,8 +31,6 @@ from .pipeline_control_models import (
 from .pipeline_models import PipelineReport, PipelineStartRequest
 
 router = APIRouter()
-router.include_router(audit_planner_router)
-router.include_router(issue_legal_context_router)
 
 
 def _raise_pipeline_http(exc: Exception) -> None:
