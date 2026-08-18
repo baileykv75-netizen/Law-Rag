@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
-HUMAN_REVIEW_SCHEMA_VERSION = "1.0.0"
+HUMAN_REVIEW_SCHEMA_VERSION = "1.1.0"
 
 
 class HumanDecisionState(str, Enum):
@@ -18,8 +19,11 @@ class HumanDecisionState(str, Enum):
 
 
 class HumanReviewTargetType(str, Enum):
+    # Legacy RC2 identities remain valid historical targets.
     FINDING = "finding"
     OMISSION = "omission"
+    # Issue V1 decisions bind directly to the authoritative AuditPlan identity.
+    ISSUE = "issue"
 
 
 class HumanDecisionRequest(BaseModel):
@@ -41,6 +45,8 @@ class HumanDecisionRevision(BaseModel):
     decided_at: datetime
     contract_evidence_ids: list[str] = Field(default_factory=list)
     legal_evidence_ids: list[str] = Field(default_factory=list)
+    # Kept under the historical field name so old RC2 revisions remain readable.
+    # For target_type=issue this stores issue-review-report.json's artifact fingerprint.
     review_report_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
@@ -57,6 +63,8 @@ class HumanReviewArtifact(BaseModel):
 class HumanReviewView(BaseModel):
     schema_version: str = HUMAN_REVIEW_SCHEMA_VERSION
     job_id: UUID
+    authoritative_architecture: Literal["LEGACY_RC2", "ISSUE_V1"]
+    current_review_report_artifact: Literal["review-report.json", "issue-review-report.json"]
     current_review_report_fingerprint: str
     revisions: list[HumanDecisionView] = Field(default_factory=list)
     latest_by_target: dict[str, HumanDecisionView] = Field(default_factory=dict)
