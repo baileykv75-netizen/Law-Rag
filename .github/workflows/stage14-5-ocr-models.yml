@@ -60,7 +60,23 @@ jobs:
         run: ./release/package-rc.ps1
       - name: Extract final RC and smoke user workflow
         shell: pwsh
-        run: ./release/smoke-rc-windows.ps1
+        run: |
+          $log = "release/.build/stage14-5-rc-smoke.log"
+          try {
+            & ./release/smoke-rc-windows.ps1 *>&1 | Tee-Object -FilePath $log
+          }
+          catch {
+            $_ | Out-String | Tee-Object -FilePath $log -Append
+            throw
+          }
+      - name: Upload failed extracted RC smoke diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage14-5-rc-smoke-diagnostic
+          path: release/.build/stage14-5-rc-smoke.log
+          if-no-files-found: warn
+          retention-days: 3
       - name: Verify model payload is not tracked in Git
         shell: pwsh
         run: |
