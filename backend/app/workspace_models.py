@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -63,7 +64,7 @@ class WorkspaceReviewSummary(BaseModel):
 class WorkspaceSummary(BaseModel):
     schema_version: str = WORKSPACE_SCHEMA_VERSION
     job_id: UUID
-    architecture: str = "LEGACY_RC2"
+    architecture: Literal["LEGACY_RC2"] = "LEGACY_RC2"
     overall_state: WorkspaceOverallState
     source_available: bool
     document: WorkspaceDocumentSummary | None = None
