@@ -2,9 +2,9 @@
 
 ## 1. System objective
 
-Law-Rag is a local-first contract audit assistant. The architecture optimizes for evidence traceability, reproducibility, replaceable model providers, controlled Agent behavior, explicit uncertainty, human review, and eventual Windows distribution.
+Law-Rag is a local-first contract audit assistant. The architecture optimizes for evidence traceability, explicit review coverage, reproducibility, replaceable model providers, deterministic validation, visible uncertainty, human review and Windows-friendly distribution.
 
-The browser UI is a local application interface. It is not evidence that processing happens in the cloud.
+The browser UI is a local application interface. Real contract files remain local except for explicitly permitted bounded provider calls.
 
 ## 2. Runtime topology
 
@@ -17,98 +17,112 @@ Local React/Vite UI
   v
 Local FastAPI backend
   |
-  +-- document ingestion / native PDF inspection
-  +-- PaddleOCR / PDFium rendering
-  +-- canonical contract model
-  +-- deterministic rule engine
-  +-- versioned legal knowledge + hybrid retrieval
-  +-- DeepSeek primary provider boundary
-  +-- Kimi secondary provider boundary
-  +-- deterministic comparison
-  +-- constrained local Agent tools
-  +-- professional review workspace
+  +-- ingestion / native PDF inspection
+  +-- optional local PaddleOCR / PDFium rendering
+  +-- canonical contract + stable Evidence IDs
+  +-- deterministic audit rules
+  +-- Audit Planner / complete canonical-object coverage
+  +-- versioned Legal Evidence + issue-based hybrid retrieval
+  +-- DeepSeek issue-by-issue primary audit
+  +-- Kimi issue-by-issue finding + coverage review
+  +-- deterministic Issue comparison
   +-- append-only human review
+  +-- architecture-aware Results / Workspace / Developer
   +-- local persistence
   |
-  +---- explicit outbound calls ----> configured DeepSeek / Kimi APIs
+  +---- explicit bounded outbound calls ----> configured DeepSeek / Kimi APIs
 ```
 
-Real contract files remain local except for explicitly requested bounded model calls. Workstation navigation, source rendering, Evidence lookup, filtering, Legal Evidence display, and human review do not call external models.
+Source navigation, Results reads, Workspace reads, Stage 13 Developer diagnostics and Human Review do not implicitly execute external providers.
 
-## 3. Major components
+## 3. Authoritative job architectures
 
-### 3.1 Frontend
+Stage 13G defines three runtime architecture states:
 
-Current responsibilities:
+```text
+ISSUE_V1     current production architecture for new jobs
+LEGACY_RC2   historical Stage 8/9 contract-level architecture
+CONFLICT     fail closed; do not guess which artifact family is authoritative
+```
 
-- local file upload and processing controls;
-- legal knowledge/retrieval inspection;
-- explicit DeepSeek and Kimi execution controls;
-- dedicated `/workspace?job=<job-id>` professional review route;
-- page navigation and source zoom;
-- Evidence-linked source highlighting;
-- unified risk/comparison/omission queue;
-- Legal Evidence/version/provenance display;
-- Agent trace display;
-- human confirm/reject/needs-more-review decisions and revision history.
+The architecture resolver uses persisted production state and provenance rather than merely checking whether a convenient JSON filename exists.
 
-The frontend contains presentation and interaction logic only. It does not generate legal findings or reinterpret the raw contract.
+An explicit unfinished-RC2 migration:
 
-### 3.2 Backend API
+1. preserves the old `pipeline.json` as `pipeline-legacy-rc2.json`;
+2. records a SHA-256 snapshot reference;
+3. initializes the Issue V1 pipeline;
+4. leaves old Stage 8/9 reports as historical artifacts.
 
-FastAPI exposes bounded local HTTP endpoints. Major responsibilities:
+A missing or modified migration snapshot forces `CONFLICT`.
 
-- validate uploads and limits;
-- create local jobs;
-- expose deterministic pipeline stages;
-- expose provider health and explicit model-run APIs;
-- expose read-only workstation aggregation/source/Evidence endpoints;
-- append human-review revisions;
-- normalize errors into explicit HTTP failure states.
+Completed historical RC2 jobs remain readable and are not automatically rewritten.
 
-The workstation aggregation endpoint deliberately avoids helper functions that create directories when the job does not exist.
+## 4. Issue V1 production pipeline
 
-### 3.3 Document ingestion
+The application-owned production sequence for new jobs is:
 
-Supported input:
+```text
+INGEST                  10%
+  -> OCR                25%
+  -> STRUCTURE          38%
+  -> RULES              48%
+  -> AUDIT_PLAN         58%
+  -> ISSUE_LEGAL_CONTEXT 68%
+  -> ISSUE_PRIMARY_AUDIT 82%
+  -> ISSUE_SECONDARY_REVIEW 92%
+  -> ISSUE_REVIEW_REPORT 100%
+```
+
+The Pipeline owns mandatory stage ordering. Neither a model nor the UI may skip mandatory evidence/validation stages.
+
+### 4.1 Provider boundary
+
+`REQUIRE_APPROVAL` applies before the Audit Planner's first actual outbound call. Local rules may complete first.
+
+A provider must also be configured. Missing provider configuration may yield `WAITING_CONFIGURATION` before an outbound request is possible; approval does not manufacture credentials.
+
+Planner, DeepSeek and Kimi calls cross the persisted provider/cancellation boundary independently. An already-started request cannot be recalled, but cancellation blocks later requests.
+
+Background limits remain bounded:
+
+```text
+Pipeline workers                 <= 4
+local processing slots           <= 2
+OCR slots                        <= 1
+concurrent external provider calls <= 2
+```
+
+The external-provider slot is acquired per actual model call, not for the entire multi-Issue stage. This preserves Stage 13 checkpoint/resume behavior and avoids monopolizing the provider budget while local work runs.
+
+## 5. Document and evidence layer
+
+Supported source input:
 
 - PDF;
 - JPG/JPEG;
 - PNG.
 
-The ingestion layer:
+Reliable native PDF text is preferred. OCR is used only where needed.
 
-- stores the source under the ignored local runtime tree;
-- validates signatures/size/media type;
-- preserves 1-based page identity;
-- prefers reliable native PDF text;
-- classifies pages as native-text usable or OCR-required;
-- persists stable page Evidence IDs.
+Current optional OCR implementation:
 
-### 3.4 OCR / layout layer
+```text
+PaddlePaddle CPU 3.3.0
+PaddleOCR 3.7.0
+PP-OCRv6_medium_det
+PP-OCRv6_medium_rec
+```
 
-Current implementation:
+PDFium/pypdfium2 provides bounded local rasterization for OCR-required pages and source-page rendering.
 
-- provider-neutral OCR boundary;
-- PaddleOCR 3.7.0 / PaddlePaddle CPU 3.3.0 optional local runtime;
-- PP-OCRv6 medium detection/recognition default;
-- pypdfium2/PDFium rendering for OCR-required PDF pages;
-- OCR block text, confidence, bbox/polygon, page coordinate space and provider provenance;
-- explicit low-confidence/no-text/failure states.
+`contract.json` is the downstream canonical contract source of truth. Clauses, blocks, parties, dates, money, percentages, identifiers and references retain source spans/Evidence IDs and extraction provenance.
 
-Reliable native text is not OCRed by default.
+Contract/OCR text is untrusted data. It is never treated as a developer/system instruction.
 
-### 3.5 Canonical contract model
+## 6. Deterministic rules
 
-`contract.json` is the downstream contract source of truth.
-
-Canonical entities include clauses, parties, dates, money, percentages, identifiers, references, structured blocks and reusable `SourceSpan` records. Derived objects retain Evidence IDs and page/span/bbox provenance.
-
-Rules, retrieval, models, comparison and workstation views consume the canonical contract rather than independently rereading the raw PDF.
-
-### 3.6 Deterministic rule engine
-
-The rule engine owns machine-checkable checks such as arithmetic/percentage/date/entity consistency.
+Machine-checkable conditions remain ordinary code.
 
 States:
 
@@ -119,9 +133,37 @@ REVIEW
 NOT_APPLICABLE
 ```
 
-`FAIL` means a configured machine condition failed; it is not itself a legal conclusion.
+`FAIL` means a configured deterministic condition failed; it is not itself a legal conclusion.
 
-### 3.7 Versioned legal knowledge
+Deterministic rule results may seed Planner hints but do not define the complete legal-review scope.
+
+## 7. Audit Planner and planning coverage
+
+`audit-plan.json` is the authoritative Issue V1 review scope.
+
+It combines:
+
+```text
+baseline checklist
++ deterministic rule/topic hints
++ bounded model planning
+= validated AuditPlan
+```
+
+The model cannot delete mandatory baseline scope and may reference only supplied canonical object identities.
+
+Every canonical clause/block receives one explicit coverage state:
+
+```text
+REVIEWED_WITH_ISSUE
+REVIEWED_NO_SPECIFIC_ISSUE
+```
+
+`REVIEWED_NO_SPECIFIC_ISSUE` is planning coverage, never a safety/legal-validity conclusion.
+
+Short contracts use a bounded DIRECT Planner pass. Long contracts use complete-object CHUNK passes followed by bounded GLOBAL planning synthesis. A canonical object is not character-truncated merely to fit a prompt.
+
+## 8. Versioned Legal Evidence and Issue Legal RAG
 
 Canonical legal identity is:
 
@@ -131,261 +173,254 @@ authority
        -> article / Legal Evidence ID
 ```
 
-The local SQLite store preserves source hashes, official-source provenance, effective intervals, status and coverage semantics (`FULL_TEXT` / `CURATED_EXCERPT`).
-
 Applicability is deterministic:
 
 ```text
 effective_date <= as_of < end_date_exclusive
 ```
 
-Private user contracts never enter the legal corpus.
+The local SQLite corpus preserves public-source provenance, hashes, effective intervals, status and coverage semantics such as `FULL_TEXT` / `CURATED_EXCERPT`.
 
-### 3.8 Hybrid legal retrieval
-
-```text
-query + as_of
-  |
-  +-- exact article/citation lookup
-  +-- SQLite FTS5 trigram + BM25
-  +-- optional local BGE semantic channel
-  |
-  v
-weighted reciprocal-rank fusion
-  |
-  v
-applicable versioned Legal Evidence IDs
-```
-
-Retrieval ranking is not a legal-confidence percentage. Corpus/version insufficiency remains explicit even when similar candidates exist.
-
-### 3.9 Model provider layer
-
-Domain logic depends on provider-neutral interfaces.
-
-Current adapters:
-
-- DeepSeek primary audit provider;
-- Kimi K3 secondary review provider.
-
-Provider responsibilities include request formatting, timeout/retry behavior, structured output normalization and safe metadata capture. Hidden reasoning content is not persisted.
-
-Provider responses are not trusted merely because they match JSON shape. Application code validates IDs, evidence membership and legal-version applicability before persistence.
-
-### 3.10 Dual-model audit reasoning
-
-Mandatory reasoning topology for a completed audited contract:
+Each AuditPlan Issue drives Stage 13D retrieval independently:
 
 ```text
-validated canonical/rule/RAG context
-    -> one DeepSeek primary call
-    -> deterministic validation
-    -> one Kimi contract-level secondary call
-    -> independent deterministic validation
-    -> structured comparison
+Issue retrieval queries
+  -> exact article/citation lookup
+  -> SQLite FTS5 trigram + BM25
+  -> optional local BGE semantic channel
+  -> weighted reciprocal-rank fusion
+  -> applicable versioned Legal Evidence IDs
 ```
 
-The application compares risk state, ordinal severity distance, contract Evidence sets, Legal Evidence sets and validated possible omissions. It does not use a third model to judge model agreement.
-
-### 3.11 Constrained Agent
-
-The Agent is a bounded evidence-gathering layer after dual-model comparison.
-
-Hard action budget:
+Issue support states:
 
 ```text
-maximum follow-up actions = 2
+EVIDENCE_FOUND
+EVIDENCE_FOUND_WITH_LIMITATIONS
+NO_MATCH_IN_LOCAL_CORPUS
+VERSION_REVIEW_REQUIRED
 ```
 
-Current allowlist:
+Local absence/partial coverage is never converted into a claim that no applicable law exists.
+
+## 9. DeepSeek Issue Primary Audit
+
+Stage 13E schedules one bounded DeepSeek request per AuditPlan Issue.
+
+Terminal states:
 
 ```text
-inspect_contract_evidence
-get_clause_context
-inspect_legal_evidence
-retrieve_more_legal
-resolve_contract_reference
-request_ocr_retry
+SUPPORTED_FINDING
+NO_MATERIAL_RISK_FOUND
+INSUFFICIENT_EVIDENCE
+REVIEW_REQUIRED
 ```
 
-No arbitrary shell, unrestricted filesystem action, open-ended browsing, automatic corpus mutation or third-model vote is available.
+Every planned Issue must receive exactly one terminal result for a complete artifact.
 
-The Agent may gather additional material, but unresolved material disagreement remains `HUMAN_REVIEW_REQUIRED`; finding new evidence is not automatic authority to declare one model the winner.
+The provider receives bounded target/related canonical evidence, deterministic context, global facts and that Issue's Legal Evidence package. Invented canonical, Contract Evidence or Legal Evidence IDs fail validation.
 
-## 4. Mandatory audit pipeline
+A legal conclusion requires supplied Legal Evidence. A confident `NO_MATERIAL_RISK_FOUND` requires reliable contract evidence, applicable Legal Evidence and unqualified Stage 13D support.
 
-Current application-controlled sequence:
+Results checkpoint after each Issue. Resume reuses an unchanged completed Issue instead of repeating a paid call. Oversized evidence context is not silently truncated and sent.
+
+## 10. Kimi Issue Finding + Coverage Review
+
+Stage 13F schedules one bounded Kimi request per AuditPlan Issue.
+
+It performs two distinct tasks:
+
+1. independently challenge/support the DeepSeek Issue result;
+2. review whether the planned Issue was adequately covered.
+
+Finding assessments:
 
 ```text
-ingest
-  -> native/OCR evidence
-  -> canonical contract
-  -> deterministic checks
-  -> versioned legal retrieval
-  -> DeepSeek primary audit
-  -> primary validation
-  -> Kimi secondary review
-  -> secondary validation
-  -> deterministic comparison
-  -> optional bounded local Agent evidence actions
-  -> review-report.json
-  -> professional workstation / human review
+SUPPORTED
+PARTIALLY_SUPPORTED
+DISAGREED
+INSUFFICIENT_EVIDENCE
+REVIEW_REQUIRED
 ```
 
-No Agent or UI component may silently skip required evidence/validation stages.
-
-## 5. Evidence identity and source viewing
-
-Evidence IDs are stable within a job and resolvable to source.
-
-Stage 10 exposes bounded APIs:
+Coverage assessments:
 
 ```text
-GET /api/documents/<job-id>/source/pages/<page-number>
-GET /api/documents/<job-id>/evidence/<evidence-id>
+COVERED
+COVERED_BUT_QUESTIONABLE
+POSSIBLE_OMISSION
+INSUFFICIENT_EVIDENCE
 ```
 
-PDF pages are rendered locally with the existing PDFium renderer into ignored viewer cache files. Image jobs expose their one bounded source page. Arbitrary user-supplied local paths are never accepted.
+`POSSIBLE_OMISSION` requires supplied Contract Evidence and explicit omission reasoning. Legal propositions additionally require supplied Legal Evidence.
 
-OCR Evidence can return bbox/polygon/confidence and the image coordinate space. Native-text Evidence returns exact quote/character offsets when visual coordinates are unavailable. The UI must never fabricate a bbox.
+Kimi may cite only Evidence IDs supplied in its bounded Issue context. Results checkpoint per Issue and resume only when the primary/context fingerprints still match.
 
-## 6. Professional review workspace
+No extra global Kimi coverage-synthesis pass is part of Stage 13. Stage 13G regression did not demonstrate a cross-Issue failure mode that justifies another provider call. Reconsider this only if later expert/benchmark evidence demonstrates systematic global omissions.
 
-The dedicated job-centric route is:
+## 11. Deterministic Issue comparison
+
+`issue-review-report.json` is generated without another model.
+
+There is exactly one deterministic comparison for each AuditPlan Issue. Comparison considers validated primary/secondary states, severity distance, Contract Evidence alignment, Legal Evidence alignment, coverage assessment and upstream evidence limitations.
+
+Representative states:
 
 ```text
-/workspace?job=<job-id>
+CONSISTENT
+CONSISTENT_WITH_REVIEW
+MATERIAL_DISAGREEMENT
+POSSIBLE_OMISSION
+INSUFFICIENT_EVIDENCE
+REVIEW_REQUIRED
 ```
 
-Desktop-first layout:
+Only `CONSISTENT` avoids mandatory human review. The program decides comparison state; neither model votes on which provider is correct.
+
+The report is fingerprint-bound to the AuditPlan, primary audit and secondary review. Stale upstream artifacts invalidate freshness.
+
+## 12. Human review
+
+Human Review is append-only and architecture-aware.
+
+For Issue V1:
 
 ```text
-left                    center                     right
-source/page viewer      audit/triage queue         evidence/review context
-Evidence highlight      filters/comparison         DeepSeek + Kimi
-processing history      possible omissions         law/version/provenance
-                                                   Agent trace
-                                                   human decision history
+target_type = issue
+target_id   = AuditPlan.issue_id
 ```
 
-Read-only aggregation:
+For Legacy RC2, historical `finding` / `omission` identities remain unchanged.
+
+The server derives the Contract/Legal Evidence snapshot and stores the current authoritative report fingerprint; it does not trust browser-supplied Evidence IDs as the review source of truth.
+
+If the underlying report changes, prior revisions remain visible as stale and cannot close the current review.
+
+Only fresh final `CONFIRMED` or `REJECTED` decisions resolve a mandatory Issue review. `UNREVIEWED`, `NEEDS_MORE_REVIEW`, stale revisions and incomplete planning coverage remain outstanding.
+
+## 13. Results and professional Workspace
+
+`/results` and `/workspace` resolve the authoritative job architecture before selecting artifacts.
+
+### Issue V1 Workspace
+
+The Workspace displays every AuditPlan Issue, including no-material-risk, evidence-insufficient and review-required states. It exposes:
+
+- Planner reasoning/questions;
+- planning coverage;
+- Contract Evidence;
+- Issue Legal RAG and Legal Evidence;
+- DeepSeek result;
+- Kimi finding and coverage review;
+- deterministic comparison;
+- current human-review revision/state.
+
+Workspace summary is lightweight; detailed Issue context is loaded on selection rather than serializing all legal text for potentially hundreds of Issues.
+
+### Legacy Workspace
+
+Historical RC2 jobs retain their original Finding/Omission view without schema fabrication.
+
+### Results ordering
+
+The result queue uses strict workload priority:
 
 ```text
-GET /api/documents/<job-id>/workspace
+unresolved human review
+> possible omission
+> material disagreement
+> critical
+> high
+> insufficient evidence
+> medium
+> low
 ```
 
-The summary reports per-stage `READY`, `MISSING`, `NOT_REQUIRED` or `INVALID`. Missing/corrupt artifacts remain explicit. Tests assert both partial and complete job navigation are provider-free.
+This is an operational review queue, not a legal-risk probability.
 
-## 7. Human review boundary
+## 14. Developer diagnostics
 
-Human review is a separate persistence layer:
+`/developer` defaults to a Stage 13 GET-only diagnostic surface over persisted artifacts:
 
 ```text
-runtime/jobs/<job-id>/human-review.json
+architecture
+pipeline
+Audit Plan
+Issue Legal Context
+Issue Primary Audit
+Issue Secondary Review
+Issue Comparison
+Human Review
 ```
 
-States:
+The view explicitly distinguishes available, missing, stale/conflicting and invalid artifacts. It does not create or rerun stages.
+
+Historical Stage 1–9 tools remain under a collapsed `Legacy / RC2` area because some of those tools intentionally expose execution/POST actions.
+
+## 15. Legacy RC2 boundary
+
+The historical production topology used contract-level Stage 8/9 artifacts and a bounded Agent path. Those implementations remain in the repository for RC2 compatibility and explicit legacy inspection; they are **not** the authoritative production path for new jobs.
+
+Legacy artifacts:
 
 ```text
-UNREVIEWED
-CONFIRMED
-REJECTED
-NEEDS_MORE_REVIEW
+ai-audit.json
+secondary-review.json
+review-report.json
 ```
 
-APIs:
+Do not fabricate these schemas from Issue V1 data and do not fabricate Issue V1 data from them.
+
+## 16. Persistence and freshness
+
+Current private Issue V1 job artifacts include:
 
 ```text
-GET  /api/documents/<job-id>/human-review
-POST /api/documents/<job-id>/human-review/decisions
+document.json
+evidence.json
+ocr.json
+contract.json
+audit-rules.json
+pipeline.json
+pipeline-control.json
+audit-plan.json
+issue-legal-context.json
+issue-primary-audit.json
+issue-secondary-review.json
+issue-review-report.json
+human-review.json
 ```
 
-Each POST appends a revision containing the target, note, timestamp, server-derived contract/Legal Evidence snapshot and current `review-report.json` fingerprint.
+Artifacts are local and ignored by Git. Important derived stages carry fingerprints tying them to authoritative upstream state. Stale artifacts remain inspectable where appropriate but must not silently become current authority.
 
-Human review never overwrites source evidence, canonical contract, deterministic rules, DeepSeek/Kimi reports, review-report, legal store or retrieval index. A regression test protects those artifacts byte-for-byte.
+## 17. Windows distribution boundary
 
-If `review-report.json` changes, earlier revisions remain in history and are surfaced as stale rather than silently carried forward.
+The portable Windows onedir/ZIP build is produced from an isolated exact release lock. Base release content contains public legal/retrieval assets and required third-party notices, not private runtime jobs, source contracts, API keys, OCR model weights or BGE model weights.
 
-## 8. Local persistence
+Stage 13G final Windows validation demonstrated:
 
-Current ignored runtime layout includes:
+- Windows Credential Manager secret round-trip;
+- isolated onedir build and deterministic portable ZIP packaging;
+- `/`, `/results`, `/workspace`, `/developer` packaged routes;
+- native PDF ingestion and PDFium page rendering;
+- private Stage 13/legacy job-artifact exclusion from the bundle;
+- historical RC2 user-flow/restart compatibility;
+- Stage 13 Audit Planner provider-boundary pause/cancel/resume using a synthetic configured key that is never approved/transmitted;
+- PaddlePaddle/PaddleOCR Windows dependency import/runtime check;
+- real local BGE semantic retrieval smoke.
+
+## 18. Validation and next boundary
+
+Stage 13G final provider-free regression runs with fake Planner/DeepSeek/Kimi providers and hard-fails on attempted outbound HTTP. It proves one-to-one Issue identity across:
 
 ```text
-runtime/uploads/<job-id>/source.<ext>
-runtime/jobs/<job-id>/document.json
-runtime/jobs/<job-id>/evidence.json
-runtime/jobs/<job-id>/ocr.json
-runtime/jobs/<job-id>/contract.json
-runtime/jobs/<job-id>/audit-rules.json
-runtime/jobs/<job-id>/ai-audit.json
-runtime/jobs/<job-id>/secondary-review.json
-runtime/jobs/<job-id>/review-report.json
-runtime/jobs/<job-id>/human-review.json
-runtime/rendered/<job-id>/...
-runtime/viewer/<job-id>/...
-runtime/legal/legal.db
-runtime/legal/retrieval.db
+AuditPlan
+= Issue Legal Context
+= Issue Primary Audit
+= Issue Secondary Review
+= Issue Comparison
 ```
 
-Remote persistence is not part of the current product architecture.
+Normal CI additionally covers deterministic quality gates and the frontend production build.
 
-## 9. Trust boundaries
-
-### Trusted application controls
-
-- system/developer instructions owned by Law-Rag;
-- explicit local configuration;
-- validated schemas;
-- deterministic validators;
-- allowlisted Agent tools and action budget;
-- versioned legal-source metadata.
-
-### Untrusted data
-
-- contract text;
-- OCR output;
-- embedded PDF text;
-- tables/attachments;
-- external document content;
-- retrieved legal text with respect to any instructions embedded inside it;
-- model-generated prose/IDs until validated.
-
-Untrusted content cannot redefine system instructions, tool policy or evidence identity.
-
-## 10. Failure states
-
-Explicit states are preferred over silent fallback, including:
-
-- `OCR_LOW_CONFIDENCE` / `OCR_FAILED`;
-- `INSUFFICIENT_CORPUS` / version ambiguity;
-- model unavailable / invalid output;
-- unresolved Evidence ID;
-- model disagreement;
-- `HUMAN_REVIEW_REQUIRED`;
-- workspace artifact `MISSING` / `INVALID`;
-- stale human decision.
-
-A failed/incomplete stage must not be rendered as an approved legal result.
-
-## 11. Deployment path
-
-Progression:
-
-1. local developer launch — complete;
-2. stable local processing/audit/workstation — complete through Stage 10;
-3. benchmark + runtime hardening — Stage 11 active;
-4. self-contained Windows-oriented release bundle;
-5. optional installer only after bundle/runtime behavior is proven.
-
-Do not optimize for public SaaS deployment during the current product phase.
-
-## 12. Explicit non-goals
-
-- public user registration/cloud multi-tenancy;
-- payment systems;
-- public legal-advice service;
-- unrestricted autonomous browsing;
-- automatic filing/submission of legal documents;
-- training/fine-tuning on private user contracts;
-- automatic final legal approval;
-- third-model voting as a substitute for evidence/human review.
+Stage 13G is complete. The next implementation scope is Stage 14: OCR distribution + DOCX. Stage 14 is intentionally not started as part of the Stage 13G migration.
