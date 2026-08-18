@@ -12,8 +12,8 @@ from .issue_workspace import IssueWorkspaceError, load_issue_workspace_detail, l
 from .issue_workspace_models import IssueWorkspaceDetail, IssueWorkspaceSummary
 from .job_architecture import JobArchitectureError, resolve_job_architecture
 from .job_architecture_models import JobAuditArchitecture
-from .source_viewer import SourceViewerError, resolve_contract_evidence, source_page_asset
-from .source_viewer_models import SourceEvidenceDetail
+from .source_viewer import SourceViewerError, docx_source_view, resolve_contract_evidence, source_page_asset
+from .source_viewer_models import DocxSourceView, SourceEvidenceDetail
 from .workspace import WorkspaceLoadError, load_workspace_summary
 from .workspace_models import WorkspaceSummary
 
@@ -86,7 +86,7 @@ def get_workspace_issue(job_id: UUID, issue_id: str) -> IssueWorkspaceDetail:
 
 @router.get("/api/documents/{job_id}/source/pages/{page_number}")
 def get_source_page(job_id: UUID, page_number: int) -> FileResponse:
-    """Return one bounded source page asset; PDF pages are rendered locally with PDFium."""
+    """Return one bounded paginated source asset; DOCX uses the logical endpoint."""
 
     try:
         asset = source_page_asset(job_id, page_number)
@@ -98,11 +98,26 @@ def get_source_page(job_id: UUID, page_number: int) -> FileResponse:
 
 
 @router.get(
+    "/api/documents/{job_id}/source/docx",
+    response_model=DocxSourceView,
+)
+def get_docx_source(job_id: UUID) -> DocxSourceView:
+    """Return a local logical DOCX view in structural order without inventing pages."""
+
+    try:
+        return docx_source_view(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SourceViewerError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@router.get(
     "/api/documents/{job_id}/evidence/{evidence_id}",
     response_model=SourceEvidenceDetail,
 )
 def get_contract_evidence(job_id: UUID, evidence_id: str) -> SourceEvidenceDetail:
-    """Resolve one contract Evidence ID back to page/span/bbox metadata."""
+    """Resolve one contract Evidence ID back to its authoritative page or structural source anchor."""
 
     try:
         return resolve_contract_evidence(job_id, evidence_id)
