@@ -41,6 +41,8 @@ def configure_release_environment() -> dict[str, str]:
         "LAW_RAG_LEGAL_DB": str(asset_root / "public-assets" / "legal" / "legal.db"),
         "LAW_RAG_RETRIEVAL_DB": str(asset_root / "public-assets" / "legal" / "retrieval.db"),
         "LAW_RAG_FRONTEND_DIST": str(asset_root / "frontend-dist"),
+        "LAW_RAG_OCR_MODEL_ROOT": str(asset_root / "ocr-models"),
+        "LAW_RAG_OCR_MODEL_MANIFEST": str(asset_root / "release" / "ocr-models-manifest.json"),
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
@@ -78,6 +80,16 @@ def _print_ocr_probe(probe) -> None:
     print(probe.detail)
 
 
+def _print_ocr_model_probe(probe) -> None:
+    print("Law-Rag OCR Models")
+    print(f"ready: {'YES' if probe.ready else 'NO'}")
+    print(f"state: {probe.state}")
+    print(f"model_root: {probe.model_root or 'missing'}")
+    print(f"detection: {probe.detection_model or 'missing'}")
+    print(f"recognition: {probe.recognition_model or 'missing'}")
+    print(probe.detail)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Law-Rag local Windows release launcher")
     parser.add_argument("--diagnose", action="store_true", help="Run non-mutating diagnostics and exit.")
@@ -85,6 +97,17 @@ def _parser() -> argparse.ArgumentParser:
         "--diagnose-ocr-runtime",
         action="store_true",
         help="Import the pinned PaddlePaddle/PaddleOCR runtime, run Paddle's local native self-check, and exit without initializing OCR models.",
+    )
+    parser.add_argument(
+        "--diagnose-ocr-models",
+        action="store_true",
+        help="Verify the packaged PP-OCR model file set and SHA-256 values without initializing inference.",
+    )
+    parser.add_argument(
+        "--diagnose-ocr-inference",
+        type=Path,
+        metavar="IMAGE",
+        help="Run the production PaddleOCR adapter on one local image using only verified packaged model directories.",
     )
     parser.add_argument("--json", action="store_true", help="With a diagnostic mode, print machine-readable JSON.")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the local workstation in a browser.")
@@ -98,10 +121,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_release_environment()
 
     if args.diagnose_ocr_runtime:
-        # Stage 14.4 runtime validation is deliberately separate from model
-        # initialization. This imports the packaged Python/native runtime and
-        # executes Paddle's local self-check, but never constructs PaddleOCR,
-        # chooses a model source, or downloads model weights.
         from .ocr_runtime import probe_ocr_runtime
 
         probe = probe_ocr_runtime(import_modules=True, run_native_check=True)
@@ -111,8 +130,43 @@ def main(argv: Sequence[str] | None = None) -> int:
             _print_ocr_probe(probe)
         return 0 if probe.ready else 3
 
-    # Import diagnostics only after release paths are configured. The diagnostic
-    # service is provider-free and does not rebuild/download/mutate runtime data.
+    if args.diagnose_ocr_models:
+        from .ocr_models import probe_ocr_models
+
+        probe = probe_ocr_models()
+        if args.json:
+            print(json.dumps(probe.model_dump(), ensure_ascii=False, indent=2))
+        else:
+            _print_ocr_model_probe(probe)
+        return 0 if probe.ready else 4
+
+    if args.diagnose_ocr_inference is not None:
+        image_path = args.diagnose_ocr_inference.expanduser().resolve()
+        if not image_path.is_file():
+            print(f"[ERROR] OCR diagnostic image does not exist: {image_path}")
+            return 4
+        try:
+            from .ocr import PaddleOcrProvider
+
+            blocks = PaddleOcrProvider().recognize(image_path, page_number=1)
+        except Exception as exc:
+            print(f"[ERROR] Offline OCR inference failed: {type(exc).__name__}: {exc}")
+            return 4
+        payload = {
+            "ready": bool(blocks),
+            "block_count": len(blocks),
+            "texts": [block.text for block in blocks],
+            "confidences": [block.confidence for block in blocks],
+        }
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print("Law-Rag Offline OCR Inference")
+            print(f"block_count: {len(blocks)}")
+            for block in blocks:
+                print(block.text)
+        return 0 if blocks else 4
+
     from .startup_diagnostics import inspect_startup_health
 
     report = inspect_startup_health()
@@ -139,10 +193,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[ERROR] http://{host}:{args.port} is already in use. Law-Rag was not started twice.")
         return 2
 
-    # Process-local background futures cannot survive an application exit. Before
-    # serving the desktop UI, fail closed for transient states left by the prior
-    # process. This performs no OCR/provider/Agent work; the user must explicitly
-    # retry, and already completed artifacts are reused by the normal pipeline.
     from .pipeline_recovery import reconcile_interrupted_pipelines
 
     recovered = reconcile_interrupted_pipelines()
