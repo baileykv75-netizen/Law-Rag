@@ -108,7 +108,11 @@ export default function WorkspaceApp() {
           <p>工作台会先确认任务属于 ISSUE_V1 还是 LEGACY_RC2；打开页面不会重新识别合同、重新检索法律或调用 DeepSeek / Kimi。</p>
         </section>
       ) : isIssueWorkspace(summary) ? (
-        <IssueWorkspaceView key={summary.job_id} summary={summary} />
+        <IssueWorkspaceView
+          key={summary.job_id}
+          summary={summary}
+          onRefresh={() => { void loadWorkspace(summary.job_id) }}
+        />
       ) : (
         <LegacyWorkspaceView key={summary.job_id} summary={summary} />
       )}
