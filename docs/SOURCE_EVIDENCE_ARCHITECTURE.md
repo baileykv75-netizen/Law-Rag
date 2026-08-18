@@ -2,9 +2,9 @@
 
 ## Status
 
-Stage 14.1 froze the cross-format evidence contract. Stage 14.2 now implements safe native DOCX ingestion on top of that contract.
+Stage 14.1 froze the cross-format evidence contract. Stage 14.2 implemented safe native DOCX ingestion. Stage 14.3 now implements local DOCX Evidence navigation and a logical structural Source Viewer on top of the same typed anchors.
 
-The Source Viewer remains PDF/image-oriented until Stage 14.3. Windows OCR runtime/model distribution remains deferred to Stage 14.4–14.5.
+Windows OCR runtime/model distribution remains deferred to Stage 14.4–14.5. Home/Pipeline product rollout remains Stage 14.6.
 
 ## Core rules
 
@@ -20,6 +20,8 @@ The Source Viewer remains PDF/image-oriented until Stage 14.3. Windows OCR runti
    DOCX constructs that cannot yet be represented with full legal confidence emit structured warnings; legally meaningful gaps block complete source coverage.
 6. **Source-format differences stop at the Evidence / Canonical boundary.**
    Audit Planner, Legal RAG, DeepSeek, Kimi, comparison and Human Review consume the canonical contract/evidence identity rather than branching on PDF versus DOCX.
+7. **Source navigation follows the source representation.**
+   PDF/image navigation uses real pages/coordinates. DOCX navigation uses logical paragraph/table/image anchors and never converts them into synthetic pages.
 
 ## Source document identity
 
@@ -106,6 +108,8 @@ docx:document:table:0002:row:0003:cell:0002:paragraph:0001
 
 Cells from one Word table share a deterministic `parent_group_id`. The common canonical extractor converts the group into one `TABLE_CANDIDATE` while retaining individual cell Evidence spans.
 
+Stage 14.3 resolves a table-cell Evidence ID back to these exact structural coordinates and highlights the corresponding cell paragraph in the logical Source Viewer.
+
 ### `DOCX_EMBEDDED_IMAGE`
 
 For embedded image occurrences:
@@ -123,11 +127,11 @@ Canonical locator example:
 docx:document:image:0003
 ```
 
-Stage 14.2 inventories image occurrences and their relationship identity but does not OCR them. Because an image could contain operative contract text, the current conservative behavior marks source coverage partial until a later local OCR path can resolve it.
+Stage 14.2 inventories image occurrences and their relationship identity but does not OCR them. Because an image could contain operative contract text, the current conservative behavior marks source coverage partial until a later local OCR path can resolve it. Stage 14.3 renders those Evidence occurrences as visible logical placeholders rather than hiding them.
 
 ## Source Evidence schema
 
-Stage 14.2 uses Source Evidence schema `2.1.0`.
+Stage 14.2+ uses Source Evidence schema `2.1.0`.
 
 `SourceEvidence` contains:
 
@@ -155,7 +159,7 @@ source_locator?
 blocks_complete_coverage
 ```
 
-This lets ingestion distinguish an informational warning from a source gap that must prevent a document from being represented as completely covered.
+This lets ingestion distinguish an informational warning from a source gap that must prevent a document from being represented as completely covered. Stage 14.3 carries these warnings into Workspace/Source Viewer instead of suppressing them after ingestion.
 
 ## DOCX native ingestion
 
@@ -188,7 +192,7 @@ DOCX ingestion rejects or limits:
 - DTD/entity declarations;
 - password-protected/encrypted Office compound-file containers.
 
-External relationships are recorded as warnings and are never dereferenced by ingestion.
+External relationships are recorded as warnings and are never dereferenced by ingestion or Source Viewer.
 
 ### Word numbering
 
@@ -208,11 +212,11 @@ Stage 14.2 explicitly detects high-risk constructs such as:
 - embedded images requiring later OCR;
 - external relationships.
 
-Tracked changes and other content gaps that can alter operative contract text set `blocks_complete_coverage=true`. The persisted DOCX inspection and generated `contract.json` then report `status="partial"` instead of silently claiming completeness.
+Tracked changes and other content gaps that can alter operative contract text set `blocks_complete_coverage=true`. The persisted DOCX inspection and generated `contract.json` then report `status="partial"` instead of silently claiming completeness. Stage 14.3 keeps those warnings visible beside the logical source.
 
 ## Canonical contract boundary
 
-`contract.json` remains schema `1.1.0`; the deterministic extractor provenance is now `stage14-2.0.0`.
+`contract.json` remains schema `1.1.0`; deterministic extractor provenance remains `stage14-2.0.0`.
 
 PDF native text, OCR blocks and DOCX Source Evidence all converge into the same `EvidenceUnit` stream and then the same deterministic canonical extractor. There is no DOCX-specific Planner or model audit path.
 
@@ -237,10 +241,28 @@ Existing PDF/image `evidence.json` files remain the original Stage 2 `PageEviden
 - OCR block Evidence keeps its existing Evidence ID and maps to `PAGE_REGION`;
 - an OCR-required page placeholder without completed OCR text is not promoted into usable text evidence.
 
-New DOCX jobs persist `evidence.json` as a `SourceEvidenceArtifact` object. Loaders must discriminate the authoritative source representation rather than pretending the old list and the new object are the same schema.
+New DOCX jobs persist `evidence.json` as a `SourceEvidenceArtifact` object. Loaders discriminate the authoritative source representation rather than pretending the old list and the new object are the same schema.
+
+Workspace Stage 2 follows the same compatibility rule: historical PDF/image jobs validate `PageEvidence[]`; DOCX jobs validate `SourceEvidenceArtifact`.
+
+## Source Viewer boundary — Stage 14.3
+
+Source navigation is intentionally dual-mode behind one Evidence action:
+
+```text
+PDF / image
+  Evidence ID -> real page / bbox / polygon / text offset
+
+DOCX
+  Evidence ID -> typed structural anchor -> logical paragraph / table cell / image placeholder
+```
+
+`GET /api/documents/{job_id}/source/docx` is local/read-only and returns blocks in persisted Evidence order. It groups table-cell Evidence back into rows/cells instead of showing a flattened text stream.
+
+`GET /api/documents/{job_id}/evidence/{evidence_id}` resolves both paginated and structural Evidence. DOCX responses retain `page_number=null` and expose the typed anchor as the source truth.
+
+The DOCX page endpoint refuses to create a fake page. The frontend scrolls to and highlights the exact logical paragraph or table-cell paragraph selected from Issue Workspace Contract Evidence.
 
 ## Stage boundaries
 
-Stage 14.3 will make the Source Viewer understand DOCX structural anchors and render a logical paragraph/table source view. It must not pretend DOCX pagination is stable.
-
-Stage 14.4–14.5 will address self-contained Windows PaddleOCR/runtime/model distribution. Stage 14.6 will expose the complete supported-input flow in the product Home/Pipeline. Stage 14.7 will run final packaged Windows regression.
+Stage 14.4 will bundle the Windows PaddlePaddle/PaddleOCR runtime dependencies into the normal release runtime. Stage 14.5 will address fixed local OCR model distribution/integrity/offline behavior. Stage 14.6 will expose the complete supported-input flow in Home/Pipeline. Stage 14.7 will run final packaged Windows regression.
