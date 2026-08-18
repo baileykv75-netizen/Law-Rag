@@ -86,6 +86,9 @@ export default function IssueWorkspaceView({ summary }: Props) {
   }
 
   const coverage = summary.coverage
+  const reviewedCoverageCount = coverage
+    ? coverage.reviewed_with_issue_count + coverage.reviewed_no_specific_issue_count
+    : 0
 
   return (
     <>
@@ -112,7 +115,7 @@ export default function IssueWorkspaceView({ summary }: Props) {
       <section className="issue-coverage-strip" aria-label="审计规划覆盖">
         <div>
           <span className="eyebrow">PLANNING COVERAGE</span>
-          <strong>{coverage ? `${coverage.canonical_object_count} / ${coverage.canonical_object_count}` : '—'}</strong>
+          <strong>{coverage ? `${reviewedCoverageCount} / ${coverage.canonical_object_count}` : '—'}</strong>
           <small>{coverage ? (coverage.coverage_complete ? 'Canonical objects 全部进入规划覆盖' : '规划覆盖不完整') : 'AuditPlan 尚未生成'}</small>
         </div>
         <div><span>形成 Issue</span><strong>{coverage?.reviewed_with_issue_count ?? '—'}</strong><small>REVIEWED_WITH_ISSUE</small></div>
