@@ -38,7 +38,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Frozen OCR model integrity diagnostic failed with exit code $LASTEXITCODE" }
       - name: Run packaged offline real OCR and base workflow smoke
         shell: pwsh
-        run: ./release/smoke-windows.ps1
+        run: |
+          $log = "release/.build/stage14-5-smoke.log"
+          try {
+            & ./release/smoke-windows.ps1 *>&1 | Tee-Object -FilePath $log
+          }
+          catch {
+            $_ | Out-String | Tee-Object -FilePath $log -Append
+            throw
+          }
+      - name: Upload failed OCR smoke diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage14-5-ocr-smoke-diagnostic
+          path: release/.build/stage14-5-smoke.log
+          if-no-files-found: warn
+          retention-days: 3
       - name: Build deterministic portable RC ZIP and manifest
         shell: pwsh
         run: ./release/package-rc.ps1
