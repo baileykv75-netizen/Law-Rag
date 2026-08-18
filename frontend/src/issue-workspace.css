@@ -72,6 +72,26 @@
 .issue-omission-box strong { color: #784c7e; font-size: 9px; }
 .issue-omission-box p { margin-bottom: 0; }
 .issue-human-boundary { margin-top: 2px; }
+.human-decision-pill {
+  padding: 3px 5px;
+  border-radius: 3px;
+  background: #eaf2ec;
+  color: #4e7359;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+.human-decision-pill.is-stale { background: #fff0dc; color: #9a6222; }
+.issue-human-decision-panel { margin-top: 2px; }
+.issue-human-required {
+  margin: 0;
+  padding: 7px 8px;
+  border-left: 3px solid #b77a2c;
+  background: #fff8e9;
+  color: #76581d;
+  font-size: 9px;
+  line-height: 1.5;
+}
 .quiet-state { margin: 8px 0; color: #8a94a3; font-size: 9px; line-height: 1.5; }
 
 @media (max-width: 1180px) {
