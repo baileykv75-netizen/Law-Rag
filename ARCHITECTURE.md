@@ -17,9 +17,9 @@ Local React/Vite UI
   v
 Local FastAPI backend
   |
-  +-- ingestion / native PDF inspection
+  +-- ingestion / native PDF + safe DOCX OOXML inspection
   +-- optional local PaddleOCR / PDFium rendering
-  +-- canonical contract + stable Evidence IDs
+  +-- cross-format Source Evidence + canonical contract
   +-- deterministic audit rules
   +-- Audit Planner / complete canonical-object coverage
   +-- versioned Legal Evidence + issue-based hybrid retrieval
@@ -97,13 +97,16 @@ The external-provider slot is acquired per actual model call, not for the entire
 
 ## 5. Document and evidence layer
 
-Supported source input:
+Backend-supported source input now includes:
 
 - PDF;
 - JPG/JPEG;
-- PNG.
+- PNG;
+- modern DOCX.
 
-Reliable native PDF text is preferred. OCR is used only where needed.
+The Home/Pipeline product picker is not considered fully rolled out for DOCX until Stage 14.6. Legacy `.doc` is not supported as DOCX.
+
+Reliable native PDF/DOCX text is preferred. OCR is used only where needed. DOCX native evidence never receives synthetic page numbers.
 
 Current optional OCR implementation:
 
@@ -114,11 +117,53 @@ PP-OCRv6_medium_det
 PP-OCRv6_medium_rec
 ```
 
-PDFium/pypdfium2 provides bounded local rasterization for OCR-required pages and source-page rendering.
+PDFium/pypdfium2 provides bounded local rasterization for OCR-required PDF pages and source-page rendering.
 
-`contract.json` is the downstream canonical contract source of truth. Clauses, blocks, parties, dates, money, percentages, identifiers and references retain source spans/Evidence IDs and extraction provenance.
+### 5.1 Cross-format Source Evidence
 
-Contract/OCR text is untrusted data. It is never treated as a developer/system instruction.
+Evidence IDs are opaque identities. Location is represented by typed `source_anchor` values:
+
+```text
+PAGE_TEXT
+PAGE_REGION
+DOCX_PARAGRAPH
+DOCX_TABLE_CELL
+DOCX_EMBEDDED_IMAGE
+```
+
+PDF/image jobs retain their historical `PageEvidence[]` persistence for compatibility. New DOCX jobs persist a `SourceEvidenceArtifact` with original source SHA-256/size, ordered structural Evidence and structured warnings.
+
+DOCX ingestion uses local standard-library OOXML ZIP/XML processing. It preserves paragraph/table order, Word numbering semantics, table/row/cell/paragraph coordinates and embedded-image relationship identity. It does not execute VBA/macros or fetch external relationships.
+
+Malformed/non-OOXML packages, unsafe archive paths, encrypted entries, macro/VBA payloads, pathological archive expansion, oversized XML/DTD/entity input and password-protected Office containers fail explicitly.
+
+Unsupported legally meaningful constructs such as tracked changes, unresolved numbering, text boxes, omitted header/footer/footnote/endnote content or embedded image text produce visible source warnings. Blocking source warnings make source/canonical status partial instead of silently claiming complete coverage.
+
+### 5.2 Canonical boundary
+
+`contract.json` is the downstream canonical contract source of truth. PDF native text, OCR blocks and DOCX structural Evidence converge into the same `EvidenceUnit` stream and the same deterministic canonical extractor.
+
+Clauses, blocks, parties, dates, money, percentages, identifiers and references retain source spans/Evidence IDs and extraction provenance. For DOCX, source spans carry typed structural anchors with `page_number=None`; clause page ranges remain unset rather than fabricated.
+
+Before DOCX Evidence is structured, the original local source size and SHA-256 are revalidated against the persisted source identity. A changed/missing source fails closed.
+
+Contract/OCR/DOCX text is untrusted data. It is never treated as a developer/system instruction.
+
+### 5.3 Source navigation
+
+Source navigation is dual-mode behind the same Contract Evidence action:
+
+```text
+PDF / image
+  Evidence ID -> real page / bbox / polygon / text offset -> rendered source page
+
+DOCX
+  Evidence ID -> typed structural anchor -> logical paragraph / table cell / image placeholder
+```
+
+`GET /api/documents/{job_id}/source/docx` is local/read-only. It preserves persisted paragraph/table order and reconstructs table rows/cells from structural Evidence. Source warnings remain visible in the logical viewer.
+
+DOCX has no stable source pagination. The paginated source endpoint refuses DOCX rather than inventing page 1. Embedded-image Evidence is visible as a placeholder until a later local OCR path handles it.
 
 ## 6. Deterministic rules
 
@@ -317,6 +362,10 @@ The Workspace displays every AuditPlan Issue, including no-material-risk, eviden
 
 Workspace summary is lightweight; detailed Issue context is loaded on selection rather than serializing all legal text for potentially hundreds of Issues.
 
+Workspace Stage 2 source validation is source-format aware: PDF/image jobs validate historical page evidence while DOCX jobs validate `SourceEvidenceArtifact`. DOCX `page_count=0` therefore means “no stable source pages”, not malformed evidence.
+
+Selecting Contract Evidence uses one navigation callback. PDF/image Evidence selects the real source page/coordinate. DOCX Evidence scrolls to and highlights the exact logical paragraph or table-cell paragraph. Blocking DOCX source warnings remain visible and cannot be hidden by the audit result view.
+
 ### Legacy Workspace
 
 Historical RC2 jobs retain their original Finding/Omission view without schema fabrication.
@@ -393,6 +442,8 @@ human-review.json
 
 Artifacts are local and ignored by Git. Important derived stages carry fingerprints tying them to authoritative upstream state. Stale artifacts remain inspectable where appropriate but must not silently become current authority.
 
+The shape of `evidence.json` is source-format compatible rather than artificially uniform on disk: historical PDF/image jobs may still contain `PageEvidence[]`, while DOCX jobs contain a `SourceEvidenceArtifact`. Readers must discriminate source representation explicitly.
+
 ## 17. Windows distribution boundary
 
 The portable Windows onedir/ZIP build is produced from an isolated exact release lock. Base release content contains public legal/retrieval assets and required third-party notices, not private runtime jobs, source contracts, API keys, OCR model weights or BGE model weights.
@@ -409,6 +460,8 @@ Stage 13G final Windows validation demonstrated:
 - PaddlePaddle/PaddleOCR Windows dependency import/runtime check;
 - real local BGE semantic retrieval smoke.
 
+Stage 14.4 is responsible for moving PaddlePaddle/PaddleOCR from an optional/dependency-smoke capability into the normal packaged Windows runtime. Stage 14.5 then adds fixed local OCR model distribution/integrity/offline behavior.
+
 ## 18. Validation and next boundary
 
 Stage 13G final provider-free regression runs with fake Planner/DeepSeek/Kimi providers and hard-fails on attempted outbound HTTP. It proves one-to-one Issue identity across:
@@ -421,6 +474,6 @@ AuditPlan
 = Issue Comparison
 ```
 
-Normal CI additionally covers deterministic quality gates and the frontend production build.
+Stage 14.1–14.3 preserve that model/audit topology while extending the source boundary. Stage 14.3 code regression validates typed DOCX paragraph/table-cell navigation, logical table-preserving source rendering, source-warning visibility, DOCX no-fake-page behavior, existing PDF/image source-viewer compatibility, deterministic quality gates and the frontend production build.
 
-Stage 13G is complete. The next implementation scope is Stage 14: OCR distribution + DOCX. Stage 14 is intentionally not started as part of the Stage 13G migration.
+Stage 14.1–14.3 are complete. The next implementation scope is **Stage 14.4 — Windows OCR runtime distribution**. Do not begin Stage 14.5–14.7 in the same implementation slice.

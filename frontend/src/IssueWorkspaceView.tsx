@@ -34,6 +34,11 @@ function stateClass(state: ArtifactState | OverallState) {
   return 'is-missing'
 }
 
+function sourceExtent(document: IssueWorkspaceSummary['document']) {
+  if (!document) return '源结构未知'
+  return document.document_kind === 'docx' ? 'DOCX 逻辑结构' : `${document.page_count} 页`
+}
+
 type Props = {
   summary: IssueWorkspaceSummary
   onRefresh: () => void
@@ -100,7 +105,7 @@ export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
           <span className="eyebrow">CURRENT JOB · ISSUE_V1</span>
           <h1>{summary.document?.filename ?? '文档元数据不可用'}</h1>
           <div className="summary-meta">
-            <span>{summary.document ? `${summary.document.page_count} 页` : '页数未知'}</span>
+            <span>{sourceExtent(summary.document)}</span>
             <span>{coverage?.contract_type ?? 'CONTRACT TYPE UNKNOWN'}</span>
             <span>{coverage?.planning_mode ?? 'PLANNING PENDING'}</span>
             <span className={summary.source_available ? 'source-ok' : 'source-broken'}>
@@ -141,28 +146,36 @@ export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
         <aside className="workstation-pane source-pane" aria-label="合同来源与 Stage 13 处理链">
           <div className="pane-heading">
             <div><span className="eyebrow">SOURCE</span><h2>合同来源</h2></div>
-            <span>{summary.document?.page_count ?? '—'} 页</span>
+            <span>{sourceExtent(summary.document)}</span>
           </div>
 
           {summary.document ? (
             <SourceViewerPane
               jobId={summary.job_id}
+              documentKind={summary.document.document_kind}
               pageCount={summary.document.page_count}
               sourceAvailable={summary.source_available}
               requestedEvidenceId={selectedContractEvidenceId}
             />
           ) : (
-            <div className="source-viewer-error"><strong>文档元数据不可用</strong><p>没有可靠页数信息，工作台不会猜测源页。</p></div>
+            <div className="source-viewer-error"><strong>文档元数据不可用</strong><p>没有可靠的源文档结构信息，工作台不会猜测源位置。</p></div>
           )}
 
-          {summary.document && (
+          {summary.document && summary.document.document_kind === 'docx' ? (
+            <div className="document-facts">
+              <div><span>源格式</span><strong>DOCX</strong></div>
+              <div><span>稳定页码</span><strong>无</strong></div>
+              <div><span>定位方式</span><strong>结构锚点</strong></div>
+              <div><span>页级 OCR</span><strong>不适用</strong></div>
+            </div>
+          ) : summary.document ? (
             <div className="document-facts">
               <div><span>原生文本页</span><strong>{summary.document.native_text_pages}</strong></div>
               <div><span>需要 OCR 页</span><strong>{summary.document.ocr_required_pages}</strong></div>
               <div><span>实际使用 OCR</span><strong>{summary.document.ocr_used ? '是' : '否'}</strong></div>
               <div><span>低置信 OCR 页</span><strong>{summary.document.low_confidence_ocr_pages}</strong></div>
             </div>
-          )}
+          ) : null}
 
           <div className="stage-timeline">
             <div className="subheading">权威处理链</div>

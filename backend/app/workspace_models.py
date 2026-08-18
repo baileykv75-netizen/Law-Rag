@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-WORKSPACE_SCHEMA_VERSION = "1.1.0"
+WORKSPACE_SCHEMA_VERSION = "1.2.0"
 
 
 class WorkspaceArtifactState(str, Enum):
@@ -36,7 +36,7 @@ class WorkspaceDocumentSummary(BaseModel):
     filename: str
     media_type: str
     document_kind: str
-    page_count: int = Field(ge=1)
+    page_count: int = Field(ge=0)
     route: str
     native_text_pages: int = Field(ge=0)
     ocr_required_pages: int = Field(ge=0)

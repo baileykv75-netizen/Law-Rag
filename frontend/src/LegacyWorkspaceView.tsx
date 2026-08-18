@@ -127,6 +127,7 @@ export default function LegacyWorkspaceView({ summary }: Props) {
           {summary.document ? (
             <SourceViewerPane
               jobId={summary.job_id}
+              documentKind={summary.document.document_kind}
               pageCount={summary.document.page_count}
               sourceAvailable={summary.source_available}
               requestedEvidenceId={selectedContractEvidenceId}
