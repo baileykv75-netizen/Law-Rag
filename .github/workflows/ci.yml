@@ -87,7 +87,43 @@ jobs:
       - name: Show resolved isolated Python release environment
         shell: pwsh
         run: Get-Content release/.build/python-resolved.txt
-      - name: Smoke base onedir before archiving
+      - name: Verify packaged runtime inventory
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $PWD "release\dist\Law-Rag"
+          $exe = Join-Path $bundle "Law-Rag.exe"
+          if (-not (Test-Path $exe)) { throw "Law-Rag.exe missing from packaged bundle" }
+          $resolved = Get-Content (Join-Path $bundle "python-resolved.txt") -Raw
+          foreach ($pin in @("paddlepaddle==3.3.0", "paddleocr==3.7.0", "paddlex==3.7.2", "pypdfium2==5.12.1")) {
+            if ($resolved -notmatch [regex]::Escape($pin)) { throw "Missing exact packaged pin: $pin" }
+          }
+          $paddleNative = Get-ChildItem -Path $bundle -Recurse -File -ErrorAction Stop | Where-Object {
+            $_.FullName.ToLowerInvariant().Contains("paddle") -and $_.Extension.ToLowerInvariant() -in @(".dll", ".pyd")
+          }
+          if (-not $paddleNative) { throw "No packaged Paddle native DLL/PYD files found" }
+          $pdfium = Get-ChildItem -Path $bundle -Recurse -File -Filter "pdfium.dll" -ErrorAction Stop
+          if (-not $pdfium) { throw "pdfium.dll missing after OCR runtime packaging" }
+          $banned = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
+            $_.Name.ToLowerInvariant() -in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private", "model_cache", ".paddlex", ".paddleocr", "official_models") -or
+            $_.Name -like "PP-OCRv6*_det" -or $_.Name -like "PP-OCRv6*_rec"
+          }
+          if ($banned) { throw "Banned runtime/model directories found: $($banned.FullName -join '; ')" }
+          Write-Host "Packaged runtime inventory: OK"
+      - name: Run frozen base diagnostics
+        shell: pwsh
+        run: |
+          & ./release/dist/Law-Rag/Law-Rag.exe --diagnose --json
+          if ($LASTEXITCODE -ne 0) { throw "Frozen base diagnostics failed with exit code $LASTEXITCODE" }
+      - name: Run frozen OCR native diagnostic offline
+        shell: pwsh
+        run: |
+          $env:HTTP_PROXY = "http://127.0.0.1:9"
+          $env:HTTPS_PROXY = "http://127.0.0.1:9"
+          $env:ALL_PROXY = "http://127.0.0.1:9"
+          $env:NO_PROXY = "127.0.0.1,localhost"
+          & ./release/dist/Law-Rag/Law-Rag.exe --diagnose-ocr-runtime
+          if ($LASTEXITCODE -ne 0) { throw "Frozen OCR runtime diagnostic failed with exit code $LASTEXITCODE" }
+      - name: Smoke packaged HTTP PDF and privacy workflow
         shell: pwsh
         run: ./release/smoke-windows.ps1
       - name: Build deterministic portable RC ZIP and manifest
