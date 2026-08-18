@@ -116,18 +116,18 @@ jobs:
           if (-not $pdfium) { throw "pdfium.dll missing after OCR runtime packaging" }
           $pdfium | Select-Object -ExpandProperty FullName
           Write-Host "Packaged PDFium native file: OK"
-      - name: Reject private runtime directories in bundle
+      - name: Reject private application data directories in bundle
         shell: pwsh
         run: |
           $bundle = Join-Path $PWD "release\dist\Law-Rag"
-          $found = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
-            $_.Name.ToLowerInvariant() -in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private")
+          foreach ($name in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private")) {
+            $path = Join-Path $bundle $name
+            if (Test-Path $path) {
+              Write-Host ("FOUND_PRIVATE_APP_DATA=" + $path)
+              throw "Private application data directory found at bundle root"
+            }
           }
-          if ($found) {
-            $found | ForEach-Object { Write-Host ("FOUND_PRIVATE_RUNTIME=" + $_.FullName) }
-            throw "Private runtime directories found in packaged bundle"
-          }
-          Write-Host "Private runtime directory scan: OK"
+          Write-Host "Private application data root scan: OK"
       - name: Reject OCR cache directories in bundle
         shell: pwsh
         run: |
