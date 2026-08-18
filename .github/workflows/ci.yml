@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, 'stage14-*']
   pull_request:
-    branches: [main]
+    branches: [main, 'stage14-*']
 
 permissions:
   contents: read
@@ -112,7 +112,7 @@ jobs:
           retention-days: 7
 
   windows-ocr-dependency-smoke:
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'verify OCR deps')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(github.event.head_commit.message, 'verify OCR deps'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
