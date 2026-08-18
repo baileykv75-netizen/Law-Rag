@@ -230,9 +230,13 @@ def load_issue_workspace_summary(job_id: UUID) -> IssueWorkspaceSummary:
             )
 
     states = {item.state for item in stages}
+    all_required_ready = all(
+        item.state in {WorkspaceArtifactState.READY, WorkspaceArtifactState.NOT_REQUIRED}
+        for item in stages
+    )
     if WorkspaceArtifactState.INVALID in states:
         overall = WorkspaceOverallState.INVALID
-    elif report is not None and base.source_available:
+    elif report is not None and base.source_available and all_required_ready:
         overall = (
             WorkspaceOverallState.HUMAN_REVIEW_REQUIRED
             if report.final_state.value == "HUMAN_REVIEW_REQUIRED"
