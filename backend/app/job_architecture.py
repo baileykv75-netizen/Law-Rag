@@ -129,7 +129,8 @@ def resolve_job_architecture(job_id: UUID) -> JobArchitectureSummary:
     Pipeline shape is stronger evidence than loose historical files. This matters
     after an explicit migration: old RC2 reports intentionally remain on disk for
     auditability, while the new pipeline and migration record make Issue V1
-    authoritative. A mixed pipeline definition is always a hard conflict.
+    authoritative. A mixed pipeline definition or damaged migration snapshot is a
+    hard conflict rather than a reason to guess which report family should win.
     """
 
     if not _job_exists(job_id):
@@ -158,8 +159,26 @@ def resolve_job_architecture(job_id: UUID) -> JobArchitectureSummary:
 
     if record is not None:
         snapshot = _job_dir(job_id) / record.legacy_pipeline_snapshot
+        snapshot_problem: str | None = None
         if not snapshot.exists():
-            warnings.append("Legacy migration record exists but its preserved pipeline snapshot is missing.")
+            snapshot_problem = "Legacy migration record exists but its preserved pipeline snapshot is missing."
+        else:
+            snapshot_digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+            if snapshot_digest != record.legacy_pipeline_sha256:
+                snapshot_problem = "Preserved legacy pipeline snapshot failed SHA-256 validation; migration history is not trustworthy."
+        if snapshot_problem is not None:
+            return JobArchitectureSummary(
+                job_id=job_id,
+                architecture=JobAuditArchitecture.CONFLICT,
+                source=JobArchitectureSource.MIGRATION_RECORD,
+                pipeline_architecture=pipeline_architecture,
+                legacy_artifacts=legacy_artifacts,
+                issue_artifacts=issue_artifacts,
+                migrated_from_legacy=True,
+                legacy_pipeline_snapshot=record.legacy_pipeline_snapshot,
+                migration_available=False,
+                warnings=[snapshot_problem],
+            )
         if pipeline_architecture == JobAuditArchitecture.LEGACY_RC2:
             return JobArchitectureSummary(
                 job_id=job_id,
@@ -172,8 +191,7 @@ def resolve_job_architecture(job_id: UUID) -> JobArchitectureSummary:
                 legacy_pipeline_snapshot=record.legacy_pipeline_snapshot,
                 migration_available=False,
                 warnings=[
-                    *warnings,
-                    "Migration record declares Issue V1 authoritative but current pipeline.json is still legacy RC2.",
+                    "Migration record declares Issue V1 authoritative but current pipeline.json is still legacy RC2."
                 ],
             )
         if pipeline_architecture is None:
@@ -269,6 +287,8 @@ def resolve_job_architecture(job_id: UUID) -> JobArchitectureSummary:
 def preserve_legacy_pipeline_snapshot(job_id: UUID, report: PipelineReport) -> tuple[Path, str]:
     """Atomically preserve the exact legacy pipeline bytes before replacement."""
 
+    if report.job_id != job_id:
+        raise JobArchitectureError("Legacy pipeline report belongs to a different job ID.")
     source = _pipeline_path(job_id)
     if not source.exists():
         raise JobArchitectureError("Legacy pipeline.json is missing; migration cannot preserve its runtime history.")
