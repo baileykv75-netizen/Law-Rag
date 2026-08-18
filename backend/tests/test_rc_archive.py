@@ -85,11 +85,48 @@ def test_rc_archive_is_deterministic_and_manifest_has_no_local_paths(tmp_path: P
     assert first["artifact"]["sha256"] in sums
 
 
-def test_rc_archive_rejects_private_runtime_directory(tmp_path: Path) -> None:
+def test_rc_archive_allows_dependency_internal_runtime_code_directory(tmp_path: Path) -> None:
+    bundle = _fixture_bundle(tmp_path / "input")
+    nested_runtime = bundle / "_internal" / "paddlex" / "inference" / "runtime"
+    nested_runtime.mkdir(parents=True)
+    (nested_runtime / "engine.py").write_text("# dependency code", encoding="utf-8")
+    config = _config(tmp_path / "rc-config.json")
+
+    manifest = build_rc_artifacts(bundle_dir=bundle, config_path=config, output_dir=tmp_path / "out")
+
+    assert manifest["publication_state"] == "NOT_PUBLISHED"
+    with zipfile.ZipFile(tmp_path / "out" / "Law-Rag-0.8.0-rc1-windows-x64.zip") as archive:
+        assert "Law-Rag/_internal/paddlex/inference/runtime/engine.py" in archive.namelist()
+
+
+def test_rc_archive_rejects_private_runtime_directory_at_bundle_root(tmp_path: Path) -> None:
     bundle = _fixture_bundle(tmp_path / "input")
     (bundle / "runtime").mkdir()
     (bundle / "runtime" / "private.json").write_text("{}", encoding="utf-8")
     config = _config(tmp_path / "rc-config.json")
 
-    with pytest.raises(RuntimeError, match="banned private/runtime directory"):
+    with pytest.raises(RuntimeError, match="banned private application directory: runtime"):
+        build_rc_artifacts(bundle_dir=bundle, config_path=config, output_dir=tmp_path / "out")
+
+
+@pytest.mark.parametrize("relative", ["_internal/paddlex/.paddlex", "_internal/paddleocr/model_cache"])
+def test_rc_archive_rejects_nested_ocr_cache_directory(tmp_path: Path, relative: str) -> None:
+    bundle = _fixture_bundle(tmp_path / "input")
+    cache = bundle / relative
+    cache.mkdir(parents=True)
+    (cache / "cache.bin").write_bytes(b"not-a-real-model")
+    config = _config(tmp_path / "rc-config.json")
+
+    with pytest.raises(RuntimeError, match="banned OCR cache directory"):
+        build_rc_artifacts(bundle_dir=bundle, config_path=config, output_dir=tmp_path / "out")
+
+
+def test_rc_archive_rejects_nested_ocr_model_payload_directory(tmp_path: Path) -> None:
+    bundle = _fixture_bundle(tmp_path / "input")
+    model_dir = bundle / "_internal" / "paddlex" / "official_models" / "PP-OCRv6_mobile_det"
+    model_dir.mkdir(parents=True)
+    (model_dir / "inference.pdmodel").write_bytes(b"not-a-real-model")
+    config = _config(tmp_path / "rc-config.json")
+
+    with pytest.raises(RuntimeError, match="banned OCR model directory"):
         build_rc_artifacts(bundle_dir=bundle, config_path=config, output_dir=tmp_path / "out")
