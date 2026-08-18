@@ -21,7 +21,8 @@ Stage 13G       IN PROGRESS — end-to-end audit architecture regression + migra
                 13G.5 Workspace migration COMPLETE
                 13G.6 Human Review migration COMPLETE
                 13G.7 Results + Home migration COMPLETE
-                13G.8 Developer migration NEXT
+                13G.8 Developer migration COMPLETE
+                13G.9 final regression + Windows smoke NEXT
 ```
 
 Stage 13 prioritizes complete, evidence-bounded and auditable review scope before returning to desktop tray/history work.
@@ -217,7 +218,7 @@ See `docs/ISSUE_SECONDARY_REVIEW.md`.
 
 ## Stage 13G — End-to-end audit architecture regression + migration
 
-**Status: in progress; 13G.1–13G.7 complete, 13G.8 next.**
+**Status: in progress; 13G.1–13G.8 complete, 13G.9 next.**
 
 Stage 13G validates and connects the complete new chain:
 
@@ -247,11 +248,12 @@ Completed in the current Stage 13G migration branch:
 - `/results` now resolves the authoritative audit architecture per Job: Issue V1 summaries use AuditPlan coverage, supported primary risk findings, deterministic comparison counts and current human-review closure, while Legacy RC2 keeps its old report semantics;
 - result queue priority is deterministic workload ordering only: unresolved human review > possible omission > material disagreement > critical > high > insufficient evidence > medium > low; it is never presented as a legal risk score;
 - provider-free regression proves Batch Results reads existing Stage 13 artifacts without external HTTP and reflects human-review closure after fresh Issue decisions;
-- `/` intake now displays the authoritative Stage 13 production sequence and correctly places `REQUIRE_APPROVAL` before the Audit Planner's first cloud call, while retaining Legacy RC2 stage labels for persisted historical jobs.
+- `/` intake now displays the authoritative Stage 13 production sequence and correctly places `REQUIRE_APPROVAL` before the Audit Planner's first cloud call, while retaining Legacy RC2 stage labels for persisted historical jobs;
+- `/developer` now defaults to a Stage 13 read-only diagnostic surface for architecture, pipeline, AuditPlan, Issue Legal Context, Issue Primary Audit, Issue Secondary Review, deterministic Issue Comparison and Human Review; diagnostic reads bind only to GET endpoints and never require provider execution;
+- historical Stage 1–9 developer tools remain available under an explicitly collapsed `Legacy / RC2` section so old behavior can be inspected without presenting it as the current production architecture.
 
 Still required before Stage 13G closes:
 
-- update developer diagnostics for Stage 13 issue artifacts;
 - run final provider-free full regression plus clean Windows packaged smoke;
 - decide from regression evidence whether Stage 13F needs an additional bounded global coverage-synthesis pass; do not add it merely for symmetry.
 
@@ -268,6 +270,6 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 13G.7 Results + Home migration is closed at the implementation boundary.**
+**Stage 13G.8 Developer migration is closed at the implementation boundary.**
 
-The next explicit implementation task is **Stage 13G.8 Developer migration**. Do not begin Stage 13G.9 or Stage 14 in the same iteration.
+The next explicit implementation task is **Stage 13G.9 final regression + Windows packaged smoke**. Do not begin Stage 14 in the same iteration.
