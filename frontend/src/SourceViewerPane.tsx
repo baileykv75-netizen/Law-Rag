@@ -390,7 +390,7 @@ export default function SourceViewerPane({ jobId, documentKind, pageCount, sourc
             <div className="zoom-controls">
               <button type="button" onClick={() => setZoom((value) => Math.max(.6, value - .15))}>−</button>
               <span>{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => setZoom((value) => Math.min(2, value + .15)}>＋</button>
+              <button type="button" onClick={() => setZoom((value) => Math.min(2, value + .15))}>＋</button>
               <button type="button" onClick={() => setZoom(1)}>重置</button>
             </div>
           </div>
