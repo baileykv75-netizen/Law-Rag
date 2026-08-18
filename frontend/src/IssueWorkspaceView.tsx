@@ -34,9 +34,12 @@ function stateClass(state: ArtifactState | OverallState) {
   return 'is-missing'
 }
 
-type Props = { summary: IssueWorkspaceSummary }
+type Props = {
+  summary: IssueWorkspaceSummary
+  onRefresh: () => void
+}
 
-export default function IssueWorkspaceView({ summary }: Props) {
+export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(summary.issues[0]?.issue_id ?? null)
   const [detail, setDetail] = useState<IssueWorkspaceDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -108,7 +111,11 @@ export default function IssueWorkspaceView({ summary }: Props) {
         <div className={`overall-state ${stateClass(summary.overall_state)}`}>
           <span>Stage 13G 最终状态</span>
           <strong>{overallLabel(summary.overall_state)}</strong>
-          <small>{summary.review.final_review_state ?? '尚无 Issue Review Report'}</small>
+          <small>
+            {summary.review.human_review_required_count > 0
+              ? `人工复核 ${summary.review.human_review_resolved_required_count}/${summary.review.human_review_required_count}`
+              : (summary.review.final_review_state ?? '尚无 Issue Review Report')}
+          </small>
         </div>
       </section>
 
@@ -121,13 +128,13 @@ export default function IssueWorkspaceView({ summary }: Props) {
         <div><span>形成 Issue</span><strong>{coverage?.reviewed_with_issue_count ?? '—'}</strong><small>REVIEWED_WITH_ISSUE</small></div>
         <div><span>无特定 Issue</span><strong>{coverage?.reviewed_no_specific_issue_count ?? '—'}</strong><small>不等于法律安全</small></div>
         <div><span>AuditPlan Issues</span><strong>{coverage?.issue_count ?? 0}</strong><small>全部 Issue 均可展开</small></div>
-        <div className={summary.review.human_review_required_count > 0 ? 'needs-attention' : ''}>
-          <span>需人工复核</span><strong>{summary.review.human_review_required_count}</strong><small>由确定性 Comparison 标记</small>
+        <div className={summary.review.human_review_outstanding_required_count > 0 ? 'needs-attention' : ''}>
+          <span>人工复核待办</span><strong>{summary.review.human_review_outstanding_required_count}</strong><small>已完成 {summary.review.human_review_resolved_required_count}</small>
         </div>
       </section>
 
       {!coverage?.coverage_complete && coverage && (
-        <div className="coverage-global-warning">审计规划覆盖不完整。工作台不会把“没有形成 Issue”解释为“合同安全”。</div>
+        <div className="coverage-global-warning">审计规划覆盖不完整。工作台不会把“没有形成 Issue”解释为“合同安全”，Issue 人工决定也不能豁免未覆盖文本。</div>
       )}
 
       <section className="workstation-grid issue-workstation-grid">
@@ -178,8 +185,8 @@ export default function IssueWorkspaceView({ summary }: Props) {
           <div className="review-metrics issue-review-metrics">
             <article><span>DeepSeek 已审</span><strong>{summary.review.primary_completed_issue_count}</strong><small>{summary.review.primary_available ? '逐 Issue checkpoint 可用' : '尚未生成'}</small></article>
             <article><span>Kimi 已复核</span><strong>{summary.review.secondary_completed_issue_count}</strong><small>{summary.review.secondary_available ? 'finding + coverage' : '尚未生成'}</small></article>
-            <article className={summary.review.material_disagreement_count > 0 ? 'needs-attention' : ''}><span>实质分歧</span><strong>{summary.review.material_disagreement_count}</strong><small>MATERIAL_DISAGREEMENT</small></article>
-            <article className={summary.review.possible_omission_count > 0 ? 'needs-attention' : ''}><span>可能漏审</span><strong>{summary.review.possible_omission_count}</strong><small>POSSIBLE_OMISSION</small></article>
+            <article className={summary.review.human_review_outstanding_required_count > 0 ? 'needs-attention' : ''}><span>人工待复核</span><strong>{summary.review.human_review_outstanding_required_count}</strong><small>Fresh final decision required</small></article>
+            <article className={summary.review.human_review_stale_latest_count > 0 ? 'needs-attention' : ''}><span>过期人工决定</span><strong>{summary.review.human_review_stale_latest_count}</strong><small>report 已变化</small></article>
           </div>
 
           <IssueAuditQueuePane issues={summary.issues} selectedIssueId={selectedIssueId} onSelect={handleIssueSelect} />
@@ -200,6 +207,7 @@ export default function IssueWorkspaceView({ summary }: Props) {
             loading={detailLoading}
             message={detailMessage}
             onContractEvidence={setSelectedContractEvidenceId}
+            onHumanReviewSaved={onRefresh}
           />
 
           {summary.warnings.length > 0 && (
