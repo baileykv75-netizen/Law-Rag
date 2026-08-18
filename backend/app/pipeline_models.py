@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from .pipeline_control_models import ProviderExecutionMode
 
 PIPELINE_SCHEMA_VERSION = "1.3.0"
-PIPELINE_ENGINE_VERSION = "stage13g-3-1.0.0"
+PIPELINE_ENGINE_VERSION = "stage13g-4-1.0.0"
 
 
 class PipelineStatus(str, Enum):
