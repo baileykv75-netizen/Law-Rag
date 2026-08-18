@@ -15,6 +15,7 @@ DEFAULT_PUBLIC_ASSETS_METADATA = REPO_ROOT / "release" / ".build" / "public-asse
 DEFAULT_DEPENDENCY_INVENTORY = REPO_ROOT / "release" / "dependency-inventory.json"
 DEFAULT_PYTHON_LOCK = REPO_ROOT / "backend" / "requirements-release-lock-windows.txt"
 DEFAULT_OCR_PYTHON_LOCK = REPO_ROOT / "backend" / "requirements-release-ocr-lock-windows.txt"
+DEFAULT_OCR_MODEL_MANIFEST = REPO_ROOT / "release" / "ocr-models-manifest.json"
 DEFAULT_FRONTEND_LOCK = REPO_ROOT / "frontend" / "package-lock.json"
 
 
@@ -43,6 +44,25 @@ def _frontend_versions(lock_path: Path) -> dict[str, str | None]:
     }
 
 
+def _ocr_model_identity(manifest_path: Path) -> dict[str, object]:
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    models = payload.get("models") or []
+    return {
+        "manifest_sha256": _sha256(manifest_path),
+        "artifact_set": payload.get("artifact_set"),
+        "distribution_policy": payload.get("distribution_policy"),
+        "models": [
+            {
+                "role": model.get("role"),
+                "model_name": model.get("model_name"),
+                "archive_sha256": model.get("archive_sha256"),
+            }
+            for model in models
+            if isinstance(model, dict)
+        ],
+    }
+
+
 def build_release_metadata(
     *,
     source_commit_sha: str,
@@ -53,6 +73,7 @@ def build_release_metadata(
     dependency_inventory_path: Path = DEFAULT_DEPENDENCY_INVENTORY,
     python_lock_path: Path = DEFAULT_PYTHON_LOCK,
     ocr_python_lock_path: Path = DEFAULT_OCR_PYTHON_LOCK,
+    ocr_model_manifest_path: Path = DEFAULT_OCR_MODEL_MANIFEST,
     frontend_lock_path: Path = DEFAULT_FRONTEND_LOCK,
     pyinstaller_version: str | None = None,
 ) -> dict[str, object]:
@@ -65,8 +86,8 @@ def build_release_metadata(
     base_lock_sha = _sha256(python_lock_path)
     ocr_lock_sha = _sha256(ocr_python_lock_path)
     metadata: dict[str, object] = {
-        "schema_version": "1.1.0",
-        "release_profile": "stage14-4-windows-ocr-onedir",
+        "schema_version": "1.2.0",
+        "release_profile": "stage14-5-windows-offline-ocr-onedir",
         "application_version": APP_VERSION,
         "source_commit_sha": source_commit_sha,
         "target": "windows-x64",
@@ -81,13 +102,12 @@ def build_release_metadata(
             "package_lock_sha256": _sha256(frontend_lock_path),
             "versions": _frontend_versions(frontend_lock_path),
         },
-        # Keep the Stage 11 field for older readers while fingerprinting the new
-        # Stage 14.4 OCR lock independently.
         "python_release_lock_sha256": base_lock_sha,
         "python_release_locks": {
             "base_sha256": base_lock_sha,
             "ocr_sha256": ocr_lock_sha,
         },
+        "ocr_models": _ocr_model_identity(ocr_model_manifest_path),
         "dependency_inventory_sha256": _sha256(dependency_inventory_path),
         "public_assets": {
             "metadata_sha256": _sha256(public_assets_metadata_path),
@@ -98,8 +118,9 @@ def build_release_metadata(
         },
         "wall_clock_build_timestamp": None,
         "reproducible_content_policy": (
-            "No wall-clock timestamp is embedded. Metadata fingerprints source/toolchain/base+OCR locks/public assets; "
-            "the release does not claim byte-identical PE output across arbitrary host/toolchain changes."
+            "No wall-clock timestamp is embedded. Metadata fingerprints source/toolchain/base+OCR locks/"
+            "the exact offline OCR model manifest/public assets; the release does not claim byte-identical PE output "
+            "across arbitrary host/toolchain changes."
         ),
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
