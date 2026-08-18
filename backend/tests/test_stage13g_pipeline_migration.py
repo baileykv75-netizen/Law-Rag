@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
@@ -257,7 +258,7 @@ def test_unfinished_legacy_pipeline_is_preserved_and_not_silently_migrated(
         status=PipelineStatus.FAILED,
         current_stage=PipelineStage.PRIMARY_AUDIT,
         progress_percent=55,
-        as_of=contract.created_at.date() if contract.created_at else __import__("datetime").date(2026, 8, 18),
+        as_of=date(2026, 8, 18),
         use_semantic=False,
         started_at=now,
         updated_at=now,
