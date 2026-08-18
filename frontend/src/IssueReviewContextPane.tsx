@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import IssueHumanDecisionPanel from './IssueHumanDecisionPanel'
 import type { IssueWorkspaceDetail } from './issue-workspace-types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
@@ -25,13 +26,14 @@ type Props = {
   loading: boolean
   message: string
   onContractEvidence: (evidenceId: string) => void
+  onHumanReviewSaved: () => void
 }
 
 function unique(values: string[]) {
   return [...new Set(values)]
 }
 
-export default function IssueReviewContextPane({ detail, loading, message, onContractEvidence }: Props) {
+export default function IssueReviewContextPane({ detail, loading, message, onContractEvidence, onHumanReviewSaved }: Props) {
   const [legalEvidenceId, setLegalEvidenceId] = useState<string | null>(null)
   const [legalEvidence, setLegalEvidence] = useState<LegalEvidenceRecord | null>(null)
   const [legalMessage, setLegalMessage] = useState('点击 Legal Evidence 查看本地版本化法条。')
@@ -226,11 +228,7 @@ export default function IssueReviewContextPane({ detail, loading, message, onCon
         )}
       </section>
 
-      <section className="human-decision-placeholder issue-human-boundary">
-        <span className="context-eyebrow">HUMAN REVIEW · STAGE 13G.6</span>
-        <strong>{comparison?.requires_human_review ? '该 Issue 已被标记为人工复核优先项' : '当前仅展示审计链结果'}</strong>
-        <p>13G.5 不会把旧 Finding/Omission 人工决策强行套到 Issue 上。Issue 级人工确认、驳回和修订将在下一迁移切片接入。</p>
-      </section>
+      <IssueHumanDecisionPanel detail={detail} onSaved={onHumanReviewSaved} />
 
       {detail.warnings.length > 0 && (
         <section className="warning-panel"><div className="subheading">Issue 警告</div><ul>{detail.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></section>
