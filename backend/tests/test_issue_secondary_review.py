@@ -36,7 +36,14 @@ from app.issue_secondary_review_models import (
     SecondaryIssueAssessment,
 )
 from app.issue_secondary_review_provider import IssueSecondaryReviewProvider
-from app.pipeline_control import PipelineCancellationRequested, clear_pipeline_cancel, request_pipeline_cancel
+from app.main import app
+from app.pipeline_control import (
+    PipelineCancellationRequested,
+    clear_pipeline_cancel,
+    ensure_pipeline_control,
+    request_pipeline_cancel,
+)
+from app.pipeline_control_models import ProviderExecutionMode
 
 
 class FixtureSecondaryProvider(IssueSecondaryReviewProvider):
@@ -165,6 +172,7 @@ def _patch_upstream(monkeypatch, tmp_path, count: int = 2):
     monkeypatch.setattr(module, "load_audit_plan", lambda _job_id: plan)
     monkeypatch.setattr(module, "load_issue_primary_audit", lambda _job_id: primary)
     monkeypatch.setattr(module, "build_issue_primary_contexts", lambda _job_id: contexts)
+    ensure_pipeline_control(job_id, ProviderExecutionMode.AUTO_CONTINUE)
     return job_id, plan, primary, contexts
 
 
@@ -225,3 +233,8 @@ def test_stage13f_oversized_context_is_not_sent_to_kimi(tmp_path, monkeypatch) -
     assert result.assessment == SecondaryIssueAssessment.REVIEW_REQUIRED
     assert result.coverage_assessment == SecondaryCoverageAssessment.INSUFFICIENT_EVIDENCE
     assert "SECONDARY_CONTEXT_BUDGET_EXCEEDED" in result.review_reasons
+
+
+def test_stage13f_api_route_is_mounted() -> None:
+    paths = {route.path for route in app.routes}
+    assert "/api/documents/{job_id}/issue-secondary-review" in paths
