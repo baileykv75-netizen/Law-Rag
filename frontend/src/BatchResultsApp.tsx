@@ -8,6 +8,7 @@ import {
 } from './pipelineControlClient'
 
 type BatchJobState = 'PROCESSING' | 'WAITING' | 'CANCELLED' | 'FAILED' | 'COMPLETE' | 'INVALID'
+type AuditArchitecture = 'ISSUE_V1' | 'LEGACY_RC2' | 'CONFLICT'
 
 type SeverityCounts = {
   critical: number
@@ -25,11 +26,22 @@ type BatchJobResult = {
   pipeline_status: string | null
   failure_code: string | null
   failure_detail: string | null
+  architecture: AuditArchitecture | null
   final_review_state: string | null
   human_review_required: boolean
   finding_counts: SeverityCounts
+  issue_count: number
   possible_omissions: number
   material_disagreement: boolean
+  material_disagreement_count: number
+  insufficient_evidence_count: number
+  review_required_count: number
+  planning_coverage_complete: boolean | null
+  planning_coverage_reviewed_count: number
+  planning_coverage_total_count: number
+  human_review_resolved_count: number
+  human_review_outstanding_count: number
+  human_review_stale_count: number
   needs_attention: boolean
 }
 
@@ -44,6 +56,9 @@ type BatchResultSummary = {
   failed_jobs: number
   human_review_required_jobs: number
   processing_jobs: number
+  issue_v1_jobs: number
+  legacy_rc2_jobs: number
+  coverage_incomplete_jobs: number
 }
 
 function localToday() {
@@ -72,8 +87,16 @@ function stateText(job: BatchJobResult) {
   }
   if (job.state === 'INVALID') return '结果完整性异常'
   if (job.human_review_required) return '需要人工复核'
+  if (job.architecture === 'ISSUE_V1' && job.final_review_state === 'COMPLETE') return '审计闭环完成'
   if (job.final_review_state === 'MINOR_DISAGREEMENT') return '轻微模型分歧'
   return '审计完成'
+}
+
+function architectureText(job: BatchJobResult) {
+  if (job.architecture === 'ISSUE_V1') return 'ISSUE_V1 · Stage 13'
+  if (job.architecture === 'LEGACY_RC2') return 'LEGACY_RC2 · 历史任务'
+  if (job.architecture === 'CONFLICT') return 'ARCHITECTURE CONFLICT'
+  return '架构待确认'
 }
 
 function BatchResultsApp() {
@@ -161,7 +184,7 @@ function BatchResultsApp() {
     setMessage(null)
     try {
       await approveProvider(job.job_id)
-      setMessage(`${job.filename}：已明确批准进入 DeepSeek/Kimi 云端审计。`)
+      setMessage(`${job.filename}：已明确批准后续 Planner / DeepSeek / Kimi 受限云端调用。`)
       refreshSoon()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '无法批准云端审计。')
@@ -178,8 +201,8 @@ function BatchResultsApp() {
       const control = await pauseFutureProviders(job.job_id)
       setMessage(
         control.active_provider
-          ? `${job.filename}：当前 ${control.active_provider} 请求已经开始，无法撤回；后续外部模型调用将在发送前暂停。`
-          : `${job.filename}：尚未开始的 DeepSeek/Kimi 调用已改为发送前确认。`,
+          ? `${job.filename}：当前 ${control.active_provider} 请求已经开始，无法撤回；后续 Planner / DeepSeek / Kimi 调用将在发送前暂停。`
+          : `${job.filename}：尚未开始的 Planner / DeepSeek / Kimi 调用已改为发送前确认。`,
       )
       refreshSoon()
     } catch (caught) {
@@ -229,7 +252,7 @@ function BatchResultsApp() {
         <div>
           <p className="intake-eyebrow">LAW-RAG</p>
           <h1>审计结果</h1>
-          <p>按人工复核需求、严重风险和模型重大分歧优先排序。</p>
+          <p>按待人工复核、可能漏审、实质分歧、严重度与证据不足优先排序。</p>
         </div>
         <div className="batch-results-header-actions">
           <a href="/">审计新合同 / API 设置</a>
@@ -245,9 +268,21 @@ function BatchResultsApp() {
         <>
           <section className="batch-summary-grid" aria-label="批次审计摘要">
             <article><strong>{summary.total_jobs}</strong><span>合同总数</span></article>
-            <article><strong>{summary.complete_jobs}</strong><span>已完成</span></article>
-            <article><strong>{summary.human_review_required_jobs}</strong><span>需人工复核</span></article>
+            <article><strong>{summary.complete_jobs}</strong><span>流水线已完成</span></article>
+            <article><strong>{summary.human_review_required_jobs}</strong><span>仍需人工复核</span></article>
             <article><strong>{attentionJobs}</strong><span>优先关注</span></article>
+            {(summary.issue_v1_jobs > 0 || summary.legacy_rc2_jobs > 0) && (
+              <article className="wide">
+                <strong>{summary.issue_v1_jobs} / {summary.legacy_rc2_jobs}</strong>
+                <span>Stage 13 Issue V1 / 历史 Legacy RC2</span>
+              </article>
+            )}
+            {summary.coverage_incomplete_jobs > 0 && (
+              <article className="wide">
+                <strong>{summary.coverage_incomplete_jobs}</strong>
+                <span>合同规划覆盖不完整，不能解释为“未发现风险”</span>
+              </article>
+            )}
             {(summary.waiting_jobs > 0 || summary.cancelled_jobs > 0 || summary.failed_jobs > 0 || summary.processing_jobs > 0) && (
               <article className="wide">
                 <strong>{summary.processing_jobs} / {summary.waiting_jobs} / {summary.cancelled_jobs} / {summary.failed_jobs}</strong>
@@ -257,7 +292,7 @@ function BatchResultsApp() {
           </section>
 
           <p className="batch-results-note">
-            这里显示的是审计队列与风险提示，不是“合同正确率”或法律结论评分。进入 DeepSeek/Kimi 前的授权与取消由 Law-Rag 的持久化控制状态决定；已经开始的外部请求无法撤回已发送内容，但取消会阻止后续模型/阶段继续。
+            这里显示的是审计工作队列，不是“合同正确率”或法律风险评分。Stage 13 新任务以 AuditPlan Issue、规划覆盖、双模型确定性 Comparison 和当前人工复核状态为权威摘要；历史 RC2 任务保持原语义。打开结果或工作台不会触发模型调用。
           </p>
 
           <section className="batch-results-list" aria-live="polite">
@@ -265,6 +300,7 @@ function BatchResultsApp() {
               const waitingForProvider = job.pipeline_status === 'PAUSED_BEFORE_PROVIDER'
               const resumable = job.state !== 'COMPLETE' && job.state !== 'INVALID' && job.state !== 'CANCELLED' && !waitingForProvider
               const canCancel = (job.state === 'PROCESSING' || job.state === 'WAITING') && job.pipeline_status !== 'CANCEL_REQUESTED'
+              const hasLowPriorityRisk = job.finding_counts.medium > 0 || job.finding_counts.low > 0
               return (
                 <article className={`batch-result-card state-${job.state.toLowerCase()}${job.needs_attention ? ' needs-attention' : ''}`} key={job.job_id}>
                   <div className="batch-result-main">
@@ -272,18 +308,31 @@ function BatchResultsApp() {
                       <h2 title={job.filename}>{job.filename}</h2>
                       <span className="batch-state-badge">{stateText(job)}</span>
                     </div>
+                    <p className="batch-results-note">{architectureText(job)}</p>
 
                     {job.state === 'COMPLETE' && (
-                      <div className="risk-chip-row" aria-label="风险数量">
+                      <div className="risk-chip-row" aria-label="审计摘要">
+                        {job.architecture === 'ISSUE_V1' && <span>AuditPlan Issues {job.issue_count}</span>}
+                        {job.architecture === 'ISSUE_V1' && job.planning_coverage_total_count > 0 && (
+                          <span>
+                            Coverage {job.planning_coverage_reviewed_count}/{job.planning_coverage_total_count}
+                            {job.planning_coverage_complete === false ? ' · 不完整' : ''}
+                          </span>
+                        )}
                         {job.finding_counts.critical > 0 && <span>严重 {job.finding_counts.critical}</span>}
                         {job.finding_counts.high > 0 && <span>高风险 {job.finding_counts.high}</span>}
                         {job.finding_counts.medium > 0 && <span>中风险 {job.finding_counts.medium}</span>}
                         {job.finding_counts.low > 0 && <span>低风险 {job.finding_counts.low}</span>}
                         {job.possible_omissions > 0 && <span>可能漏审 {job.possible_omissions}</span>}
-                        {job.material_disagreement && <span>双模型重大分歧</span>}
-                        {!job.needs_attention && job.finding_counts.medium === 0 && job.finding_counts.low === 0 && (
-                          <span>暂无优先风险项</span>
+                        {job.material_disagreement_count > 0 && <span>实质分歧 {job.material_disagreement_count}</span>}
+                        {job.insufficient_evidence_count > 0 && <span>证据不足 {job.insufficient_evidence_count}</span>}
+                        {job.review_required_count > 0 && <span>程序要求复核 {job.review_required_count}</span>}
+                        {job.architecture === 'ISSUE_V1' && job.human_review_resolved_count > 0 && (
+                          <span>人工已处理 {job.human_review_resolved_count}</span>
                         )}
+                        {job.human_review_outstanding_count > 0 && <span>人工待处理 {job.human_review_outstanding_count}</span>}
+                        {job.human_review_stale_count > 0 && <span>人工决定过期 {job.human_review_stale_count}</span>}
+                        {!job.needs_attention && !hasLowPriorityRisk && <span>暂无优先风险项</span>}
                       </div>
                     )}
 
@@ -300,7 +349,10 @@ function BatchResultsApp() {
                       <p className="batch-job-problem">先从首页“API 设置”补充对应 Key，再返回这里点击继续审计。</p>
                     )}
                     {waitingForProvider && (
-                      <p className="batch-job-problem">本地阶段已完成。只有点击“批准云端审计”后，受限合同/法律证据才会进入 DeepSeek/Kimi。</p>
+                      <p className="batch-job-problem">当前已到外部模型边界。只有点击“批准云端审计”后，Law-Rag 才允许下一次受限 Planner / DeepSeek / Kimi 调用。</p>
+                    )}
+                    {job.architecture === 'ISSUE_V1' && job.planning_coverage_complete === false && (
+                      <p className="batch-job-problem">AuditPlan 对 Canonical Contract 的规划覆盖不完整；即使已有 Issue 都处理完，也不能把未覆盖文本解释为安全。</p>
                     )}
                   </div>
 
