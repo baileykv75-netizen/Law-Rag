@@ -12,8 +12,8 @@ Stage 13B       COMPLETE — Audit Planner foundation
 Stage 13C       COMPLETE — hierarchical long-contract planning + coverage
 Stage 13D       COMPLETE — issue-based Legal RAG
 Stage 13E       COMPLETE — DeepSeek issue-by-issue primary audit
-Stage 13F       NEXT — Kimi finding + coverage review
-Stage 13G       PENDING — end-to-end audit architecture regression + migration
+Stage 13F       COMPLETE — Kimi finding + issue-coverage review
+Stage 13G       NEXT — end-to-end audit architecture regression + migration
 ```
 
 Stage 13 prioritizes complete, evidence-bounded and auditable review scope before returning to desktop tray/history work.
@@ -76,9 +76,7 @@ A local no-hit is never interpreted as absence of an applicable legal rule. The 
 
 **Complete and independently validated.**
 
-### One planned issue -> one terminal result
-
-The primary model no longer returns an arbitrary finding list for a topic-gated context. Stage 13E runs one bounded audit request per AuditPlan issue and requires one terminal result:
+One bounded DeepSeek request is run per AuditPlan issue. Every planned issue receives exactly one terminal result:
 
 ```text
 SUPPORTED_FINDING
@@ -87,136 +85,155 @@ INSUFFICIENT_EVIDENCE
 REVIEW_REQUIRED
 ```
 
-`COMPLETE` is impossible unless the final result set contains every AuditPlan issue exactly once.
+Each issue receives bounded target/related canonical evidence, structured global facts, deterministic hints and its Stage 13D Legal Evidence package. Model-created canonical/contract/Legal Evidence IDs are rejected.
 
-### Evidence context
+Legal and commercial/drafting findings are separated with `legal_conclusion=true|false`. A legal conclusion requires supplied Legal Evidence. `NO_MATERIAL_RISK_FOUND` requires reliable contract Evidence, applicable Legal Evidence and Stage 13D support exactly `EVIDENCE_FOUND`; incomplete corpus/version/source evidence cannot silently become a confident no-risk result.
 
-Each issue receives only its bounded evidence package:
-
-```text
-issue topic / questions / provenance
-+ target canonical objects
-+ bounded related objects
-+ bounded global structured facts
-+ deterministic Stage 5 hints
-+ Stage 13D Legal Evidence
-```
-
-Planner-bound canonical IDs are authoritative. If a baseline issue has no explicit object binding, Law-Rag performs deterministic local contract-text relevance to select candidate evidence. This fallback supplies evidence for an already-valid issue; it does not decide whether the issue may be audited and does not recreate the old eight-topic gate.
-
-### Legal vs contract/commercial findings
-
-Stage 13E explicitly separates:
+Every DeepSeek issue request crosses Stage 13A. Results checkpoint after every completed issue and explicit resume reuses unchanged completed results. Oversized issue contexts are not truncated or sent.
 
 ```text
-legal_conclusion = true | false
+max planned issues             256
+max serialized issue context   120,000 chars
+max fallback targets           8
+max related objects            16
+max global facts               64 / 12,000 fact chars
 ```
 
-A drafting/commercial risk may be `SUPPORTED_FINDING` from supplied contract Evidence with `legal_conclusion=false` even when the local legal corpus is incomplete. A legal conclusion requires supplied Legal Evidence IDs.
-
-The model may cite only supplied canonical IDs, contract Evidence IDs and Legal Evidence IDs. Invented IDs/laws/articles are rejected.
-
-`NO_MATERIAL_RISK_FOUND` is deliberately strong and requires reliable contract Evidence, applicable supplied Legal Evidence, `legal_conclusion=true`, and Stage 13D support state exactly `EVIDENCE_FOUND`. `NO_MATCH_IN_LOCAL_CORPUS`, version uncertainty and partial curated-corpus coverage cannot silently become a confident no-risk conclusion.
-
-### Evidence sufficiency
-
-Stage 13E records:
-
-```text
-SUFFICIENT
-PARTIAL_LEGAL_CORPUS
-INSUFFICIENT_LEGAL_CORPUS
-LEGAL_VERSION_UNCERTAIN
-SOURCE_UNCERTAIN
-CONTRACT_EVIDENCE_INSUFFICIENT
-```
-
-These are evidence conditions, not standalone legal conclusions.
-
-### Provider/cancel + checkpoint resume
-
-Every DeepSeek issue request independently crosses the Stage 13A atomic provider boundary.
-
-After every completed issue, `issue-primary-audit.json` is checkpointed. An interruption is persisted as `INTERRUPTED`, never `COMPLETE`.
-
-On explicit retry/resume, a completed issue result is reused only when Stage 13D fingerprint, per-issue context fingerprint, provider and model are unchanged. Provider-free regression proves that an Issue completed before cancellation is not called again after resume; only remaining Issues are sent.
-
-### Bounds
-
-```text
-max planned issues          256
-max serialized issue context 120,000 chars
-max fallback targets        8
-max related objects         16
-max global facts            64 / 12,000 fact chars
-```
-
-An oversized Issue is not truncated. It gets deterministic `REVIEW_REQUIRED / ISSUE_CONTEXT_BUDGET_EXCEEDED`; Law-Rag does not transmit a partial context. If real expert benchmarks show this frequently, add issue-level hierarchical auditing instead of deleting evidence.
-
-### Artifact / API
+Artifact/API:
 
 ```text
 runtime/jobs/<job-id>/issue-primary-audit.json
-
 POST /api/documents/<job-id>/issue-primary-audit
 GET  /api/documents/<job-id>/issue-primary-audit
 ```
 
-GET is read-only and never invokes a provider.
-
-### Validation
-
-Provider-free regressions prove:
-
-- every AuditPlan issue receives one terminal primary result;
-- baseline issues without explicit canonical binding can obtain deterministic local contract candidates;
-- model-created canonical/contract/legal Evidence IDs are rejected;
-- no local legal hit cannot become `NO_MATERIAL_RISK_FOUND`;
-- contract-only commercial/drafting findings can remain visible without pretending to be legal conclusions;
-- cancellation between issues checkpoints completed work without false `COMPLETE`;
-- resume reuses completed issue results and does not repeat their provider calls;
-- oversized issue contexts are not truncated or sent to the provider;
-- Stage 13D/13E HTTP routes are mounted in the main app;
-- existing backend regressions, public deterministic quality gates and frontend production build remain green.
-
-CI #480 passed the initial Stage 13E implementation. CI #482 passed the dedicated evidence-sufficiency hardening. CI #485 passed checkpoint-resume and oversized-context safety together with the full backend/quality/frontend suite.
-
 See `docs/ISSUE_BY_ISSUE_PRIMARY_AUDIT.md`.
 
-### Migration boundary
+## 13F — Kimi finding + coverage review
 
-Stage 13E remains a parallel validated artifact path. The existing background production Pipeline still uses the legacy Stage 8/9 path until Stage 13F and Stage 13G are validated. Do not retire the legacy path in 13E.
+**Complete; independently implemented as a parallel artifact path.**
 
-## Stage 13F — Kimi finding + coverage review
-
-**Status: next; implement this stage only.**
-
-Kimi must perform two distinct jobs:
+Stage 13F performs two distinct tasks for every AuditPlan issue:
 
 ```text
 Finding Review
-- review each Stage 13E primary issue result against supplied evidence
+- independently challenge/support the Stage 13E DeepSeek result
 
 Coverage Review
-- verify the complete AuditPlan issue set was addressed
+- determine whether the planned issue was adequately addressed
 - challenge questionable NO_MATERIAL_RISK_FOUND results
-- surface possible omissions outside the primary result set only when supported by supplied canonical/legal evidence
+- surface a possible omission only when supplied bounded evidence supports it
 ```
 
-Requirements:
+### One AuditPlan issue -> one Kimi result
 
-- consume the complete AuditPlan plus Stage 13D and Stage 13E artifacts;
-- preserve one-to-one AuditPlan coverage accounting;
-- never treat “DeepSeek emitted no finding” as proof of review;
-- secondary model may not invent contract/Legal Evidence IDs;
-- distinguish disagreement, missing evidence and possible omission;
-- every Kimi external call crosses Stage 13A provider/cancel control;
-- bounded long-plan scheduling/checkpoints are required;
-- no automatic retirement of the legacy Stage 9 path yet; that belongs to 13G.
+Stage 13F schedules one bounded Kimi request per AuditPlan issue. `COMPLETE` is impossible unless every AuditPlan issue has exactly one secondary result.
 
-## Stage 13G — End-to-end audit architecture regression
+Finding assessments:
 
-Pending. Validate Planner coverage -> issue Legal RAG -> DeepSeek primary issue audit -> Kimi finding/coverage review -> comparison/human review together with provider boundary, cancellation/restart, packaged Windows behavior and migration from the legacy Stage 8/9 route.
+```text
+SUPPORTED
+PARTIALLY_SUPPORTED
+DISAGREED
+INSUFFICIENT_EVIDENCE
+REVIEW_REQUIRED
+```
+
+Coverage assessments:
+
+```text
+COVERED
+COVERED_BUT_QUESTIONABLE
+POSSIBLE_OMISSION
+INSUFFICIENT_EVIDENCE
+```
+
+This makes secondary coverage auditable rather than treating absence of a second-model finding as proof that an issue was reviewed.
+
+### Evidence controls
+
+Kimi may cite only contract Evidence IDs and Legal Evidence IDs supplied in the same bounded issue context. Invented IDs are rejected.
+
+`POSSIBLE_OMISSION` requires supplied contract Evidence plus an explicit omission title/reasoning. The provider prompt requires Legal Evidence too when the omission is presented as a legal proposition.
+
+A Kimi confirmation of primary `NO_MATERIAL_RISK_FOUND` requires supplied contract and Legal Evidence and cannot be confidently confirmed unless Stage 13D support is exactly `EVIDENCE_FOUND`.
+
+When local legal support is `NO_MATCH_IN_LOCAL_CORPUS` or `VERSION_REVIEW_REQUIRED`, a model claim of fully covered evidence is deterministically downgraded to `INSUFFICIENT_EVIDENCE` coverage with an explicit review reason.
+
+### Provider/cancel + checkpoint resume
+
+Every Kimi issue request crosses Stage 13A independently.
+
+After each completed issue, Law-Rag atomically checkpoints:
+
+```text
+runtime/jobs/<job-id>/issue-secondary-review.json
+```
+
+Cancellation persists `INTERRUPTED`. Explicit resume reuses a completed issue only when provider/model, Stage 13E artifact fingerprint and per-issue context fingerprint are unchanged, so completed Kimi calls are not repeated.
+
+### Bounds
+
+```text
+max secondary issue requests       256
+max serialized secondary context   120,000 chars
+```
+
+The secondary context budget includes both the bounded Stage 13E issue context and the primary result.
+
+If the complete secondary context exceeds the budget, Law-Rag does not truncate evidence and does not call Kimi. It emits deterministic:
+
+```text
+assessment = REVIEW_REQUIRED
+coverage_assessment = INSUFFICIENT_EVIDENCE
+review_reason = SECONDARY_CONTEXT_BUDGET_EXCEEDED
+```
+
+### Artifact / API
+
+```text
+runtime/jobs/<job-id>/issue-secondary-review.json
+POST /api/documents/<job-id>/issue-secondary-review
+GET  /api/documents/<job-id>/issue-secondary-review
+```
+
+GET is read-only and never calls Kimi.
+
+### Scope boundary
+
+Stage 13F provides complete **issue-level** coverage review of the validated AuditPlan. It is intentionally not a second unconstrained Audit Planner. Possible omissions can be surfaced from supplied target/related evidence; whether an additional cross-issue global synthesis is justified must be decided from Stage 13G regression/benchmark evidence rather than added by assumption.
+
+The existing production Pipeline and legacy Stage 9 secondary path are not retired in 13F.
+
+See `docs/ISSUE_SECONDARY_REVIEW.md`.
+
+## Stage 13G — End-to-end audit architecture regression + migration
+
+**Status: next; implement this stage only.**
+
+Stage 13G must validate and connect the complete new chain:
+
+```text
+canonical contract
+ -> Audit Planner / hierarchical coverage
+ -> issue-based Legal RAG
+ -> DeepSeek issue primary audit
+ -> Kimi issue finding + coverage review
+ -> deterministic comparison / review-report
+ -> human review / workstation
+```
+
+Required work:
+
+- create deterministic comparison semantics between Stage 13E and 13F issue states;
+- preserve one-to-one AuditPlan coverage through final review-report/workstation;
+- define how Kimi `POSSIBLE_OMISSION`, disagreement and insufficient evidence affect human-review priority;
+- prove provider-boundary, cancellation, checkpoint/restart and stale-artifact behavior across the whole new chain;
+- migrate the application-owned background Pipeline away from legacy Stage 8/9 only after new-path regression passes;
+- retain a compatibility boundary during migration so old persisted RC2 jobs remain readable;
+- update batch results/workstation to consume the new authoritative artifacts;
+- run provider-free full regression plus clean Windows packaged smoke;
+- decide from regression evidence whether Stage 13F needs an additional bounded global coverage-synthesis pass; do not add it merely for symmetry.
 
 ## Deferred after Stage 13G
 
@@ -231,6 +248,6 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 13E is closed.**
+**Stage 13F is closed at the implementation boundary.**
 
-The next explicit implementation task is **Stage 13F Kimi finding + coverage review**. Do not start Stage 13G or switch the production pipeline in the same iteration.
+The next explicit implementation task is **Stage 13G end-to-end regression + migration**. Do not begin Stage 14 in the same iteration.
