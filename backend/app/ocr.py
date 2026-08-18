@@ -19,6 +19,7 @@ from .models import (
     PageRoute,
     SourceMethod,
 )
+from .ocr_models import OcrModelIntegrityError, resolve_ocr_model_paths
 from .rendering import PdfPageRenderer, PdfRenderError, PdfiumPageRenderer
 from .storage import (
     find_source_path,
@@ -143,11 +144,13 @@ def _bbox_from_polygon(polygon: list[list[int]] | None) -> list[int] | None:
 
 
 class PaddleOcrProvider:
-    """Provider-neutral adapter around the local PaddleOCR general OCR pipeline.
+    """Provider-neutral adapter around the verified local PaddleOCR pipeline.
 
     Paddle-specific imports and result-shape normalization remain inside this
     adapter. The pipeline is initialized lazily so native-text-only documents
-    do not require OCR dependencies/models at runtime.
+    do not pay OCR startup cost. The production path accepts only the pinned,
+    SHA-256-verified local model directories; it never asks PaddleOCR/PaddleX
+    to resolve or download model weights.
     """
 
     provider_name = "paddleocr"
@@ -159,9 +162,13 @@ class PaddleOcrProvider:
         provider_version: str | None = None,
         detection_model_name: str = DEFAULT_PADDLE_DETECTION_MODEL,
         recognition_model_name: str = DEFAULT_PADDLE_RECOGNITION_MODEL,
+        model_root: Path | None = None,
+        model_manifest_path: Path | None = None,
     ) -> None:
         self._pipeline_factory = pipeline_factory
         self._pipeline: Any | None = None
+        self._model_root = model_root
+        self._model_manifest_path = model_manifest_path
         self.detection_model_name = detection_model_name
         self.recognition_model_name = recognition_model_name
         self.model_name = f"{detection_model_name}+{recognition_model_name}"
@@ -177,17 +184,35 @@ class PaddleOcrProvider:
         if self._pipeline_factory is not None:
             return self._pipeline_factory()
 
+        if (
+            self.detection_model_name != DEFAULT_PADDLE_DETECTION_MODEL
+            or self.recognition_model_name != DEFAULT_PADDLE_RECOGNITION_MODEL
+        ):
+            raise OcrProviderUnavailable(
+                "The packaged OCR path only permits the pinned PP-OCRv6 medium detection and recognition models."
+            )
+
+        try:
+            model_paths = resolve_ocr_model_paths(
+                model_root=self._model_root,
+                manifest_path=self._model_manifest_path,
+            )
+        except OcrModelIntegrityError as exc:
+            raise OcrProviderUnavailable(str(exc)) from exc
+
         try:
             from paddleocr import PaddleOCR
         except ImportError as exc:
             raise OcrProviderUnavailable(
-                "PaddleOCR is not installed. Run setup-ocr-cpu.bat, then restart Law-Rag."
+                "The packaged PaddleOCR runtime is missing or broken. Reinstall the verified Law-Rag Windows bundle."
             ) from exc
 
         try:
             return PaddleOCR(
                 text_detection_model_name=self.detection_model_name,
+                text_detection_model_dir=str(model_paths.detection),
                 text_recognition_model_name=self.recognition_model_name,
+                text_recognition_model_dir=str(model_paths.recognition),
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
@@ -196,7 +221,7 @@ class PaddleOcrProvider:
             )
         except Exception as exc:
             raise OcrProviderUnavailable(
-                "PaddleOCR could not initialize. Verify the CPU PaddlePaddle installation and model download access."
+                "PaddleOCR could not initialize with the verified packaged local model assets."
             ) from exc
 
     def _get_pipeline(self) -> Any:
