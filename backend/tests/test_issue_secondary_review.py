@@ -68,7 +68,7 @@ class FixtureSecondaryProvider(IssueSecondaryReviewProvider):
         return ProviderAuditResult(provider=self.provider_name, model=self.model_name, content=content, raw_response_hash=f"hash-{context.issue_id}")
 
 
-def _context(job_id, issue_id: str, *, legal_state: IssueLegalSupportState = IssueLegalSupportState.NO_MATCH_IN_LOCAL_CORPUS, text: str = "合同条款正文") -> IssuePrimaryAuditContext:
+def _context(job_id, issue_id: str, *, legal_state: IssueLegalSupportState = IssueLegalSupportState.NO_MATCH_IN_LOCAL_CORPUS) -> IssuePrimaryAuditContext:
     return IssuePrimaryAuditContext(
         job_id=job_id,
         issue_id=issue_id,
@@ -89,7 +89,7 @@ def _context(job_id, issue_id: str, *, legal_state: IssueLegalSupportState = Iss
                 canonical_object_id=f"clause-{issue_id}",
                 object_type="CLAUSE",
                 relation=IssueContextRelation.TARGET,
-                text=text,
+                text=f"合同条款{issue_id}",
                 evidence_ids=[f"evidence-{issue_id}"],
             )
         ],
@@ -117,13 +117,10 @@ def _primary_result(context: IssuePrimaryAuditContext) -> IssuePrimaryAuditResul
     )
 
 
-def _patch_upstream(monkeypatch, tmp_path, count: int = 2, *, huge: bool = False):
+def _patch_upstream(monkeypatch, tmp_path, count: int = 2):
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
-    contexts = [
-        _context(job_id, f"issue-{index}", text=("超长合同证据" * 30000 if huge and index == 1 else f"合同条款{index}"))
-        for index in range(1, count + 1)
-    ]
+    contexts = [_context(job_id, f"issue-{index}") for index in range(1, count + 1)]
     plan = AuditPlan(
         job_id=job_id,
         contract_type=ContractType.UNKNOWN,
@@ -217,7 +214,9 @@ def test_stage13f_checkpoint_resume_does_not_repeat_completed_issue(tmp_path, mo
 
 
 def test_stage13f_oversized_context_is_not_sent_to_kimi(tmp_path, monkeypatch) -> None:
-    job_id, _, _, _ = _patch_upstream(monkeypatch, tmp_path, count=1, huge=True)
+    job_id, _, _, _ = _patch_upstream(monkeypatch, tmp_path, count=1)
+    import app.issue_secondary_review as module
+    monkeypatch.setattr(module, "MAX_SECONDARY_CONTEXT_CHARS", 100)
     provider = FixtureSecondaryProvider()
     artifact = run_issue_secondary_review(job_id, provider_override=provider)
     assert artifact.status.value == "COMPLETE"
