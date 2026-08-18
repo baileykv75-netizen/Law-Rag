@@ -80,6 +80,23 @@ def _secondary_context_char_count(context, primary: IssuePrimaryAuditResult) -> 
     return len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 
 
+def _no_contract_result(context, primary: IssuePrimaryAuditResult) -> IssueSecondaryReviewResult:
+    return IssueSecondaryReviewResult(
+        issue_id=context.issue_id,
+        topic=context.topic,
+        primary_state=primary.state.value,
+        assessment=SecondaryIssueAssessment.REVIEW_REQUIRED,
+        coverage_assessment=SecondaryCoverageAssessment.INSUFFICIENT_EVIDENCE,
+        severity=primary.severity,
+        reasoning_summary="该 AuditPlan Issue 没有可验证的目标合同证据。Law-Rag 未让 Kimi 对空白合同上下文形成二审结论。",
+        suggestion="人工定位相关条款，或修复结构化/规划后重新运行该 Issue。",
+        contract_evidence_ids=[],
+        legal_evidence_ids=[],
+        review_reasons=["NO_RELEVANT_CONTRACT_EVIDENCE_FOR_SECONDARY_REVIEW"],
+        context_fingerprint=context.context_fingerprint,
+    )
+
+
 def _budget_result(context, primary: IssuePrimaryAuditResult) -> IssueSecondaryReviewResult:
     contract_ids = _unique(eid for item in context.target_items for eid in item.evidence_ids)
     return IssueSecondaryReviewResult(
@@ -120,20 +137,36 @@ def validate_issue_secondary_output(content: str, context, primary: IssuePrimary
         raise IssueSecondaryReviewValidationError(f"Kimi cited unsupplied contract Evidence IDs: {sorted(unknown_contract)}")
     if unknown_legal:
         raise IssueSecondaryReviewValidationError(f"Kimi cited unsupplied Legal Evidence IDs: {sorted(unknown_legal)}")
+
+    if draft.assessment in {SecondaryIssueAssessment.SUPPORTED, SecondaryIssueAssessment.PARTIALLY_SUPPORTED}:
+        if not draft.contract_evidence_ids:
+            raise IssueSecondaryReviewValidationError("Supporting a primary issue result requires supplied contract Evidence.")
+        if primary.legal_conclusion and not draft.legal_evidence_ids:
+            raise IssueSecondaryReviewValidationError("Supporting a primary legal conclusion requires supplied Legal Evidence.")
+
     if draft.coverage_assessment == SecondaryCoverageAssessment.POSSIBLE_OMISSION:
         if not draft.contract_evidence_ids or not draft.omission_title or not draft.omission_reasoning:
             raise IssueSecondaryReviewValidationError("POSSIBLE_OMISSION requires supplied contract Evidence plus omission title/reasoning.")
+
     if primary.state.value == "NO_MATERIAL_RISK_FOUND" and draft.assessment == SecondaryIssueAssessment.SUPPORTED:
         if not draft.contract_evidence_ids or not draft.legal_evidence_ids:
             raise IssueSecondaryReviewValidationError("Confirming NO_MATERIAL_RISK_FOUND requires supplied contract and Legal Evidence.")
         if context.legal_support_state.value != "EVIDENCE_FOUND":
             raise IssueSecondaryReviewValidationError("Kimi cannot confidently confirm NO_MATERIAL_RISK_FOUND when legal support is incomplete or uncertain.")
-    if context.legal_support_state.value in {"NO_MATCH_IN_LOCAL_CORPUS", "VERSION_REVIEW_REQUIRED"} and draft.coverage_assessment == SecondaryCoverageAssessment.COVERED:
+
+    if not context.target_items and draft.coverage_assessment in {
+        SecondaryCoverageAssessment.COVERED,
+        SecondaryCoverageAssessment.COVERED_BUT_QUESTIONABLE,
+    }:
+        coverage = SecondaryCoverageAssessment.INSUFFICIENT_EVIDENCE
+        review_reasons = _unique([*draft.review_reasons, "NO_TARGET_CONTRACT_EVIDENCE"])
+    elif context.legal_support_state.value in {"NO_MATCH_IN_LOCAL_CORPUS", "VERSION_REVIEW_REQUIRED"} and draft.coverage_assessment == SecondaryCoverageAssessment.COVERED:
         review_reasons = _unique([*draft.review_reasons, "LEGAL_EVIDENCE_LIMITS_COVERAGE_CONFIDENCE"])
         coverage = SecondaryCoverageAssessment.INSUFFICIENT_EVIDENCE
     else:
         review_reasons = _unique(draft.review_reasons)
         coverage = draft.coverage_assessment
+
     return IssueSecondaryReviewResult(
         issue_id=context.issue_id,
         topic=context.topic,
@@ -209,6 +242,10 @@ def run_issue_secondary_review(job_id: UUID, *, provider_name: str = "kimi", pro
     primary_by_id = {item.issue_id: item for item in primary.results}
     context_by_id = {item.issue_id: item for item in contexts}
     plan_ids = [item.issue_id for item in plan.issues]
+    if len(plan_ids) != len(set(plan_ids)):
+        raise IssueSecondaryReviewStaleError("AuditPlan contains duplicate issue IDs.")
+    if len(primary.results) != len(primary_by_id) or len(contexts) != len(context_by_id):
+        raise IssueSecondaryReviewStaleError("Stage 13E results or Stage 13F contexts contain duplicate issue IDs.")
     if set(primary_by_id) != set(plan_ids) or set(context_by_id) != set(plan_ids):
         raise IssueSecondaryReviewStaleError("AuditPlan, Stage 13E results and Stage 13F contexts do not contain the same issue set.")
     ensure_pipeline_control(job_id, ProviderExecutionMode.REQUIRE_APPROVAL)
@@ -239,6 +276,10 @@ def run_issue_secondary_review(job_id: UUID, *, provider_name: str = "kimi", pro
             if issue_id in reusable_calls:
                 calls.append(reusable_calls[issue_id])
             continue
+        if not context.target_items:
+            results.append(_no_contract_result(context, primary_result))
+            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+            continue
         context_chars = _secondary_context_char_count(context, primary_result)
         if context_chars > MAX_SECONDARY_CONTEXT_CHARS:
             results.append(_budget_result(context, primary_result))
@@ -261,8 +302,8 @@ def run_issue_secondary_review(job_id: UUID, *, provider_name: str = "kimi", pro
         results.append(result)
         calls.append(IssueSecondaryProviderCall(issue_id=issue_id, provider=provider_result.provider, model=provider_result.model, request_id=provider_result.request_id, finish_reason=provider_result.finish_reason, raw_response_hash=provider_result.raw_response_hash, usage=provider_result.usage))
         _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
-    if {item.issue_id for item in results} != set(plan_ids):
-        raise IssueSecondaryReviewValidationError("Stage 13F completed without one Kimi review for every AuditPlan issue.")
+    if len(results) != len(plan_ids) or {item.issue_id for item in results} != set(plan_ids):
+        raise IssueSecondaryReviewValidationError("Stage 13F completed without exactly one Kimi review result for every AuditPlan issue.")
     template = contexts[0]
     return _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.COMPLETE, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=template.audit_plan_fingerprint, legal_fingerprint=template.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
 
