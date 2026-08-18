@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from .ai_audit_models import FindingSeverity
 from .audit_plan_models import AuditPlanIssue, AuditPlanPlanningMode, ContractType, ReviewPriority
+from .human_review_models import HumanDecisionState
 from .issue_legal_context_models import IssueLegalEvidenceHit, IssueLegalSupportState
 from .issue_primary_audit_models import IssuePrimaryAuditResult, IssuePrimaryAuditState
 from .issue_review_report_models import IssueReviewComparison, IssueReviewComparisonState, IssueReviewFinalState
@@ -21,8 +22,8 @@ from .workspace_models import (
     WorkspaceStageSummary,
 )
 
-ISSUE_WORKSPACE_SCHEMA_VERSION = "1.0.0"
-ISSUE_WORKSPACE_ENGINE_VERSION = "stage13g-5-1.0.0"
+ISSUE_WORKSPACE_SCHEMA_VERSION = "1.1.0"
+ISSUE_WORKSPACE_ENGINE_VERSION = "stage13g-6-1.0.0"
 
 
 class IssueWorkspaceCoverageSummary(BaseModel):
@@ -53,6 +54,11 @@ class IssueWorkspaceReviewSummary(BaseModel):
     insufficient_evidence_count: int = Field(default=0, ge=0)
     review_required_count: int = Field(default=0, ge=0)
     consistent_with_review_count: int = Field(default=0, ge=0)
+    human_review_available: bool = False
+    human_review_revision_count: int = Field(default=0, ge=0)
+    human_review_resolved_required_count: int = Field(default=0, ge=0)
+    human_review_outstanding_required_count: int = Field(default=0, ge=0)
+    human_review_stale_latest_count: int = Field(default=0, ge=0)
 
 
 class IssueWorkspaceQueueItem(BaseModel):
@@ -69,6 +75,9 @@ class IssueWorkspaceQueueItem(BaseModel):
     coverage_assessment: SecondaryCoverageAssessment | None = None
     comparison_state: IssueReviewComparisonState | None = None
     requires_human_review: bool = False
+    human_decision_state: HumanDecisionState | None = None
+    human_decision_revision: int | None = Field(default=None, ge=1)
+    human_decision_stale: bool = False
 
 
 class IssueWorkspaceSummary(BaseModel):
