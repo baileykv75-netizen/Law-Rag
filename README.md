@@ -4,92 +4,88 @@ Law-Rag is a local-first contract audit assistant for personal research, testing
 
 The target product is a Windows-friendly local application rather than a generic legal chatbot. Extraction, OCR, canonical structure, deterministic rules, legal evidence and retrieval run locally. External model calls are explicit and receive bounded evidence packages rather than unrestricted raw-file access.
 
-## Product flow
+## Current production flow
+
+New jobs use the Stage 13 `ISSUE_V1` architecture:
 
 ```text
 PDF / JPG / PNG
-  -> native PDF text when reliable
-  -> PaddleOCR only where needed
+  -> reliable native PDF text or local OCR where required
   -> evidence-grounded Canonical Contract
   -> deterministic audit rules
-  -> versioned legal evidence store
-  -> exact + BM25 + optional semantic legal retrieval
-  -> DeepSeek primary audit
-  -> Kimi K3 independent secondary review
-  -> deterministic primary/secondary comparison
-  -> at most two allowlisted local Agent evidence actions
-  -> review-report.json / human review
-  -> professional audit workstation
-  -> benchmark / Windows hardening
+  -> Audit Planner + explicit canonical-object coverage
+  -> issue-based version-aware Legal RAG
+  -> DeepSeek primary audit, one bounded call per AuditPlan Issue
+  -> Kimi independent finding + coverage review, one bounded call per Issue
+  -> deterministic Issue comparison
+  -> issue-review-report.json
+  -> append-only human review
+  -> /results + /workspace
 ```
 
-## Current status
+Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupported, conflicting, stale, incomplete or insufficient-evidence states remain visible for human review.
 
-**Stage 10 complete. Stage 11 active: Benchmark, Hardening, and Windows Release.**
+## Status
 
-Completed foundations include:
+**Stage 13G is complete. Stage 14 is next and has not started.**
 
-- React/Vite + FastAPI local application shell;
-- validated PDF/JPG/PNG ingestion;
-- native PDF text / OCR-required / mixed page routing;
-- PaddleOCR local CPU path with PP-OCRv6 medium default;
-- page/Evidence IDs, OCR coordinates/confidence and provenance;
-- canonical contract schema `1.0.0` with clauses, parties, dates, money, percentages, identifiers and source spans;
-- deterministic audit rules with `PASS`, `FAIL`, `REVIEW`, `NOT_APPLICABLE` states;
-- local `contract.json` and `audit-rules.json` job artifacts;
-- canonical versioned legal schema `1.0.0` in local SQLite;
-- authority -> version -> article / Legal Evidence ID identity;
-- source/article SHA-256 hashes and official-source provenance;
-- historical legal-version retention and explicit `as_of` resolution;
-- `CURATED_EXCERPT` coverage semantics;
-- verified public contract-relevant legal seed: 2 authorities / 2 versions / 15 articles;
-- exact citation + SQLite FTS5 trigram/BM25 + optional local BGE legal retrieval;
-- coverage/version-aware retrieval and public retrieval benchmark;
-- Stage 8 evidence-bounded DeepSeek primary audit with post-model citation/version validation;
-- Stage 9 universal one-call-per-contract Kimi K3 independent review;
-- deterministic comparison of risk state, severity, contract Evidence sets and Legal Evidence sets;
-- validated possible-primary-omission handling;
-- application-owned constrained Agent policy with a hard two-action budget;
-- allowlisted local evidence tools and explicit forbidden-action boundary;
-- local-only `review-report` generation with human-review escalation;
-- dedicated `/workspace` professional review surface;
-- bounded source-page rendering and Evidence-to-page/span/bbox navigation;
-- unified DeepSeek/Kimi/comparison/Agent review queue without rewriting source artifacts;
-- Legal Evidence detail with version, `as_of`, provenance and coverage display;
-- append-only local `human-review.json` with revision history and stale-report detection;
-- keyboard/focus/responsive workstation behavior and explicit missing/integrity states;
-- full Stage 1–10 deterministic backend regressions and frontend TypeScript/production build green.
+Stage 13G migrated the application-owned production path from the legacy RC2 Stage 8/9 contract-level reports to the Issue V1 architecture while preserving historical readability.
+
+Validated Stage 13 foundations include:
+
+- Stage 13A persisted provider policy, explicit approval, cooperative cancel and resume;
+- Stage 13B/C Audit Planner with baseline scope, dynamic issues and explicit coverage of every canonical clause/block;
+- Stage 13D issue-based Exact + BM25 + optional local BGE Legal RAG;
+- Stage 13E one bounded DeepSeek request per AuditPlan Issue with checkpoint/resume;
+- Stage 13F one bounded Kimi finding + coverage review per AuditPlan Issue with checkpoint/resume;
+- deterministic one-to-one Issue comparison and `issue-review-report.json`;
+- architecture-aware Human Review, Results, Workspace and Developer views;
+- `ISSUE_V1` / `LEGACY_RC2` / fail-closed `CONFLICT` job architecture resolution;
+- provider-free end-to-end regression with outbound HTTP forbidden;
+- clean Windows portable bundle, OCR dependency and real local BGE semantic smoke validation.
 
 The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
+## Main routes
+
+```text
+/           contract intake + production Pipeline status
+/results    architecture-aware batch/result queue
+/workspace  professional evidence-linked review workstation
+/developer  Stage 13 read-only diagnostics; Legacy / RC2 tools are isolated below
+```
+
+Opening Results, Workspace or the Stage 13 Developer diagnostic surface reads persisted artifacts and does not implicitly call DeepSeek/Kimi.
+
+## Provider boundary
+
+Local ingest/OCR/structure/rules run before the first cloud-model phase. With:
+
+```text
+provider_mode = REQUIRE_APPROVAL
+```
+
+Law-Rag pauses before the Audit Planner's first actual provider call. A configured provider is still required before a provider request can run; approval is not a substitute for provider configuration.
+
+Every later Planner/DeepSeek/Kimi request crosses the persisted provider/cancellation boundary independently. An already-started HTTP request cannot be recalled, but cancellation blocks subsequent requests.
+
 ## Quick start on Windows
 
-### Prerequisites
-
-Install:
+Prerequisites:
 
 - Python 3.11 or newer;
 - Node.js 22 LTS recommended.
 
-### 1. Base setup
+Base setup:
 
 ```text
 setup-dev.bat
-```
-
-### 2. Build the verified legal seed database
-
-```text
 rebuild-legal-seed.bat
-```
-
-### 3. Build Exact + BM25 retrieval
-
-```text
 build-retrieval-index.bat
+start-dev.bat
 ```
 
-### 4. Optional local semantic retrieval
+Optional local semantic retrieval:
 
 ```text
 setup-rag-semantic-cpu.bat
@@ -102,11 +98,7 @@ Initial local embedding provider:
 BAAI/bge-small-zh-v1.5
 ```
 
-Exact + BM25 remain usable without this optional semantic stack.
-
-### 5. Optional OCR runtime
-
-For scanned PDFs/images:
+Optional OCR runtime for scanned PDFs/images:
 
 ```text
 setup-ocr-cpu.bat
@@ -114,12 +106,14 @@ setup-ocr-cpu.bat
 
 Pinned OCR path:
 
-- PaddlePaddle CPU 3.3.0;
-- PaddleOCR 3.7.0;
-- `PP-OCRv6_medium_det`;
-- `PP-OCRv6_medium_rec`.
+```text
+PaddlePaddle CPU 3.3.0
+PaddleOCR 3.7.0
+PP-OCRv6_medium_det
+PP-OCRv6_medium_rec
+```
 
-### 6. Configure DeepSeek primary audit
+### Configure DeepSeek
 
 ```bat
 set DEEPSEEK_API_KEY=<your-local-key>
@@ -127,7 +121,7 @@ set DEEPSEEK_BASE_URL=https://api.deepseek.com
 set DEEPSEEK_MODEL=deepseek-v4-pro
 ```
 
-### 7. Configure Kimi secondary review
+### Configure Kimi
 
 ```bat
 set MOONSHOT_API_KEY=<your-local-key>
@@ -137,34 +131,9 @@ set MOONSHOT_MODEL=kimi-k3
 
 Never commit real keys or a private `.env` file.
 
-### 8. Start Law-Rag
+## Issue V1 private job artifacts
 
-```text
-start-dev.bat
-```
-
-Local services:
-
-```text
-Backend:  http://127.0.0.1:8000
-Frontend: http://127.0.0.1:5173
-```
-
-Provider health checks only inspect local configuration and do not make paid model requests.
-
-### 9. Open the professional workstation
-
-Open:
-
-```text
-http://127.0.0.1:5173/workspace?job=<job-id>
-```
-
-The workstation reads persisted local artifacts. Opening a job, navigating pages, filtering findings, resolving Evidence IDs, opening Legal Evidence, and loading human-review history do **not** run OCR/retrieval or call DeepSeek/Kimi.
-
-## Local runtime artifacts
-
-Private/generated artifacts stay under ignored runtime paths:
+Generated/private job data remains under ignored runtime paths:
 
 ```text
 runtime/uploads/<job-id>/source.<ext>
@@ -173,355 +142,151 @@ runtime/jobs/<job-id>/evidence.json
 runtime/jobs/<job-id>/ocr.json
 runtime/jobs/<job-id>/contract.json
 runtime/jobs/<job-id>/audit-rules.json
-runtime/jobs/<job-id>/ai-audit.json
-runtime/jobs/<job-id>/secondary-review.json
-runtime/jobs/<job-id>/review-report.json
+runtime/jobs/<job-id>/pipeline.json
+runtime/jobs/<job-id>/pipeline-control.json
+runtime/jobs/<job-id>/audit-plan.json
+runtime/jobs/<job-id>/issue-legal-context.json
+runtime/jobs/<job-id>/issue-primary-audit.json
+runtime/jobs/<job-id>/issue-secondary-review.json
+runtime/jobs/<job-id>/issue-review-report.json
 runtime/jobs/<job-id>/human-review.json
-runtime/rendered/<job-id>/page-0001.png
-runtime/viewer/<job-id>/page-0001.png
-runtime/legal/legal.db
-runtime/legal/retrieval.db
-runtime/legal/import_reports/last-import-report.json
 ```
 
-## Deterministic rule semantics
+Historical RC2 jobs may also contain:
 
 ```text
-PASS
-  configured machine condition holds
-
-FAIL
-  configured machine condition does not hold
-  != illegal / invalid / unenforceable
-
-REVIEW
-  ambiguity, parser/source/OCR uncertainty, or intent requires verification
-
-NOT_APPLICABLE
-  explicit context is insufficient to run the rule safely
+ai-audit.json
+secondary-review.json
+review-report.json
 ```
 
-Machine-checkable issues remain ordinary code rather than being delegated to an LLM.
+Those files remain readable for `LEGACY_RC2` jobs. After an explicit legacy migration they are historical only and are not treated as authoritative Issue V1 results.
 
-## Versioned legal evidence
+## Audit Plan and coverage
 
-Canonical legal evidence uses:
+`audit-plan.json` is the authoritative review scope for Issue V1. Every canonical clause/block is assigned one planning coverage state:
 
 ```text
-authority
-  -> authority version
-       -> exact article / Legal Evidence ID
+REVIEWED_WITH_ISSUE
+REVIEWED_NO_SPECIFIC_ISSUE
 ```
 
-Example:
+`REVIEWED_NO_SPECIFIC_ISSUE` means planning coverage only. It is never presented as a legal-safe conclusion.
+
+Short contracts use a bounded direct Planner pass. Long contracts use complete-object chunk passes plus bounded global planning synthesis; canonical objects are not character-truncated merely to fit a model request.
+
+## Legal evidence and retrieval
+
+Canonical legal identity is:
 
 ```text
-legal:prc-civil-code:effective-2021-01-01:article-585
+authority -> authority version -> article / Legal Evidence ID
 ```
 
-Applicability uses:
+Applicability is deterministic:
 
 ```text
 effective_date <= as_of < end_date_exclusive
 ```
 
-The checked-in public seed is deliberately `CURATED_EXCERPT`:
-
-- Civil Code: selected articles 469, 496, 497, 502, 509, 577, 585, 586;
-- SPC contract-general interpretation: selected articles 1, 3, 9, 10, 16, 65, 69.
-
-**Absence from this seed is never evidence that no legal rule exists.**
-
-## Stage 7 hybrid legal retrieval
+Retrieval combines:
 
 ```text
-query + as_of
-      ↓
-legal version resolution
-      ↓
-EXACT
-+ FTS5 trigram / BM25
-+ optional local BGE vectors
-      ↓
-weighted reciprocal-rank fusion
-      ↓
-versioned Legal Evidence IDs
-+ provenance
-+ corpus/version warnings
+exact citation
++ SQLite FTS5 trigram / BM25
++ optional local BGE semantic retrieval
++ weighted reciprocal-rank fusion
 ```
 
-Retrieval APIs:
+The checked-in public legal seed is deliberately `CURATED_EXCERPT`. **Absence from the local seed is never evidence that no applicable legal rule exists.**
+
+## Human review
+
+Issue V1 human decisions bind to `AuditPlan.issue_id` and append revisions to `human-review.json`.
+
+The server snapshots current Contract Evidence / Legal Evidence references and binds each revision to the current `issue-review-report.json` artifact fingerprint. If the audit chain later changes, the old revision remains visible as stale and cannot close the new review state.
+
+Only fresh final `CONFIRMED` or `REJECTED` decisions close a mandatory Issue review. `NEEDS_MORE_REVIEW`, `UNREVIEWED`, stale revisions and incomplete planning coverage remain outstanding.
+
+Legacy finding/omission review revisions remain readable without being fabricated into Issue identities.
+
+## Results priority
+
+The `/results` queue uses deterministic workload ordering:
 
 ```text
-GET  /api/legal/retrieval/summary
-POST /api/legal/retrieve
+unresolved human review
+> possible omission
+> material disagreement
+> critical
+> high
+> insufficient evidence
+> medium
+> low
 ```
 
-Public regression gate:
+This is an audit workload priority, **not a legal-risk probability or correctness score**.
+
+## Developer diagnostics
+
+`/developer` defaults to GET-only Stage 13 diagnostics for:
 
 ```text
-Recall@5 >= 0.90
-MRR      >= 0.80
+architecture
+pipeline
+Audit Plan
+Issue Legal Context
+Issue Primary Audit
+Issue Secondary Review
+Issue Comparison
+Human Review
 ```
 
-This tiny benchmark measures retrieval mechanics on the current 15-article public seed; it is not a production legal-recall claim.
+Missing, stale/conflicting and invalid artifacts remain explicit. Historical Stage 1–9 execution tools are retained only under the collapsed `Legacy / RC2` area.
 
-See [`docs/RETRIEVAL.md`](docs/RETRIEVAL.md).
+## Validation
 
-## Stage 8 primary audit
-
-Stage 8 does not send the raw PDF directly to DeepSeek. The application builds a bounded evidence package from canonical clauses, non-PASS rule context, explicit `as_of` and Stage 7 Legal Evidence.
-
-Current DeepSeek default:
+Normal CI uses no paid provider calls. Stage 13G final validation demonstrated:
 
 ```text
-model = deepseek-v4-pro
-response_format = json_object
-thinking = enabled
-reasoning_effort = high
+backend pytest: 275 passed, 5 skipped
+public deterministic quality gates: PASS
+frontend production build: PASS
+Windows portable release-bundle smoke: PASS
+Windows PaddleOCR/PaddlePaddle dependency smoke: PASS
+Windows real local BGE semantic smoke: PASS
 ```
 
-Before `ai-audit.json` is persisted, application code validates issue IDs, canonical object IDs, contract Evidence IDs, Legal Evidence IDs and legal-version applicability. Model memory cannot create authoritative law.
+The packaged release smoke covers Windows Credential Manager secret storage, the `/`, `/results`, `/workspace`, `/developer` routes, native PDF ingestion, PDFium rendering, private-job-artifact exclusion, legacy RC2 user-flow compatibility, and the Stage 13 Audit Planner approval/cancel/resume boundary using a synthetic unused provider key.
 
-DeepSeek hidden reasoning content is not persisted.
-
-APIs:
-
-```text
-GET  /api/ai/providers/health?provider=deepseek
-POST /api/documents/<job-id>/ai-audit
-GET  /api/documents/<job-id>/ai-audit
-```
-
-See [`docs/AI_AUDIT.md`](docs/AI_AUDIT.md).
-
-## Stage 9 universal Kimi review + constrained Agent
-
-Stage 9 deliberately uses two model calls for every completed audited contract:
-
-```text
-Call 1: DeepSeek primary audit
-Call 2: Kimi K3 whole-contract secondary review
-```
-
-The Kimi call is contract-level, not one call per finding. It receives the same reproducible bounded Stage 8 evidence world and must review every primary finding exactly once.
-
-Default Kimi configuration:
-
-```text
-model = kimi-k3
-base_url = https://api.moonshot.cn/v1
-response_format = json_object
-reasoning_effort = max
-```
-
-Kimi output passes its own Evidence ID and legal-version validation before comparison.
-
-### Deterministic comparison
-
-Law-Rag does not use another model to decide whether DeepSeek and Kimi agree. It compares validated structured fields:
-
-- primary/secondary risk-state truth table;
-- ordinal severity distance;
-- contract Evidence ID set intersection/difference;
-- Legal Evidence ID set intersection/difference;
-- validated possible omissions.
-
-Reasoning prose is shown to humans but is not converted into a fake semantic-agreement percentage.
-
-Representative comparison states:
-
-```text
-AGREEMENT
-MINOR_DISAGREEMENT
-AGREEMENT_WITH_REVIEW
-REQUIRES_MORE_EVIDENCE
-MATERIAL_DISAGREEMENT
-```
-
-### Constrained Agent
-
-The application owns the state machine. The hard follow-up budget is:
-
-```text
-maximum actions = 2
-```
-
-Allowlisted tools:
-
-```text
-inspect_contract_evidence
-get_clause_context
-inspect_legal_evidence
-retrieve_more_legal
-resolve_contract_reference
-request_ocr_retry
-```
-
-Current tools are local-only. There is no arbitrary shell/filesystem tool, unrestricted web legal research, automatic corpus mutation or open-ended Agent loop.
-
-`request_ocr_retry` currently validates whether cited evidence is OCR-derived and returns explicit `UNAVAILABLE` until a bounded retry execution path is configured; it never silently OCRs the whole document again.
-
-If a material disagreement/evidence dispute remains, local tools may gather extra evidence but do not automatically declare one model the winner. The final state remains `HUMAN_REVIEW_REQUIRED` unless the two validated model results were already in agreement/minor disagreement.
-
-### Stage 9 APIs
-
-```text
-GET  /api/ai/secondary/health?provider=kimi
-POST /api/documents/<job-id>/secondary-review
-GET  /api/documents/<job-id>/secondary-review
-POST /api/documents/<job-id>/review-report
-GET  /api/documents/<job-id>/review-report
-```
-
-`POST secondary-review` is the one explicit Kimi external call. `POST review-report` performs only local deterministic comparison and bounded local tools.
-
-See [`docs/SECONDARY_REVIEW.md`](docs/SECONDARY_REVIEW.md).
-
-## Stage 10 professional audit workstation
-
-Stage 10 turns the persisted Stage 2–9 artifacts into one job-centric review surface. It does not create a new reasoning layer.
-
-```text
-/workspace?job=<job-id>
-
-left                          center                         right
-source page / Evidence   ->  audit queue / filters    ->   DeepSeek + Kimi
-OCR/native provenance        comparison / omission          law / Agent trace
-page + bbox/span              severity / triage             human decision history
-```
-
-### Read-only workspace aggregation
-
-```text
-GET /api/documents/<job-id>/workspace
-```
-
-The endpoint validates available artifacts and reports `READY`, `MISSING`, `NOT_REQUIRED`, or `INVALID`. A complete-job regression explicitly fails if workspace loading tries to resolve either external model provider.
-
-### Bounded source/Evidence navigation
-
-```text
-GET /api/documents/<job-id>/source/pages/<page-number>
-GET /api/documents/<job-id>/evidence/<evidence-id>
-```
-
-PDF pages use the existing local PDFium renderer and are cached under ignored `runtime/viewer/`. Image jobs expose only their bounded source page. The browser never receives an arbitrary filesystem path.
-
-OCR Evidence keeps bbox/polygon/confidence/coordinate-space metadata. Native PDF Evidence keeps exact quote/character offsets when no trustworthy visual bbox exists; the UI does not invent coordinates.
-
-### Unified review queue
-
-The presentation layer joins, without rewriting:
-
-- DeepSeek primary finding;
-- Kimi secondary assessment;
-- deterministic comparison state and severity distance;
-- contract/Legal Evidence sets;
-- validated Kimi possible omissions as separate items;
-- relevant bounded Agent action trace.
-
-Filters include severity, comparison state, attention-only and text search. Findings are keyboard-selectable and preserve direct Evidence/Legal Evidence navigation.
-
-### Legal authority context
-
-Clicking a Legal Evidence ID displays the canonical authority/article/version record, effective interval, current `as_of`, coverage type and public source provenance. `CURATED_EXCERPT` is visibly marked; no retrieval score is shown as a legal-confidence percentage.
-
-### Human review layer
-
-```text
-GET  /api/documents/<job-id>/human-review
-POST /api/documents/<job-id>/human-review/decisions
-```
-
-Human states:
-
-```text
-UNREVIEWED
-CONFIRMED
-REJECTED
-NEEDS_MORE_REVIEW
-```
-
-Each POST appends a new revision to `human-review.json`. The server snapshots the target contract/Legal Evidence references and a SHA-256 fingerprint of the current validated `review-report.json`.
-
-If that report later changes, prior revisions remain in history and are returned with `is_stale=true`; approval is never silently carried forward to a changed audit context.
-
-Human review writes are regression-tested so `review-report.json`, canonical contract, deterministic rules, DeepSeek report, Kimi report, `legal.db` and `retrieval.db` remain byte-for-byte unchanged. Human review never calls an external provider.
-
-## Developer validation
-
-Backend deterministic suite:
-
-```bat
-cd backend
-set PYTHONPATH=.
-..\.venv\Scripts\python.exe -m pytest -q
-```
-
-Frontend typecheck + production build:
-
-```bat
-cd frontend
-npm run build
-```
-
-`npm run build` executes `tsc --noEmit` before Vite production build.
-
-Optional real integrations remain explicit opt-in tests. Normal CI needs no external API keys and spends no DeepSeek/Kimi credits.
-
-Example Kimi smoke:
-
-```bat
-cd backend
-set PYTHONPATH=.
-set MOONSHOT_API_KEY=<your-local-key>
-set LAW_RAG_KIMI_SMOKE=1
-..\.venv\Scripts\python.exe -m pytest -q -m kimi_smoke
-```
+No additional global Kimi coverage-synthesis call is part of Stage 13. The current regression evidence did not demonstrate a missing cross-Issue failure mode that justifies adding another provider call. That decision should be revisited only if later expert/benchmark evidence demonstrates such omissions.
 
 ## Core engineering principles
 
-1. **Evidence first.** Material findings trace to exact source evidence.
+1. **Evidence first.** Material conclusions trace to exact contract evidence; legal conclusions additionally trace to canonical Legal Evidence.
 2. **Native text before OCR.** Reliable PDF text is not degraded unnecessarily.
 3. **Deterministic before probabilistic.** Machine-checkable conditions stay in code.
 4. **One canonical contract model.** Downstream systems do not independently reinterpret raw PDFs.
-5. **Versioned canonical legal evidence.** Legal identity/source/version/coverage survive retrieval.
-6. **Hybrid retrieval, not vector-only.** Exact, lexical and semantic channels are complementary.
-7. **No fabricated legal authority.** Model citations must originate from supplied canonical Legal Evidence.
-8. **Post-model validation, not prompt trust.** Plausible but invalid IDs/versions fail closed.
-9. **Two-model agreement is not proof.** Agreement/disagreement remains reviewable structured evidence.
-10. **Uncertainty is first-class.** Insufficient corpus/version/source/OCR evidence remains visible.
-11. **Constrained Agent.** Mandatory stages, tools and budgets remain application-controlled.
-12. **Human decisions are append-only review data.** They never rewrite source, rules, models or legal evidence.
-13. **Local-first private data.** External transmission is explicit; private artifacts stay outside Git.
-14. **One verifiable stage per iteration.** No broad half-finished rewrites.
+5. **Complete planning coverage before Issue reasoning.** Missing review scope remains visible.
+6. **No fabricated legal authority.** Model citations must come from supplied canonical Legal Evidence.
+7. **Post-model validation, not prompt trust.** Invented IDs/versions fail closed.
+8. **Two-model agreement is not proof.** Disagreement and uncertainty remain reviewable.
+9. **Provider transmission is explicit.** Persisted approval/cancel policy governs every external model request.
+10. **Human review is append-only.** Decisions never rewrite source/model/legal evidence.
+11. **Legacy compatibility is explicit.** Issue V1 and RC2 artifacts are not silently mixed.
+12. **Local-first private data.** Private artifacts and model caches stay outside Git.
 
 ## Repository safety
 
 This repository is public. Treat every committed file as public information.
 
-Never commit real contracts, re-identifiable pseudonymized contracts, private expert benchmark labels, API keys, `.env`, private outputs/logs, generated SQLite/index files, model weights/caches, or OCR output containing private contract data.
+Do not commit:
 
-See [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
+- real/private contracts;
+- API keys or `.env` secrets;
+- runtime uploads or generated job reports;
+- private benchmark labels;
+- model caches or private vector stores;
+- logs containing private contract text.
 
-## Legal-use boundary
-
-Law-Rag is an audit-assistance/research tool. Rule failures, retrieval scores, model findings, model agreement and human workstation states are not automatically final legal opinions. Material findings remain reviewable by a qualified professional.
-
-## Development documents
-
-- [`AGENTS.md`](AGENTS.md) — long-term development rules.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — system boundaries and target architecture.
-- [`CURRENT_TASK.md`](CURRENT_TASK.md) — only active implementation scope.
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — staged delivery plan.
-- [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md) — public-repository/private-data rules.
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architecture decisions.
-- [`docs/RETRIEVAL.md`](docs/RETRIEVAL.md) — hybrid legal retrieval.
-- [`docs/AI_AUDIT.md`](docs/AI_AUDIT.md) — Stage 8 primary audit.
-- [`docs/SECONDARY_REVIEW.md`](docs/SECONDARY_REVIEW.md) — Stage 9 Kimi review/comparison/Agent.
-- [`legal_data/README.md`](legal_data/README.md) — legal provenance/coverage policy.
-
-## License
-
-No open-source repository license has been selected yet. Public visibility does not by itself grant reuse/redistribution permission; a license should be chosen only after the project owner explicitly decides those terms.
+See [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CURRENT_TASK.md`](CURRENT_TASK.md), and [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
