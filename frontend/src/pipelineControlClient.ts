@@ -19,6 +19,12 @@ export type PipelineStage =
   | 'OCR'
   | 'STRUCTURE'
   | 'RULES'
+  | 'AUDIT_PLAN'
+  | 'ISSUE_LEGAL_CONTEXT'
+  | 'ISSUE_PRIMARY_AUDIT'
+  | 'ISSUE_SECONDARY_REVIEW'
+  | 'ISSUE_REVIEW_REPORT'
+  // Legacy RC2 stages remain parseable for persisted historical jobs.
   | 'PRIMARY_AUDIT'
   | 'SECONDARY_REVIEW'
   | 'REVIEW_REPORT'
