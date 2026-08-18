@@ -316,6 +316,6 @@ def test_structure_api_generates_summary_and_get_returns_full_contract(tmp_path:
     fetched = client.get(f"/api/documents/{job_id}/structure")
     assert fetched.status_code == 200
     body = fetched.json()
-    assert body["schema_version"] == "1.0.0"
+    assert body["schema_version"] == "1.1.0"
     assert body["job_id"] == str(job_id)
     assert body["clauses"][0]["source_spans"][0]["evidence_ids"] == [f"ev-{job_id}-p0001"]
