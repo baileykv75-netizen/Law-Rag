@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from app.audit_plan_models import AuditPlanningCoverageState
 from app.audit_planner import load_audit_plan, run_audit_planner
@@ -20,7 +22,8 @@ from app.issue_review_report_models import IssueReviewFinalState
 from app.issue_secondary_review import run_issue_secondary_review
 from app.legal.importer import import_manifest
 from app.legal.retrieval import build_retrieval_index
-from app.models import SourceMethod
+from app.main import app
+from app.models import DocumentKind, DocumentRoute, PageEvidence, PageRoute, SourceMethod
 from app.pipeline_control import set_provider_mode
 from app.pipeline_control_models import ProviderExecutionMode
 from app.storage import (
@@ -36,6 +39,8 @@ from app.storage import (
     legal_db_path,
     legal_retrieval_index_path,
 )
+
+client = TestClient(app)
 
 
 def _contract() -> CanonicalContract:
@@ -87,6 +92,44 @@ def _forbid_network(monkeypatch) -> None:
     monkeypatch.setattr(httpx, "AsyncClient", ForbiddenHttpClient)
 
 
+def _seed_workspace_source(tmp_path: Path, contract: CanonicalContract) -> None:
+    job_dir = tmp_path / "jobs" / str(contract.job_id)
+    upload_dir = tmp_path / "uploads" / str(contract.job_id)
+    job_dir.mkdir(parents=True, exist_ok=True)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    quote = contract.clauses[0].source_spans[0].quote
+    page = PageEvidence(
+        evidence_id="evidence-stage13g-clause-8",
+        page_number=2,
+        source_method=SourceMethod.NATIVE_PDF_TEXT,
+        text=quote,
+        character_count=len(quote),
+        non_whitespace_count=len("".join(quote.split())),
+        meaningful_ratio=1.0,
+        suspicious_character_count=0,
+        route=PageRoute.NATIVE_TEXT_USABLE,
+        route_reason="provider-free workspace fixture",
+        source_locator="source.pdf#page=2",
+    )
+    document = {
+        "job_id": str(contract.job_id),
+        "filename": contract.filename,
+        "media_type": "application/pdf",
+        "document_kind": DocumentKind.PDF.value,
+        "page_count": 2,
+        "route": DocumentRoute.NATIVE_TEXT.value,
+        "native_text_pages": 2,
+        "ocr_required_pages": 0,
+        "status": "inspected",
+    }
+    (job_dir / "document.json").write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
+    (job_dir / "evidence.json").write_text(
+        json.dumps([page.model_dump(mode="json")], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (upload_dir / "source.pdf").write_bytes(b"%PDF-1.7\n% stage13g workspace fixture\n")
+
+
 def _prepare_runtime(tmp_path: Path, monkeypatch) -> CanonicalContract:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     monkeypatch.setenv("LAW_RAG_ALLOW_FAKE_AUDIT_PLANNER", "1")
@@ -95,6 +138,7 @@ def _prepare_runtime(tmp_path: Path, monkeypatch) -> CanonicalContract:
     _forbid_network(monkeypatch)
 
     contract = _contract()
+    _seed_workspace_source(tmp_path, contract)
     job_contract_path(contract.job_id).write_text(
         contract.model_dump_json(indent=2),
         encoding="utf-8",
@@ -182,13 +226,49 @@ def test_stage13g_provider_free_chain_is_complete_and_one_to_one(tmp_path: Path,
     assert job_issue_secondary_review_path(job_id).exists()
     assert job_issue_review_report_path(job_id).exists()
 
-    # Stage 13G.2 proves the new chain without accidentally creating legacy Stage 8/9 reports.
     assert not job_ai_audit_path(job_id).exists()
     assert not job_secondary_review_path(job_id).exists()
     assert not job_review_report_path(job_id).exists()
 
     persisted = load_issue_review_report(job_id)
     assert persisted.artifact_fingerprint == report.artifact_fingerprint
+
+
+def test_stage13g_provider_free_workspace_reads_issue_chain_without_provider_work(tmp_path: Path, monkeypatch) -> None:
+    contract, plan, legal_context, primary, secondary, report = _run_provider_free_chain(tmp_path, monkeypatch)
+    job_id = contract.job_id
+
+    summary_response = client.get(f"/api/documents/{job_id}/workspace")
+    assert summary_response.status_code == 200, summary_response.text
+    summary = summary_response.json()
+    assert summary["architecture"] == "ISSUE_V1"
+    assert summary["overall_state"] == "HUMAN_REVIEW_REQUIRED"
+    assert summary["coverage"]["coverage_complete"] is True
+    assert summary["coverage"]["canonical_object_count"] == len(plan.coverage)
+    assert summary["coverage"]["issue_count"] == len(plan.issues)
+    assert summary["review"]["primary_completed_issue_count"] == primary.completed_issue_count
+    assert summary["review"]["secondary_completed_issue_count"] == secondary.completed_issue_count
+    assert summary["review"]["compared_issue_count"] == report.compared_issue_count
+    assert len(summary["issues"]) == len(plan.issues)
+    assert [item["issue_id"] for item in summary["issues"]] == [item.issue_id for item in plan.issues]
+
+    stage_map = {item["stage"]: item for item in summary["stages"]}
+    assert stage_map["13B/C"]["state"] == "READY"
+    assert stage_map["13D"]["state"] == "READY"
+    assert stage_map["13E"]["state"] == "READY"
+    assert stage_map["13F"]["state"] == "READY"
+    assert stage_map["13G"]["state"] == "READY"
+
+    issue_id = plan.issues[0].issue_id
+    detail_response = client.get(f"/api/documents/{job_id}/workspace/issues/{issue_id}")
+    assert detail_response.status_code == 200, detail_response.text
+    detail = detail_response.json()
+    assert detail["issue_id"] == issue_id
+    assert detail["plan_issue"]["issue_id"] == issue_id
+    assert detail["primary"]["issue_id"] == issue_id
+    assert detail["secondary"]["issue_id"] == issue_id
+    assert detail["comparison"]["issue_id"] == issue_id
+    assert detail["legal_support_state"] == legal_context.issues[0].support_state.value
 
 
 def test_stage13g_provider_free_report_becomes_stale_when_plan_changes(tmp_path: Path, monkeypatch) -> None:
@@ -205,6 +285,5 @@ def test_stage13g_provider_free_report_becomes_stale_when_plan_changes(tmp_path:
     with pytest.raises(IssueReviewReportStaleError):
         load_issue_review_report(job_id)
 
-    # The persisted report itself remains available for forensic inspection when freshness checks are disabled.
     historical = load_issue_review_report(job_id, validate_freshness=False)
     assert historical.artifact_fingerprint == report.artifact_fingerprint
