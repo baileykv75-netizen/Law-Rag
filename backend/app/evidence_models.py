@@ -91,12 +91,6 @@ SourceAnchor = Annotated[
 ]
 
 
-class EvidenceBlockKind(str):
-    TEXT = "TEXT"
-    TABLE_CELL = "TABLE_CELL"
-    IMAGE = "IMAGE"
-
-
 def source_anchor_locator(anchor: SourceAnchor) -> str:
     if isinstance(anchor, PageTextAnchor):
         return f"page:{anchor.page_number:04d}:text"
