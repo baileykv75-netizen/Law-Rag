@@ -12,6 +12,8 @@ $DistRoot = Join-Path $PSScriptRoot "dist"
 $WorkRoot = Join-Path $PSScriptRoot "work"
 $LockFile = Join-Path $Backend "requirements-release-lock-windows.txt"
 $OcrLockFile = Join-Path $Backend "requirements-release-ocr-lock-windows.txt"
+$OcrModelManifest = Join-Path $PSScriptRoot "ocr-models-manifest.json"
+$OcrModelBuildRoot = Join-Path $BuildRoot "ocr-models"
 $PaddleCpuIndex = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
 $PaddleVersion = "3.3.0"
 $NoticeRoot = Join-Path $BuildRoot "THIRD-PARTY-NOTICES"
@@ -59,10 +61,6 @@ Invoke-Checked { python -m venv $BuildVenv } "Isolated release virtualenv creati
 $ReleasePython = Join-Path $BuildVenv "Scripts\python.exe"
 Invoke-Checked { & $ReleasePython -m pip install --upgrade pip==26.2.1 } "Release pip pin"
 Invoke-Checked { & $ReleasePython -m pip install --disable-pip-version-check --no-deps -r $LockFile } "Exact base Windows release lock install"
-# PaddlePaddle's Windows CPU wheel is deliberately sourced from the official
-# Paddle index. Installing it before the full OCR lock lets the exact lock keep
-# the package in the notice/version inventory without allowing another index to
-# choose the wheel.
 Invoke-Checked {
     & $ReleasePython -m pip install --disable-pip-version-check --no-deps "paddlepaddle==$PaddleVersion" -i $PaddleCpuIndex
 } "Exact PaddlePaddle CPU runtime install"
@@ -75,9 +73,17 @@ try {
     Invoke-Checked {
         & $ReleasePython -c "from app.ocr_runtime import probe_ocr_runtime; p=probe_ocr_runtime(import_modules=True, run_native_check=True); print(p.model_dump()); raise SystemExit(0 if p.ready else 1)"
     } "Isolated OCR runtime import/native self-check"
+    Invoke-Checked {
+        & $ReleasePython -m app.ocr_model_assets --manifest $OcrModelManifest --output-dir $OcrModelBuildRoot
+    } "Locked official OCR model fetch and integrity verification"
 }
 finally {
     Pop-Location
+}
+
+$OcrResolved = Join-Path $OcrModelBuildRoot "ocr-models-resolved.json"
+if (-not (Test-Path $OcrResolved)) {
+    throw "Verified OCR model preparation did not emit ocr-models-resolved.json"
 }
 
 Push-Location $Frontend
@@ -148,5 +154,6 @@ Write-Host "[Law-Rag] Windows onedir bundle created at: $Bundle"
 Write-Host "[Law-Rag] Source commit: $SourceSha"
 Write-Host "[Law-Rag] Build runtime: CPython $PythonVersion / Node $NodeVersion / npm $NpmVersion"
 Write-Host "[Law-Rag] PaddlePaddle $PaddleVersion + pinned PaddleOCR runtime are included from the isolated release environment."
+Write-Host "[Law-Rag] PP-OCRv6 medium detection/recognition assets were fetched from locked official URLs and verified before packaging."
 Write-Host "[Law-Rag] Exact Python notices and Vite bundled dependency licenses were generated for review."
-Write-Host "[Law-Rag] No API keys, user runtime data, OCR model weights, or BGE weights were bundled."
+Write-Host "[Law-Rag] No API keys, user runtime data, arbitrary OCR caches, or BGE weights were bundled."
