@@ -54,7 +54,10 @@ def run_document_ai_audit(job_id: UUID, request: AiAuditRunRequest) -> AiAuditRe
     except AiAuditValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     except AiAuditError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        detail = str(exc)
+        if detail.startswith("Stage "):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail) from exc
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
 
 
 @router.get("/api/documents/{job_id}/ai-audit", response_model=AiAuditReport)
