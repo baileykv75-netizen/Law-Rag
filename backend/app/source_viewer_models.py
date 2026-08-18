@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from .evidence_models import SourceAnchor
 from .models import SourceMethod
 
 
-SOURCE_VIEWER_SCHEMA_VERSION = "1.0.0"
+SOURCE_VIEWER_SCHEMA_VERSION = "1.1.0"
 
 
 class CanonicalEvidenceReference(BaseModel):
@@ -16,9 +17,10 @@ class CanonicalEvidenceReference(BaseModel):
 class SourceEvidenceDetail(BaseModel):
     schema_version: str = SOURCE_VIEWER_SCHEMA_VERSION
     evidence_id: str
-    page_number: int = Field(ge=1)
+    page_number: int | None = Field(default=None, ge=1)
     source_method: SourceMethod
     text: str
+    source_anchor: SourceAnchor | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     bbox: list[int] | None = None
     polygon: list[list[int]] | None = None
