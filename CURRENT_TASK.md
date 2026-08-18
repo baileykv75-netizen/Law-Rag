@@ -11,15 +11,15 @@ Stage 13A–13G  COMPLETE / ISSUE_V1 production migration validated
 
 Stage 14       IN PROGRESS — OCR distribution + DOCX
                 14.1 cross-format Evidence architecture COMPLETE
-                14.2 DOCX native ingestion NEXT
-                14.3 DOCX Evidence + Source Viewer PENDING
+                14.2 DOCX native ingestion COMPLETE
+                14.3 DOCX Evidence + Source Viewer NEXT
                 14.4 Windows OCR runtime distribution PENDING
                 14.5 offline OCR model distribution PENDING
                 14.6 Pipeline + Home integration PENDING
                 14.7 full regression + packaged Windows smoke PENDING
 ```
 
-Stage 13 is closed. Do not reopen the audit topology without new evidence. Stage 14 must expand the reliable local input/distribution layer without changing the proven `ISSUE_V1` reasoning chain.
+Stage 13 is closed. Do not reopen the audit topology without new evidence. Stage 14 expands the reliable local input/distribution layer without changing the proven `ISSUE_V1` reasoning chain.
 
 ## Stage 13 production baseline
 
@@ -52,7 +52,7 @@ Windows real local BGE semantic smoke PASS
 
 ## Stage 14 goal
 
-A normal Windows user should be able to install/use Law-Rag without knowing Python, pip, PaddleOCR or model-download details and reliably submit:
+A normal Windows user should ultimately be able to install/use Law-Rag without knowing Python, pip, PaddleOCR or model-download details and reliably submit:
 
 ```text
 native PDF
@@ -61,55 +61,22 @@ JPG / JPEG / PNG
 DOCX
 ```
 
-All supported inputs must converge on the same Evidence -> Canonical Contract boundary. Stage 13 must not branch on source format.
+All supported inputs converge on the same Evidence -> Canonical Contract boundary. Stage 13 must not branch on source format.
 
 ## 14.1 — Cross-format Evidence architecture — COMPLETE
 
-Stage 14.1 intentionally freezes the evidence contract before implementing DOCX parsing.
+Stage 14.1 froze the evidence contract before DOCX parsing.
 
 ### Evidence rules
 
 1. Evidence IDs are opaque identities, not source locations.
 2. Typed `source_anchor` is the authoritative location.
-3. PDF/image evidence may have real page coordinates; DOCX must never fabricate page numbers.
+3. PDF/image evidence may have real page coordinates; DOCX never fabricates page numbers.
 4. Canonical objects continue to trace back through Evidence IDs.
-5. Unsupported/partial source constructs must be visible rather than silently dropped.
+5. Unsupported/partial source constructs remain visible rather than silently dropped.
 6. Source-format differences stop at the Evidence / Canonical layer; Planner/RAG/DeepSeek/Kimi/comparison/Human Review remain format-neutral.
 
 The detailed contract is documented in `docs/SOURCE_EVIDENCE_ARCHITECTURE.md`.
-
-### Implemented schema foundation
-
-`backend/app/evidence_models.py` defines:
-
-```text
-SourceDocumentIdentity
-SourceEvidenceArtifact
-SourceEvidence
-
-PAGE_TEXT
-PAGE_REGION
-DOCX_PARAGRAPH
-DOCX_TABLE_CELL
-DOCX_EMBEDDED_IMAGE
-```
-
-`SourceEvidence` carries opaque Evidence identity plus typed source location, deterministic debug locator, confidence, block kind and optional grouping.
-
-`adapt_legacy_paginated_evidence(...)` provides a non-destructive adapter for existing Stage 2/3 PDF/OCR artifacts. Historical `evidence.json` files are not rewritten.
-
-### Canonical compatibility
-
-`contract.json` schema is now `1.1.0` / extractor `stage14-1.0.0`.
-
-`SourceSpan` and `EvidenceUnit` accept either:
-
-- a real legacy/paginated `page_number`; or
-- a typed `source_anchor` for non-paginated evidence.
-
-`Clause.page_start/page_end` and `UnnumberedBlock.page_start/page_end` are optional, so future DOCX clauses do not require fake pagination.
-
-Current PDF/OCR behavior remains valid and existing page-shaped evidence remains readable.
 
 ### 14.1 validation
 
@@ -121,42 +88,143 @@ public deterministic quality gates PASS
 frontend production build          PASS
 ```
 
-The only warning is the pre-existing Starlette TestClient/httpx deprecation warning.
+## 14.2 — DOCX native ingestion — COMPLETE
 
-The Stage 14.1 regression specifically verifies:
+Stage 14.2 adds the local backend ingestion/canonical path for modern `.docx` while deliberately leaving UI/Pipeline rollout and Source Viewer work for later slices.
 
-- DOCX paragraph anchors work with `page_number=None`;
-- DOCX table-cell structural locations remain explicit;
-- a human/debug locator cannot disagree with its typed anchor;
-- page-number/anchor conflicts fail validation;
-- legacy native PDF Evidence IDs survive adaptation unchanged;
-- legacy OCR Evidence IDs, bbox/polygon/confidence survive adaptation into page-region anchors.
+### Safe local OOXML parsing
 
-No DOCX parser, OCR distribution, installer behavior or Stage 13 model topology was implemented in 14.1.
+`backend/app/docx_ingestion.py` uses Python standard-library ZIP/XML processing rather than flattening the file through a generic Word text extractor. No macro is executed and no external relationship is fetched.
 
-## 14.2 — DOCX native ingestion — NEXT
+The parser validates/fails closed on:
 
-The next slice is limited to local `.docx` ingestion and Evidence generation.
+- malformed or non-OOXML ZIP packages;
+- absolute/path-traversal ZIP entries;
+- encrypted ZIP entries;
+- macro/VBA payloads;
+- excessive ZIP entry count, expanded size or compression ratio;
+- oversized XML parts;
+- DTD/entity declarations;
+- password-protected/encrypted Office compound-file containers.
+
+Legacy `.doc` is not accepted as `.docx`.
+
+### Structural DOCX Evidence
+
+New DOCX jobs persist `evidence.json` as Source Evidence schema `2.1.0` rather than the historical page-list representation.
+
+Native Word content preserves:
+
+```text
+DOCX_PARAGRAPH
+DOCX_TABLE_CELL
+DOCX_EMBEDDED_IMAGE
+source order
+Word automatic numbering
+paragraph-style numbering inheritance
+table/row/cell/paragraph coordinates
+table parent_group_id
+```
+
+Visible list/heading prefixes are reconstructed from `numbering.xml`. Unsupported/missing numbering definitions produce blocking warnings rather than invented clause labels.
+
+Embedded images are inventoried for later OCR but are not OCR-processed in 14.2.
+
+### Partial source semantics
+
+The parser exposes legally meaningful unsupported/partial constructs through structured warnings. Tracked changes, text boxes, omitted header/footer/footnote/endnote content and unresolved embedded-image text can block complete source coverage.
+
+When a blocking source warning exists:
+
+```text
+document inspection status = partial
+contract.json status         = partial
+```
+
+The system does not silently present that source as completely covered.
+
+### Common Canonical Contract boundary
+
+`backend/app/canonical_extraction.py` is now the shared deterministic extractor for PDF native text, OCR and DOCX. DOCX does not have a separate clause/entity extraction implementation.
+
+All formats converge:
+
+```text
+source-specific evidence
+        ↓
+EvidenceUnit
+        ↓
+shared deterministic canonical extraction
+        ↓
+contract.json
+```
+
+DOCX canonical spans retain typed structural anchors and `page_number=None`. `Clause.page_start/page_end` remain `None` rather than receiving synthetic pagination.
+
+Grouped DOCX table cells become a canonical `TABLE_CANDIDATE` while retaining individual Evidence spans.
+
+`contract.json` remains schema `1.1.0`; extractor provenance is `stage14-2.0.0`.
+
+Before DOCX Evidence is converted into `contract.json`, the original local source is re-read and its byte size + SHA-256 are checked against `SourceDocumentIdentity`. A missing/replaced source fails closed.
+
+### 14.2 validation
+
+Authoritative Stage 14.2 CI run #599 (`32117553117`):
+
+```text
+backend pytest                      289 passed, 5 skipped, 1 third-party warning
+public deterministic quality gates PASS
+frontend production build          PASS
+```
+
+The only warning remains the pre-existing Starlette TestClient/httpx deprecation warning.
+
+New deterministic fictional fixtures verify:
+
+- backend `.docx` upload with no fake pages;
+- paragraph/table source order;
+- Word automatic numbering reaching the existing clause parser;
+- table grouping and canonical structured blocks;
+- typed DOCX SourceSpan anchors surviving into `contract.json`;
+- tracked changes produce partial coverage rather than silent normalization;
+- embedded-image relationships are inventoried without OCR or network fetch;
+- generic ZIPs named `.docx` are rejected and cleaned up;
+- VBA-bearing packages are rejected;
+- legacy `.doc` is rejected;
+- encrypted Office containers are rejected explicitly;
+- source SHA-256 mismatch blocks canonical structuring.
+
+Existing PDF/OCR/Stage 13 regressions remain green.
+
+### Intentional 14.2 boundary
+
+The backend can ingest and structure DOCX now, but the product is **not yet claiming full DOCX UX support**:
+
+- `/workspace` Source Viewer does not yet navigate DOCX anchors;
+- embedded DOCX images are not OCR-processed yet;
+- the Home file picker/Pipeline rollout remains Stage 14.6;
+- Windows OCR runtime/model bundling remains Stage 14.4–14.5.
+
+Do not advertise DOCX as a fully completed end-user path until those later slices pass.
+
+## 14.3 — DOCX Evidence navigation + logical Source Viewer — NEXT
+
+The next slice is limited to source navigation and evidence inspection for DOCX.
 
 Required behavior:
 
-- accept modern `.docx` only; do not pretend legacy `.doc` is supported;
-- validate the OPC/ZIP package safely and reject malformed/encrypted/unsupported inputs explicitly;
-- preserve source order for paragraphs and tables;
-- preserve visible Word numbering/list semantics required by deterministic clause parsing;
-- emit `DOCX_PARAGRAPH` and `DOCX_TABLE_CELL` Evidence anchors with stable structural indices;
-- preserve table grouping rather than flattening cells into unrelated text;
-- detect legally meaningful partial/unsupported constructs, especially tracked changes, instead of silently dropping them;
-- inventory embedded images for later local OCR via the reserved `DOCX_EMBEDDED_IMAGE` anchor;
-- produce the same EvidenceUnit / Canonical Contract boundary consumed by Stage 13;
-- add deterministic fixtures and tests with no real/confidential contracts.
-
-Do not implement the DOCX Source Viewer in 14.2; that is 14.3. Do not start OCR Windows packaging in 14.2.
+- resolve `DOCX_PARAGRAPH` and `DOCX_TABLE_CELL` Evidence IDs from persisted Source Evidence;
+- render a local logical DOCX source view without inventing pagination;
+- preserve paragraph/table order and table structure in the viewer;
+- clicking Contract Evidence from Issue Workspace must select/highlight the exact paragraph/table cell;
+- expose source warnings/partial-coverage state visibly;
+- keep PDF/image page rendering unchanged;
+- Source Viewer reads must remain local/provider-free;
+- do not start Windows OCR packaging in 14.3.
 
 ## Remaining Stage 14 sequence
 
 ```text
-14.3  DOCX Evidence navigation + logical Source Viewer
 14.4  bundle Windows PaddlePaddle/PaddleOCR runtime
 14.5  bundle fixed local OCR models + integrity/offline behavior
 14.6  unify PDF/image/DOCX paths in Pipeline + Home
@@ -177,6 +245,6 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 14.1 is complete. Stage 14.2 — DOCX native ingestion — is NEXT.**
+**Stage 14.1 and 14.2 are complete. Stage 14.3 — DOCX Evidence navigation + logical Source Viewer — is NEXT.**
 
-Do not start 14.3–14.7 in the same iteration as 14.2.
+Do not start 14.4–14.7 in the same iteration as 14.3.
