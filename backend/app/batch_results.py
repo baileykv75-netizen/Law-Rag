@@ -148,19 +148,36 @@ def _priority(
     material_disagreements: int,
     insufficient_evidence: int,
 ) -> int:
-    """Work-queue priority only; never expose this as a legal risk score."""
+    """Deterministic work-queue ordering only; never a legal risk score.
 
-    return (
-        (100_000 if human_review else 0)
-        + omissions * 10_000
-        + material_disagreements * 5_000
-        + counts.critical * 1_000
-        + counts.high * 300
-        + insufficient_evidence * 100
-        + counts.medium * 30
-        + counts.low * 5
-        + counts.info
+    Category presence is intentionally lexicographic. One item in a higher
+    category always outranks any number (up to the Stage 13 bound) of lower
+    categories. Counts are used only as a bounded tie-breaker after the
+    category ordering has been established.
+    """
+
+    flags = (
+        (131_072 if human_review else 0)
+        + (65_536 if omissions > 0 else 0)
+        + (32_768 if material_disagreements > 0 else 0)
+        + (16_384 if counts.critical > 0 else 0)
+        + (8_192 if counts.high > 0 else 0)
+        + (4_096 if insufficient_evidence > 0 else 0)
+        + (2_048 if counts.medium > 0 else 0)
+        + (1_024 if counts.low > 0 else 0)
     )
+    tie_breaker = min(
+        1_023,
+        omissions
+        + material_disagreements
+        + counts.critical
+        + counts.high
+        + insufficient_evidence
+        + counts.medium
+        + counts.low
+        + counts.info,
+    )
+    return flags + tie_breaker
 
 
 def _invalid_result(
