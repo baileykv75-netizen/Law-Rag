@@ -10,6 +10,7 @@
   "notes": [
     "Model binaries are never committed to the Law-Rag repository.",
     "The Windows release build fetches only the official Paddle BOS inference archives and must verify exact archive and extracted-file SHA-256 values before packaging.",
+    "The locked archive roots and SHA-256 values were measured from the official BOS inference archives on a clean Windows Server 2025 CI runner before strict mode was enabled.",
     "Runtime OCR must use the packaged local directories and must never fall back to PaddleOCR/PaddleX model download behavior."
   ],
   "models": [
