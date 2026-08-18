@@ -32,13 +32,7 @@ class SourceMethod(str, Enum):
 
 
 class PageEvidence(BaseModel):
-    """Legacy Stage 2 page-shaped evidence.
-
-    Stage 14 keeps this schema readable for existing PDF/image jobs. New
-    cross-format evidence uses ``SourceEvidence`` and typed source anchors in
-    ``evidence_models.py`` rather than fabricating pages for non-paginated
-    formats such as DOCX.
-    """
+    """Legacy Stage 2 page-shaped evidence for PDF/image jobs."""
 
     evidence_id: str
     page_number: int = Field(ge=1)
@@ -62,22 +56,24 @@ class PageEvidenceSummary(BaseModel):
 
 
 class DocumentInspection(BaseModel):
-    """Legacy paginated inspection artifact for PDF/image inputs.
+    """Common source inspection metadata.
 
-    DOCX is intentionally not forced through this page-shaped artifact. Stage
-    14 DOCX ingestion will emit the cross-format source-document/evidence
-    representation while legacy jobs remain parseable through this model.
+    PDF/image jobs carry real page metadata. DOCX uses page_count=0 and an
+    empty ``pages`` list to state explicitly that pagination is not applicable;
+    its native evidence lives in the cross-format SourceEvidence artifact.
     """
 
     job_id: UUID
     filename: str
     media_type: str
     document_kind: DocumentKind
-    page_count: int = Field(ge=1)
+    page_count: int = Field(ge=0)
     route: DocumentRoute
     native_text_pages: int = Field(ge=0)
     ocr_required_pages: int = Field(ge=0)
     pages: list[PageEvidence]
+    evidence_count: int = Field(default=0, ge=0)
+    warnings: list[str] = Field(default_factory=list)
     status: str = "inspected"
 
 
@@ -89,11 +85,13 @@ class IngestResponse(BaseModel):
     status: str
     storage_scope: str
     document_kind: DocumentKind
-    page_count: int
+    page_count: int = Field(ge=0)
     route: DocumentRoute
-    native_text_pages: int
-    ocr_required_pages: int
+    native_text_pages: int = Field(ge=0)
+    ocr_required_pages: int = Field(ge=0)
     pages: list[PageEvidenceSummary]
+    evidence_count: int = Field(default=0, ge=0)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class OcrPageState(str, Enum):
