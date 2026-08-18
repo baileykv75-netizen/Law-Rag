@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 
 from .pipeline_control_models import ProviderExecutionMode
 
-PIPELINE_SCHEMA_VERSION = "1.2.0"
-PIPELINE_ENGINE_VERSION = "stage13a-1.0.0"
+PIPELINE_SCHEMA_VERSION = "1.3.0"
+PIPELINE_ENGINE_VERSION = "stage13g-3-1.0.0"
 
 
 class PipelineStatus(str, Enum):
@@ -30,9 +30,20 @@ class PipelineStage(str, Enum):
     OCR = "OCR"
     STRUCTURE = "STRUCTURE"
     RULES = "RULES"
+
+    # Stage 13G authoritative production chain.
+    AUDIT_PLAN = "AUDIT_PLAN"
+    ISSUE_LEGAL_CONTEXT = "ISSUE_LEGAL_CONTEXT"
+    ISSUE_PRIMARY_AUDIT = "ISSUE_PRIMARY_AUDIT"
+    ISSUE_SECONDARY_REVIEW = "ISSUE_SECONDARY_REVIEW"
+    ISSUE_REVIEW_REPORT = "ISSUE_REVIEW_REPORT"
+
+    # Retained so persisted RC2/Stage 13A pipeline.json files remain parseable.
+    # New pipelines never emit these legacy stage records.
     PRIMARY_AUDIT = "PRIMARY_AUDIT"
     SECONDARY_REVIEW = "SECONDARY_REVIEW"
     REVIEW_REPORT = "REVIEW_REPORT"
+
     COMPLETE = "COMPLETE"
 
 
