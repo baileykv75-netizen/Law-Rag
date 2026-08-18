@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-WORKSPACE_SCHEMA_VERSION = "1.0.0"
+WORKSPACE_SCHEMA_VERSION = "1.1.0"
 
 
 class WorkspaceArtifactState(str, Enum):
@@ -63,6 +63,7 @@ class WorkspaceReviewSummary(BaseModel):
 class WorkspaceSummary(BaseModel):
     schema_version: str = WORKSPACE_SCHEMA_VERSION
     job_id: UUID
+    architecture: str = "LEGACY_RC2"
     overall_state: WorkspaceOverallState
     source_available: bool
     document: WorkspaceDocumentSummary | None = None
