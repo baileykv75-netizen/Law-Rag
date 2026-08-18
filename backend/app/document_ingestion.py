@@ -7,6 +7,8 @@ from uuid import UUID
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from .docx_ingestion import DocxProcessingError, inspect_docx
+from .evidence_models import SourceEvidenceArtifact
 from .models import (
     DocumentInspection,
     DocumentKind,
@@ -125,6 +127,24 @@ def _persist_inspection(inspection: DocumentInspection) -> None:
     )
 
 
+def _persist_docx_inspection(
+    inspection: DocumentInspection,
+    evidence: SourceEvidenceArtifact,
+) -> None:
+    job_document_path(inspection.job_id).write_text(
+        json.dumps(
+            inspection.model_dump(mode="json", exclude={"pages"}),
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    job_evidence_path(inspection.job_id).write_text(
+        json.dumps(evidence.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def _inspect_image(
     *,
     job_id: UUID,
@@ -154,6 +174,7 @@ def _inspect_image(
         native_text_pages=0,
         ocr_required_pages=1,
         pages=[page],
+        evidence_count=1,
     )
     _persist_inspection(inspection)
     return inspection
@@ -231,8 +252,29 @@ def _inspect_pdf(
         native_text_pages=native_count,
         ocr_required_pages=ocr_count,
         pages=pages,
+        evidence_count=len(pages),
     )
     _persist_inspection(inspection)
+    return inspection
+
+
+def _inspect_docx(
+    *,
+    job_id: UUID,
+    filename: str,
+    media_type: str,
+    source_path: Path,
+) -> DocumentInspection:
+    try:
+        inspection, evidence = inspect_docx(
+            job_id=job_id,
+            filename=filename,
+            media_type=media_type,
+            source_path=source_path,
+        )
+    except DocxProcessingError as exc:
+        raise DocumentProcessingError(str(exc)) from exc
+    _persist_docx_inspection(inspection, evidence)
     return inspection
 
 
@@ -253,4 +295,11 @@ def inspect_document(
         )
     if suffix in {".jpg", ".jpeg", ".png"}:
         return _inspect_image(job_id=job_id, filename=filename, media_type=media_type)
+    if suffix == ".docx":
+        return _inspect_docx(
+            job_id=job_id,
+            filename=filename,
+            media_type=media_type,
+            source_path=source_path,
+        )
     raise DocumentProcessingError("Unsupported document kind.")
