@@ -9,7 +9,6 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.ai_audit import AiAuditConfigurationError
 from app.main import app
 from app.pipeline import _mark_done, _mark_running, _run_structure_stage
 from app.pipeline_models import (
@@ -54,6 +53,32 @@ def _complete_stage(stage: PipelineStage, calls: list[PipelineStage] | None = No
     return runner
 
 
+def _patch_stage13_tail(monkeypatch, calls: list[PipelineStage] | None = None) -> None:
+    import app.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "_run_audit_plan_stage", _complete_stage(PipelineStage.AUDIT_PLAN, calls))
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_legal_context_stage",
+        _complete_stage(PipelineStage.ISSUE_LEGAL_CONTEXT, calls),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_primary_stage",
+        _complete_stage(PipelineStage.ISSUE_PRIMARY_AUDIT, calls),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_secondary_stage",
+        _complete_stage(PipelineStage.ISSUE_SECONDARY_REVIEW, calls),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_review_stage",
+        _complete_stage(PipelineStage.ISSUE_REVIEW_REPORT, calls),
+    )
+
+
 def test_pipeline_runs_in_background_persists_real_stage_progress(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
@@ -65,9 +90,7 @@ def test_pipeline_runs_in_background_persists_real_stage_progress(tmp_path: Path
     monkeypatch.setattr(pipeline, "_run_ocr_stage", _complete_stage(PipelineStage.OCR, calls))
     monkeypatch.setattr(pipeline, "_run_structure_stage", _complete_stage(PipelineStage.STRUCTURE, calls))
     monkeypatch.setattr(pipeline, "_run_rules_stage", _complete_stage(PipelineStage.RULES, calls))
-    monkeypatch.setattr(pipeline, "_run_primary_stage", _complete_stage(PipelineStage.PRIMARY_AUDIT, calls))
-    monkeypatch.setattr(pipeline, "_run_secondary_stage", _complete_stage(PipelineStage.SECONDARY_REVIEW, calls))
-    monkeypatch.setattr(pipeline, "_run_review_stage", _complete_stage(PipelineStage.REVIEW_REPORT, calls))
+    _patch_stage13_tail(monkeypatch, calls)
 
     response = client.post(
         f"/api/documents/{job_id}/pipeline",
@@ -82,13 +105,26 @@ def test_pipeline_runs_in_background_persists_real_stage_progress(tmp_path: Path
         PipelineStage.OCR,
         PipelineStage.STRUCTURE,
         PipelineStage.RULES,
-        PipelineStage.PRIMARY_AUDIT,
-        PipelineStage.SECONDARY_REVIEW,
-        PipelineStage.REVIEW_REPORT,
+        PipelineStage.AUDIT_PLAN,
+        PipelineStage.ISSUE_LEGAL_CONTEXT,
+        PipelineStage.ISSUE_PRIMARY_AUDIT,
+        PipelineStage.ISSUE_SECONDARY_REVIEW,
+        PipelineStage.ISSUE_REVIEW_REPORT,
     ]
     assert (tmp_path / "jobs" / str(job_id) / "pipeline.json").exists()
     assert body["stages"][0]["stage"] == "INGEST"
     assert body["stages"][0]["state"] == "COMPLETE"
+    assert [item["stage"] for item in body["stages"]] == [
+        "INGEST",
+        "OCR",
+        "STRUCTURE",
+        "RULES",
+        "AUDIT_PLAN",
+        "ISSUE_LEGAL_CONTEXT",
+        "ISSUE_PRIMARY_AUDIT",
+        "ISSUE_SECONDARY_REVIEW",
+        "ISSUE_REVIEW_REPORT",
+    ]
 
 
 def test_pipeline_stops_at_missing_deepseek_configuration_and_retry_resumes(tmp_path: Path, monkeypatch) -> None:
@@ -102,22 +138,44 @@ def test_pipeline_stops_at_missing_deepseek_configuration_and_retry_resumes(tmp_
     monkeypatch.setattr(pipeline, "_run_structure_stage", _complete_stage(PipelineStage.STRUCTURE))
     monkeypatch.setattr(pipeline, "_run_rules_stage", _complete_stage(PipelineStage.RULES))
 
-    def missing_primary(report: PipelineReport) -> None:
-        _mark_running(report, PipelineStage.PRIMARY_AUDIT, "primary")
-        raise AiAuditConfigurationError("DeepSeek API key is not configured.")
+    def missing_planner(report: PipelineReport) -> None:
+        _mark_running(report, PipelineStage.AUDIT_PLAN, "planner")
+        raise pipeline._StageWaitingConfiguration(
+            PipelineStage.AUDIT_PLAN,
+            "DEEPSEEK_NOT_CONFIGURED",
+            "DeepSeek API key is not configured.",
+        )
 
-    monkeypatch.setattr(pipeline, "_run_primary_stage", missing_primary)
-    monkeypatch.setattr(pipeline, "_run_secondary_stage", _complete_stage(PipelineStage.SECONDARY_REVIEW))
-    monkeypatch.setattr(pipeline, "_run_review_stage", _complete_stage(PipelineStage.REVIEW_REPORT))
+    monkeypatch.setattr(pipeline, "_run_audit_plan_stage", missing_planner)
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_legal_context_stage",
+        _complete_stage(PipelineStage.ISSUE_LEGAL_CONTEXT),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_primary_stage",
+        _complete_stage(PipelineStage.ISSUE_PRIMARY_AUDIT),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_secondary_stage",
+        _complete_stage(PipelineStage.ISSUE_SECONDARY_REVIEW),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_review_stage",
+        _complete_stage(PipelineStage.ISSUE_REVIEW_REPORT),
+    )
 
     response = client.post(f"/api/documents/{job_id}/pipeline", json={"as_of": "2026-08-17"})
     assert response.status_code == 202
     waiting = _wait(job_id, {"WAITING_CONFIGURATION"})
-    assert waiting["current_stage"] == "PRIMARY_AUDIT"
+    assert waiting["current_stage"] == "AUDIT_PLAN"
     assert waiting["failure_code"] == "DEEPSEEK_NOT_CONFIGURED"
-    assert waiting["progress_percent"] == 55
+    assert waiting["progress_percent"] == 48
 
-    monkeypatch.setattr(pipeline, "_run_primary_stage", _complete_stage(PipelineStage.PRIMARY_AUDIT))
+    monkeypatch.setattr(pipeline, "_run_audit_plan_stage", _complete_stage(PipelineStage.AUDIT_PLAN))
     retry = client.post(f"/api/documents/{job_id}/pipeline/retry")
     assert retry.status_code == 202
     completed = _wait(job_id, {"COMPLETE"})
@@ -135,8 +193,8 @@ def test_pipeline_get_is_read_only_and_never_calls_model_functions(tmp_path: Pat
     report = PipelineReport(
         job_id=job_id,
         status=PipelineStatus.WAITING_CONFIGURATION,
-        current_stage=PipelineStage.PRIMARY_AUDIT,
-        progress_percent=55,
+        current_stage=PipelineStage.AUDIT_PLAN,
+        progress_percent=48,
         as_of=date(2026, 8, 17),
         started_at=now,
         updated_at=now,
@@ -149,8 +207,9 @@ def test_pipeline_get_is_read_only_and_never_calls_model_functions(tmp_path: Pat
     def forbidden(*args, **kwargs):
         raise AssertionError("polling must not execute a provider or pipeline stage")
 
-    monkeypatch.setattr(pipeline, "run_primary_ai_audit", forbidden)
-    monkeypatch.setattr(pipeline, "run_secondary_review", forbidden)
+    monkeypatch.setattr(pipeline, "run_audit_planner", forbidden)
+    monkeypatch.setattr(pipeline, "run_issue_primary_audit", forbidden)
+    monkeypatch.setattr(pipeline, "run_issue_secondary_review", forbidden)
 
     response = client.get(f"/api/documents/{job_id}/pipeline")
     assert response.status_code == 200
@@ -176,7 +235,7 @@ def test_structure_stage_reuses_valid_existing_artifact(tmp_path: Path, monkeypa
         job_id=job_id,
         status=PipelineStatus.RUNNING,
         current_stage=PipelineStage.STRUCTURE,
-        progress_percent=30,
+        progress_percent=25,
         as_of=date(2026, 8, 17),
         started_at=now,
         updated_at=now,
@@ -219,7 +278,7 @@ def test_resource_contention_persists_waiting_worker_state(tmp_path: Path, monke
         job_id=job_id,
         status=PipelineStatus.RUNNING,
         current_stage=PipelineStage.STRUCTURE,
-        progress_percent=30,
+        progress_percent=25,
         as_of=date(2026, 8, 17),
         started_at=now,
         updated_at=now,
