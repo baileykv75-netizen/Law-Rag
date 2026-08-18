@@ -10,31 +10,57 @@ permissions:
   contents: read
 
 jobs:
-  windows-ocr-model-assets:
+  windows-offline-ocr-release:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12.10'
-      - name: Fetch and strictly verify locked Paddle OCR inference archives
-        working-directory: backend
-        env:
-          PYTHONPATH: .
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.2'
+          package-manager-cache: false
+      - name: Build Windows onedir with locked runtime and official OCR models
+        shell: pwsh
+        run: ./release/build-windows.ps1
+      - name: Show verified OCR model resolution
+        shell: pwsh
+        run: Get-Content release/.build/ocr-models/ocr-models-resolved.json
+      - name: Verify frozen model integrity without network
         shell: pwsh
         run: |
-          python -m app.ocr_model_assets `
-            --manifest ../release/ocr-models-manifest.json `
-            --output-dir ../release/.ocr-model-verify
-          Get-Content ../release/.ocr-model-verify/ocr-models-resolved.json
-      - name: Ensure verified model payload remains untracked
+          $env:HTTP_PROXY = "http://127.0.0.1:9"
+          $env:HTTPS_PROXY = "http://127.0.0.1:9"
+          $env:ALL_PROXY = "http://127.0.0.1:9"
+          $env:NO_PROXY = "127.0.0.1,localhost"
+          & ./release/dist/Law-Rag/Law-Rag.exe --diagnose-ocr-models --json
+          if ($LASTEXITCODE -ne 0) { throw "Frozen OCR model integrity diagnostic failed with exit code $LASTEXITCODE" }
+      - name: Run packaged offline real OCR and base workflow smoke
+        shell: pwsh
+        run: ./release/smoke-windows.ps1
+      - name: Build deterministic portable RC ZIP and manifest
+        shell: pwsh
+        run: ./release/package-rc.ps1
+      - name: Extract final RC and smoke user workflow
+        shell: pwsh
+        run: ./release/smoke-rc-windows.ps1
+      - name: Verify model payload is not tracked in Git
         shell: pwsh
         run: |
-          $tracked = git ls-files release/.ocr-model-verify
-          if ($tracked) { throw "OCR model verification payload must never be tracked" }
-          $status = git status --short
-          if ($status) { Write-Host $status }
-      - name: Remove transient verified model payload
-        if: always()
-        shell: pwsh
-        run: Remove-Item release/.ocr-model-verify -Recurse -Force -ErrorAction SilentlyContinue
+          $tracked = git ls-files | Select-String -Pattern 'PP-OCRv6_medium_(det|rec).*(inference\.pdiparams|inference\.json|inference\.yml)'
+          if ($tracked) { throw "OCR model binaries must not be committed to Git" }
+      - name: Upload inspectable Stage 14.5 onedir
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-onedir-stage14-5
+          path: release/dist/Law-Rag
+          if-no-files-found: error
+          retention-days: 3
+      - name: Upload Stage 14.5 portable RC
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-x64-stage14-5
+          path: release/rc
+          if-no-files-found: error
+          retention-days: 7
