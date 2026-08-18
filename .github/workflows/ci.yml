@@ -47,7 +47,7 @@ jobs:
         run: npm run build
 
   windows-release-bundle-smoke:
-    if: github.event_name == 'push' && (contains(github.event.head_commit.message, 'verify Windows bundle') || contains(github.event.head_commit.message, 'verify Windows RC'))
+    if: (github.event_name == 'pull_request' && startsWith(github.head_ref, 'stage14-4-')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'verify Windows bundle') || contains(github.event.head_commit.message, 'verify Windows RC')))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -99,14 +99,14 @@ jobs:
       - name: Upload inspectable Windows onedir bundle
         uses: actions/upload-artifact@v4
         with:
-          name: law-rag-windows-onedir-stage12f
+          name: law-rag-windows-onedir-stage14-4
           path: release/dist/Law-Rag
           if-no-files-found: error
           retention-days: 3
-      - name: Upload portable Stage 12F RC2 files
+      - name: Upload portable RC files
         uses: actions/upload-artifact@v4
         with:
-          name: law-rag-0.8.0-rc2-windows-x64
+          name: law-rag-windows-x64-stage14-4
           path: release/rc
           if-no-files-found: error
           retention-days: 7
@@ -132,11 +132,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $python -m pip check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Verify exact OCR runtime imports without model initialization
+      - name: Verify exact OCR runtime imports without model initialization or network
         shell: pwsh
         run: |
           $python = Join-Path $PWD ".ocr-venv\Scripts\python.exe"
           $env:PYTHONPATH = (Join-Path $PWD "backend")
+          $env:HTTP_PROXY = "http://127.0.0.1:9"
+          $env:HTTPS_PROXY = "http://127.0.0.1:9"
+          $env:ALL_PROXY = "http://127.0.0.1:9"
+          $env:NO_PROXY = "127.0.0.1,localhost"
           & $python -c "from app.ocr_runtime import probe_ocr_runtime; p=probe_ocr_runtime(import_modules=True, run_native_check=True); print(p.model_dump()); raise SystemExit(0 if p.ready else 1)"
       - name: Show resolved isolated OCR dependency closure
         shell: pwsh
