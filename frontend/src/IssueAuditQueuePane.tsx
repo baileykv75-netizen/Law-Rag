@@ -17,6 +17,15 @@ function priorityLabel(priority: ReviewPriority) {
   return '常规'
 }
 
+function humanDecisionLabel(issue: IssueQueueItem) {
+  if (issue.human_decision_stale) return 'HUMAN · STALE'
+  if (issue.human_decision_state === 'CONFIRMED') return 'HUMAN · CONFIRMED'
+  if (issue.human_decision_state === 'REJECTED') return 'HUMAN · REJECTED'
+  if (issue.human_decision_state === 'NEEDS_MORE_REVIEW') return 'HUMAN · MORE REVIEW'
+  if (issue.human_decision_state === 'UNREVIEWED') return 'HUMAN · UNREVIEWED'
+  return issue.requires_human_review ? 'HUMAN · PENDING' : null
+}
+
 export default function IssueAuditQueuePane({ issues, selectedIssueId, onSelect }: Props) {
   const [query, setQuery] = useState('')
   const [attentionOnly, setAttentionOnly] = useState(false)
@@ -34,9 +43,15 @@ export default function IssueAuditQueuePane({ issues, selectedIssueId, onSelect 
         issue.primary_state ?? '',
         issue.secondary_assessment ?? '',
         issue.comparison_state ?? '',
+        issue.human_decision_state ?? '',
       ].some((value) => value.toLowerCase().includes(needle))
     })
   }, [issues, query, attentionOnly, priority])
+
+  const outstandingHuman = issues.filter((item) => (
+    item.requires_human_review
+    && (item.human_decision_stale || !['CONFIRMED', 'REJECTED'].includes(item.human_decision_state ?? ''))
+  )).length
 
   return (
     <div className="audit-queue issue-audit-queue">
@@ -67,41 +82,49 @@ export default function IssueAuditQueuePane({ issues, selectedIssueId, onSelect 
         <span>全部 {issues.length}</span>
         <span>当前 {filtered.length}</span>
         <span>需人工 {issues.filter((item) => item.requires_human_review).length}</span>
+        <span>人工待办 {outstandingHuman}</span>
         <span>分歧 {issues.filter((item) => item.comparison_state === 'MATERIAL_DISAGREEMENT').length}</span>
         <span>可能漏审 {issues.filter((item) => item.comparison_state === 'POSSIBLE_OMISSION').length}</span>
       </div>
 
       <div className="queue-list">
         {filtered.length === 0 && <p className="quiet-state">当前筛选条件下没有 Issue。</p>}
-        {filtered.map((issue) => (
-          <article
-            key={issue.issue_id}
-            className={`queue-card ${selectedIssueId === issue.issue_id ? 'is-selected' : ''} ${issue.requires_human_review ? 'needs-review' : ''}`}
-            onClick={() => onSelect(issue)}
-          >
-            <div className="queue-card-heading">
-              <span className={`severity-pill ${severityClass(issue.primary_severity)}`}>
-                {issue.primary_severity ?? 'PENDING'}
-              </span>
-              <span className="comparison-pill">{issue.comparison_state ?? 'WAITING_COMPARISON'}</span>
-              {issue.requires_human_review && <span className="omission-pill">HUMAN REVIEW</span>}
-            </div>
-            <h3>{issue.topic}</h3>
-            <p>{issue.issue_id} · {priorityLabel(issue.priority)} · {issue.source_labels.join(' + ') || '未标记来源'}</p>
-            <div className="model-compare-row">
-              <span>DeepSeek · {issue.primary_state ?? '尚未完成'}</span>
-              <span>Kimi · {issue.secondary_assessment ?? '尚未完成'}</span>
-            </div>
-            <div className="model-compare-row">
-              <span>Coverage · {issue.coverage_assessment ?? '尚未复核'}</span>
-              <span>Legal · {issue.legal_support_state ?? '尚未检索'}</span>
-            </div>
-            <div className="queue-evidence-groups issue-evidence-counts">
-              <div><strong>合同证据</strong><span>{issue.contract_evidence_count} 条</span></div>
-              <div><strong>法律证据</strong><span>{issue.legal_evidence_count} 条</span></div>
-            </div>
-          </article>
-        ))}
+        {filtered.map((issue) => {
+          const humanLabel = humanDecisionLabel(issue)
+          return (
+            <article
+              key={issue.issue_id}
+              className={`queue-card ${selectedIssueId === issue.issue_id ? 'is-selected' : ''} ${issue.requires_human_review ? 'needs-review' : ''}`}
+              onClick={() => onSelect(issue)}
+            >
+              <div className="queue-card-heading">
+                <span className={`severity-pill ${severityClass(issue.primary_severity)}`}>
+                  {issue.primary_severity ?? 'PENDING'}
+                </span>
+                <span className="comparison-pill">{issue.comparison_state ?? 'WAITING_COMPARISON'}</span>
+                {humanLabel && (
+                  <span className={`human-decision-pill ${issue.human_decision_stale ? 'is-stale' : ''}`}>
+                    {humanLabel}{issue.human_decision_revision ? ` · r${issue.human_decision_revision}` : ''}
+                  </span>
+                )}
+              </div>
+              <h3>{issue.topic}</h3>
+              <p>{issue.issue_id} · {priorityLabel(issue.priority)} · {issue.source_labels.join(' + ') || '未标记来源'}</p>
+              <div className="model-compare-row">
+                <span>DeepSeek · {issue.primary_state ?? '尚未完成'}</span>
+                <span>Kimi · {issue.secondary_assessment ?? '尚未完成'}</span>
+              </div>
+              <div className="model-compare-row">
+                <span>Coverage · {issue.coverage_assessment ?? '尚未复核'}</span>
+                <span>Legal · {issue.legal_support_state ?? '尚未检索'}</span>
+              </div>
+              <div className="queue-evidence-groups issue-evidence-counts">
+                <div><strong>合同证据</strong><span>{issue.contract_evidence_count} 条</span></div>
+                <div><strong>法律证据</strong><span>{issue.legal_evidence_count} 条</span></div>
+              </div>
+            </article>
+          )
+        })}
       </div>
     </div>
   )
