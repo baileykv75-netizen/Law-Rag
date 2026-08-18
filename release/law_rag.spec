@@ -30,11 +30,20 @@ paddleocr_datas, paddleocr_binaries, paddleocr_hidden = collect_package("paddleo
 paddlex_datas, paddlex_binaries, paddlex_hidden = collect_package("paddlex")
 
 # Runtime versions are validated through importlib.metadata inside the frozen
-# executable. Keep distribution metadata alongside collected Python/native code.
+# executable. PaddleX also checks its ocr-core extra with
+# importlib.metadata.version(...) before creating the OCR pipeline, so the
+# distribution metadata for every ocr-core dependency must survive freezing
+# even though the importable modules themselves are already collected.
 ocr_metadata = [
     *collect_metadata("paddlepaddle"),
     *collect_metadata("paddleocr"),
     *collect_metadata("paddlex"),
+    *collect_metadata("imagesize"),
+    *collect_metadata("opencv-contrib-python"),
+    *collect_metadata("pyclipper"),
+    *collect_metadata("pypdfium2"),
+    *collect_metadata("python-bidi"),
+    *collect_metadata("shapely"),
 ]
 
 datas = [
