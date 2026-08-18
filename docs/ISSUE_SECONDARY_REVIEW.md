@@ -23,7 +23,7 @@ Kimi secondary review
             Is a possible omission still visible in the supplied evidence?
 ```
 
-One bounded Kimi call is made per AuditPlan issue. `COMPLETE` is impossible unless every planned issue has exactly one Stage 13F result.
+One bounded Kimi call is made per AuditPlan issue when sufficient bounded contract context exists. Deterministic evidence-insufficient results are used instead of a provider call when there is no target contract evidence or the complete secondary context is over budget. `COMPLETE` is impossible unless every planned issue has exactly one Stage 13F result.
 
 ## Secondary assessments
 
@@ -59,15 +59,19 @@ Kimi may cite only:
 
 Invented IDs are rejected before persistence.
 
+A `SUPPORTED` or `PARTIALLY_SUPPORTED` assessment must cite supplied contract Evidence. If the Stage 13E primary result is a legal conclusion, supporting it also requires supplied Legal Evidence.
+
 `POSSIBLE_OMISSION` requires supplied contract Evidence plus an explicit omission title/reasoning. The provider prompt requires supplied Legal Evidence as well when the omission is presented as a legal proposition.
+
+If an AuditPlan issue has no target contract evidence, Stage 13F does not ask Kimi to review an empty contract context. It emits deterministic `REVIEW_REQUIRED / INSUFFICIENT_EVIDENCE` with `NO_RELEVANT_CONTRACT_EVIDENCE_FOR_SECONDARY_REVIEW`.
 
 When Stage 13D reports `NO_MATCH_IN_LOCAL_CORPUS` or `VERSION_REVIEW_REQUIRED`, a model claim of fully covered evidence is deterministically downgraded to `INSUFFICIENT_EVIDENCE` coverage with an explicit review reason.
 
 ## Bounded requests
 
 ```text
-max secondary issue requests  256
-max serialized secondary context  120,000 chars
+max secondary issue requests        256
+max serialized secondary context    120,000 chars
 ```
 
 The context budget includes both the Stage 13E issue context and the primary result.
