@@ -81,6 +81,27 @@ def test_checked_in_model_manifest_is_fully_locked() -> None:
         assert all(len(value) == 64 for value in model["file_sha256"].values())
 
 
+def test_frozen_paddlex_ocr_config_uses_only_approved_models() -> None:
+    config_path = (
+        Path(__file__).resolve().parents[2]
+        / "release"
+        / "paddlex"
+        / "configs"
+        / "pipelines"
+        / "OCR.yaml"
+    )
+    text = config_path.read_text(encoding="utf-8")
+
+    assert "pipeline_name: OCR" in text
+    assert "use_doc_preprocessor: false" in text
+    assert "use_textline_orientation: false" in text
+    assert text.count("model_name:") == 2
+    assert "model_name: PP-OCRv6_medium_det" in text
+    assert "model_name: PP-OCRv6_medium_rec" in text
+    assert "UVDoc" not in text
+    assert "PP-LCNet" not in text
+
+
 def test_model_resolver_requires_exact_files_and_hashes(tmp_path: Path) -> None:
     root, manifest = _fixture_models(tmp_path)
     paths = resolve_ocr_model_paths(model_root=root, manifest_path=manifest)
