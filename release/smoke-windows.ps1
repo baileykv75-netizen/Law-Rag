@@ -110,11 +110,28 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Stage 14.4 must prove the frozen executable can import Paddle/PaddleOCR and
-# execute Paddle's local native-op check. This command never constructs the OCR
-# pipeline, so model selection/download remains outside the runtime smoke.
-& $Exe --diagnose-ocr-runtime
-if ($LASTEXITCODE -ne 0) {
-    throw "Packaged OCR runtime diagnostic failed with exit code $LASTEXITCODE"
+# execute Paddle's local native-op check while network access is unusable. This
+# command never constructs the OCR pipeline, so model selection/download remains
+# outside the runtime smoke.
+$PreviousHttpProxy = $env:HTTP_PROXY
+$PreviousHttpsProxy = $env:HTTPS_PROXY
+$PreviousAllProxy = $env:ALL_PROXY
+$PreviousNoProxy = $env:NO_PROXY
+try {
+    $env:HTTP_PROXY = "http://127.0.0.1:9"
+    $env:HTTPS_PROXY = "http://127.0.0.1:9"
+    $env:ALL_PROXY = "http://127.0.0.1:9"
+    $env:NO_PROXY = "127.0.0.1,localhost"
+    & $Exe --diagnose-ocr-runtime
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged OCR runtime diagnostic failed with exit code $LASTEXITCODE"
+    }
+}
+finally {
+    if ($null -eq $PreviousHttpProxy) { Remove-Item Env:HTTP_PROXY -ErrorAction SilentlyContinue } else { $env:HTTP_PROXY = $PreviousHttpProxy }
+    if ($null -eq $PreviousHttpsProxy) { Remove-Item Env:HTTPS_PROXY -ErrorAction SilentlyContinue } else { $env:HTTPS_PROXY = $PreviousHttpsProxy }
+    if ($null -eq $PreviousAllProxy) { Remove-Item Env:ALL_PROXY -ErrorAction SilentlyContinue } else { $env:ALL_PROXY = $PreviousAllProxy }
+    if ($null -eq $PreviousNoProxy) { Remove-Item Env:NO_PROXY -ErrorAction SilentlyContinue } else { $env:NO_PROXY = $PreviousNoProxy }
 }
 # Verify the diagnostic itself did not materialize model caches into the bundle.
 Assert-BundleContents
@@ -172,7 +189,7 @@ try {
         throw "Packaged PDFium source-page rendering did not return image/png."
     }
 
-    Write-Host "[Law-Rag] Packaged OCR runtime, diagnostics, all four UI routes, API, native PDF ingestion, PDFium rendering, and private/model-data scan passed."
+    Write-Host "[Law-Rag] Packaged OCR runtime, offline diagnostics, all four UI routes, API, native PDF ingestion, PDFium rendering, and private/model-data scan passed."
 }
 finally {
     if (-not $Process.HasExited) {
