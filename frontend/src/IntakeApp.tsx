@@ -88,17 +88,23 @@ function pipelineStageLabel(stage: PipelineReport['current_stage']) {
   if (stage === 'INGEST') return '文件已接收'
   if (stage === 'OCR') return '正在识别扫描文本'
   if (stage === 'STRUCTURE') return '正在整理合同结构'
-  if (stage === 'RULES') return '正在执行合同检查'
-  if (stage === 'PRIMARY_AUDIT') return '正在检索法律依据并进行主审'
-  if (stage === 'SECONDARY_REVIEW') return '正在进行独立二审'
-  if (stage === 'REVIEW_REPORT') return '正在比较结果并整理报告'
+  if (stage === 'RULES') return '正在执行确定性合同检查'
+  if (stage === 'AUDIT_PLAN') return '正在生成完整审计规划'
+  if (stage === 'ISSUE_LEGAL_CONTEXT') return '正在按 Issue 检索法律依据'
+  if (stage === 'ISSUE_PRIMARY_AUDIT') return 'DeepSeek 正在逐 Issue 主审'
+  if (stage === 'ISSUE_SECONDARY_REVIEW') return 'Kimi 正在逐 Issue 独立复核'
+  if (stage === 'ISSUE_REVIEW_REPORT') return '正在确定性比较并整理审计结果'
+  // Persisted Legacy RC2 jobs remain readable during the compatibility window.
+  if (stage === 'PRIMARY_AUDIT') return 'Legacy RC2 · 正在主审'
+  if (stage === 'SECONDARY_REVIEW') return 'Legacy RC2 · 正在独立二审'
+  if (stage === 'REVIEW_REPORT') return 'Legacy RC2 · 正在整理报告'
   return '审计完成'
 }
 
 function providerModeCopy(mode: ProviderExecutionMode) {
-  if (mode === 'AUTO_CONTINUE') return '本地阶段完成后自动发送受限证据到 DeepSeek 与 Kimi。'
-  if (mode === 'LOCAL_ONLY') return '只运行本地阶段，除非你之后对具体合同明确批准云端审计。'
-  return '推荐：先完成本地阶段，在发送任何合同证据到 DeepSeek/Kimi 前停下等待你确认。'
+  if (mode === 'AUTO_CONTINUE') return '完成本地结构化与确定性检查后，自动进入 Planner / DeepSeek / Kimi 的受限云端审计。'
+  if (mode === 'LOCAL_ONLY') return '只运行本地结构化与确定性检查；到 Audit Planner 的首次云端调用前暂停，除非之后明确批准。'
+  return '推荐：先完成本地结构化与确定性检查，在 Audit Planner 第一次发送合同证据到云端前停下等待确认。'
 }
 
 function stateLabel(item: QueueItem) {
@@ -113,12 +119,12 @@ function stateLabel(item: QueueItem) {
     return item.pipeline ? pipelineStageLabel(item.pipeline.current_stage) : '正在启动后台审计'
   }
   if (item.state === 'waiting') {
-    if (item.pipeline?.status === 'PAUSED_BEFORE_PROVIDER') return '等待云端发送确认'
+    if (item.pipeline?.status === 'PAUSED_BEFORE_PROVIDER') return '等待下一次云端调用确认'
     if (item.pipeline?.status === 'WAITING_OPTIONAL_COMPONENT') return '等待可选组件'
     return '等待 API 配置'
   }
   if (item.state === 'cancelled') return '已取消'
-  if (item.state === 'complete') return '审计完成'
+  if (item.state === 'complete') return '审计流水线完成'
   return '处理失败'
 }
 
@@ -374,7 +380,7 @@ function IntakeApp() {
       const pipeline = await approveProvider(item.result.job_id)
       setItems((current) => current.map((candidate) => (
         candidate.id === item.id
-          ? { ...candidate, state: 'processing', pipeline, error: null, notice: '已明确批准该合同进入 DeepSeek/Kimi 云端审计。', providerMode: 'REQUIRE_APPROVAL' }
+          ? { ...candidate, state: 'processing', pipeline, error: null, notice: '已明确批准该合同继续执行受限 Planner / DeepSeek / Kimi 云端审计。', providerMode: 'REQUIRE_APPROVAL' }
           : candidate
       )))
       void pollPipeline(item.id, item.result.job_id)
@@ -395,8 +401,8 @@ function IntakeApp() {
     try {
       const control = await pauseFutureProviders(item.result.job_id)
       const notice = control.active_provider
-        ? `当前 ${control.active_provider} 请求已经开始，无法撤回；后续外部模型调用已设置为发送前暂停。`
-        : '已设置为发送前确认；尚未开始的 DeepSeek/Kimi 调用不会自动发送。'
+        ? `当前 ${control.active_provider} 请求已经开始，无法撤回；后续 Planner / DeepSeek / Kimi 调用已设置为发送前暂停。`
+        : '已设置为发送前确认；尚未开始的 Planner / DeepSeek / Kimi 调用不会自动发送。'
       setItems((current) => current.map((candidate) => (
         candidate.id === item.id
           ? { ...candidate, providerMode: 'REQUIRE_APPROVAL', notice }
@@ -631,8 +637,8 @@ function IntakeApp() {
             aria-label="选择云端审计策略"
           >
             <option value="REQUIRE_APPROVAL">发送前确认（推荐）</option>
-            <option value="AUTO_CONTINUE">本地完成后自动继续</option>
-            <option value="LOCAL_ONLY">仅本地处理</option>
+            <option value="AUTO_CONTINUE">本地检查后自动继续</option>
+            <option value="LOCAL_ONLY">仅本地检查</option>
           </select>
         </div>
 
@@ -667,7 +673,7 @@ function IntakeApp() {
         </div>
 
         <p className="intake-transmission-note">
-          合同先在本机分块保存并运行可用的本地处理。任何已经开始的外部 API 请求都无法撤回已发送内容，因此 Law-Rag 会在每次 DeepSeek/Kimi 调用前重新检查你的云端策略与取消状态。
+          合同先在本机完成读取、OCR（需要时）、结构化和确定性规则检查。之后 Audit Planner、DeepSeek 逐 Issue 主审与 Kimi 独立复核都必须经过持久化云端策略；每次真正发送前都会重新检查批准与取消状态。已经开始的外部请求无法撤回已发送内容。
         </p>
 
         {items.length > 0 && (
@@ -675,7 +681,7 @@ function IntakeApp() {
             <div className="intake-batch-summary">
               <div>
                 <strong>{completeCount}/{items.length}</strong>
-                <span> 审计完成</span>
+                <span> 流水线完成</span>
                 {queuedCount > 0 && <span> · {queuedCount} 个等待上传</span>}
                 {waitingCount > 0 && <span> · {waitingCount} 个等待确认/配置</span>}
                 {cancelledCount > 0 && <span> · {cancelledCount} 个已取消</span>}
@@ -690,7 +696,7 @@ function IntakeApp() {
             {(completeCount > 0 || waitingCount > 0 || cancelledCount > 0 || errorCount > 0) && batchId && (
               <div className="batch-result-entry">
                 <a href={`/results?batch=${encodeURIComponent(batchId)}`}>查看批次结果</a>
-                <span>全部正常完成时会自动进入结果页。</span>
+                <span>全部流水线正常完成时会自动进入结果页；需要人工复核的 Issue 会在结果页和工作台继续保留。</span>
               </div>
             )}
 
@@ -761,7 +767,7 @@ function IntakeApp() {
             </div>
 
             <div className="intake-footnote">
-              进度来自真实上传字节和后台持久化状态。默认“发送前确认”会先完成本地阶段，再停在外部模型边界；取消/批准意图同样保存在本机，重启不会静默恢复云端调用。
+              进度来自真实上传字节和后台持久化状态。默认“发送前确认”会先完成本地读取、结构化和规则检查，再在 Audit Planner 的首次云端调用前暂停；后续每一次 Planner / DeepSeek / Kimi 请求仍会重新检查取消与云端策略。
             </div>
           </div>
         )}
