@@ -14,10 +14,20 @@ DEFAULT_CONFIG = REPO_ROOT / "release" / "rc-config.json"
 DEFAULT_BUNDLE = REPO_ROOT / "release" / "dist" / "Law-Rag"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "release" / "rc"
 _FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
-_BANNED_DIR_NAMES = {"runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private", "model_cache"}
+_ROOT_PRIVATE_DIR_NAMES = {"runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private"}
+_BANNED_OCR_CACHE_DIR_NAMES = {"model_cache", ".paddlex", ".paddleocr"}
+_BANNED_OCR_MODEL_DIR_NAMES = {"official_models"}
 _BANNED_FILE_NAMES = {
     ".env",
     "human-review.json",
+    "pipeline.json",
+    "pipeline-control.json",
+    "job-architecture.json",
+    "audit-plan.json",
+    "issue-legal-context.json",
+    "issue-primary-audit.json",
+    "issue-secondary-review.json",
+    "issue-review-report.json",
     "ai-audit.json",
     "secondary-review.json",
     "review-report.json",
@@ -25,6 +35,7 @@ _BANNED_FILE_NAMES = {
     "source.jpg",
     "source.jpeg",
     "source.png",
+    "source.docx",
 }
 
 
@@ -50,19 +61,45 @@ def _validate_rc_config(config: dict[str, object]) -> tuple[str, str, str]:
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+", rc_version):
         raise ValueError("rc_version must look like 0.8.0-rc1.")
     if target != "windows-x64":
-        raise ValueError("Stage 11E RC target must remain windows-x64.")
+        raise ValueError("Portable RC target must remain windows-x64.")
     if not re.fullmatch(r"[A-Za-z0-9._-]+", basename):
         raise ValueError("artifact_basename contains unsafe characters.")
     return rc_version, target, basename
 
 
+def _is_banned_ocr_model_dir(name: str) -> bool:
+    lower = name.lower()
+    return (
+        lower in _BANNED_OCR_MODEL_DIR_NAMES
+        or re.fullmatch(r"pp-ocrv6.*_det", lower) is not None
+        or re.fullmatch(r"pp-ocrv6.*_rec", lower) is not None
+    )
+
+
 def _scan_bundle(bundle_dir: Path) -> None:
     if not (bundle_dir / "Law-Rag.exe").is_file():
         raise FileNotFoundError("Law-Rag.exe is missing from the RC source bundle.")
+
+    # Mutable Law-Rag user/application data belongs beside the executable. A
+    # generic nested directory called `runtime` or `logs` can legitimately be
+    # Python package code (PaddleX contains such runtime modules), so only the
+    # application-root locations are private-data violations.
+    for name in sorted(_ROOT_PRIVATE_DIR_NAMES):
+        path = bundle_dir / name
+        if path.exists():
+            raise RuntimeError(f"RC source bundle contains banned private application directory: {name}")
+
+    # Stage 14.4 deliberately excludes downloaded OCR caches/model weights.
+    # Those identities remain unsafe regardless of where they appear in the
+    # onedir tree, so they are rejected recursively.
     for path in bundle_dir.rglob("*"):
-        if path.is_dir() and path.name.lower() in _BANNED_DIR_NAMES:
-            raise RuntimeError(f"RC source bundle contains banned private/runtime directory: {path.name}")
-        if path.is_file() and path.name.lower() in _BANNED_FILE_NAMES:
+        if path.is_dir():
+            lower = path.name.lower()
+            if lower in _BANNED_OCR_CACHE_DIR_NAMES:
+                raise RuntimeError(f"RC source bundle contains banned OCR cache directory: {path.name}")
+            if _is_banned_ocr_model_dir(path.name):
+                raise RuntimeError(f"RC source bundle contains banned OCR model directory: {path.name}")
+        elif path.is_file() and path.name.lower() in _BANNED_FILE_NAMES:
             raise RuntimeError(f"RC source bundle contains banned private/job file: {path.name}")
 
 
@@ -154,7 +191,7 @@ def build_rc_artifacts(
             "archive_order": "case-insensitive path sort",
             "archive_timestamp": "1980-01-01T00:00:00Z fixed per ZIP entry",
             "wall_clock_timestamp_embedded": False,
-            "claim": "Deterministic archive from identical Stage 11D bundle contents; no cross-toolchain PE byte-identity claim.",
+            "claim": "Deterministic archive from identical validated onedir bundle contents; no cross-toolchain PE byte-identity claim.",
         },
     }
     manifest_path = output_dir / "RC-MANIFEST.json"
@@ -168,7 +205,7 @@ def build_rc_artifacts(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build deterministic Law-Rag Stage 11E portable RC artifacts.")
+    parser = argparse.ArgumentParser(description="Build deterministic Law-Rag portable RC artifacts.")
     parser.add_argument("--bundle-dir", type=Path, default=DEFAULT_BUNDLE)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
