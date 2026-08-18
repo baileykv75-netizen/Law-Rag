@@ -9,11 +9,16 @@ $Exe = Join-Path $BundleDir "Law-Rag.exe"
 $SmokePdf = Join-Path $PSScriptRoot ".build\smoke-native.pdf"
 $Runtime = Join-Path $env:RUNNER_TEMP ("law-rag-stage13a-runtime-" + [guid]::NewGuid().ToString("N"))
 $PreviousRuntime = $env:LAW_RAG_RUNTIME_DIR
+$PreviousDeepSeekKey = $env:DEEPSEEK_API_KEY
 
 if (-not (Test-Path $Exe)) { throw "Law-Rag.exe not found at $Exe" }
 if (-not (Test-Path $SmokePdf)) { throw "Synthetic native PDF smoke fixture not found at $SmokePdf" }
 
 $env:LAW_RAG_RUNTIME_DIR = $Runtime
+# A synthetic key is intentionally present so the smoke proves REQUIRE_APPROVAL,
+# not missing configuration, is what blocks the first outbound Planner request.
+# The pipeline is never approved, so this value is never transmitted.
+$env:DEEPSEEK_API_KEY = "law-rag-stage13g-synthetic-boundary-key"
 $Process = $null
 
 function Start-LawRag {
@@ -63,8 +68,8 @@ try {
     $BaseUrl = $Started.BaseUrl
 
     # REQUIRE_APPROVAL must win before the Audit Planner's first outbound call.
-    # This proves the packaged product owns the provider boundary instead of
-    # relying on a missing provider key as an accidental safety mechanism.
+    # The configured key is synthetic and must remain unused because approval is
+    # never granted in this smoke.
     $Upload = Invoke-RestMethod -Uri "$BaseUrl/api/documents" -Method Post -Form @{ file = Get-Item $SmokePdf } -TimeoutSec 20
     if (-not $Upload.job_id) { throw "Stage 13 upload did not return job_id." }
 
@@ -103,7 +108,7 @@ try {
         throw "Explicit resume bypassed or moved the original Audit Planner provider approval boundary."
     }
 
-    Write-Host "[Law-Rag] Packaged Stage 13 Audit Planner boundary pause/cancel/resume smoke passed without provider keys or paid calls."
+    Write-Host "[Law-Rag] Packaged Stage 13 Audit Planner boundary pause/cancel/resume smoke passed with a synthetic unused key and no paid calls."
 }
 finally {
     if ($Process -and -not $Process.HasExited) {
@@ -115,6 +120,12 @@ finally {
     }
     else {
         $env:LAW_RAG_RUNTIME_DIR = $PreviousRuntime
+    }
+    if ($null -eq $PreviousDeepSeekKey) {
+        Remove-Item Env:DEEPSEEK_API_KEY -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:DEEPSEEK_API_KEY = $PreviousDeepSeekKey
     }
     if (Test-Path $Runtime) { Remove-Item $Runtime -Recurse -Force }
 }
