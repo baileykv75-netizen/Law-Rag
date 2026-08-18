@@ -1,0 +1,36 @@
+name: Stage 14.5 OCR model assets
+
+on:
+  push:
+    branches: [stage14-5-offline-ocr-models]
+  pull_request:
+    branches: [stage14-4-windows-ocr-runtime]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-ocr-model-assets:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12.10'
+      - name: Probe official Paddle OCR inference archives
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        shell: pwsh
+        run: |
+          python -m app.ocr_model_assets `
+            --manifest ../release/ocr-models-manifest.json `
+            --output-dir ../release/.ocr-model-probe `
+            --probe
+          Get-Content ../release/.ocr-model-probe/ocr-models-resolved.json
+      - name: Ensure probe output is not tracked as a repository model cache
+        shell: pwsh
+        run: |
+          git status --short
+          $tracked = git ls-files release/.ocr-model-probe
+          if ($tracked) { throw "OCR model probe output must never be tracked" }
