@@ -13,8 +13,8 @@ Stage 14       IN PROGRESS — OCR distribution + DOCX
                 14.1 cross-format Evidence architecture COMPLETE
                 14.2 DOCX native ingestion COMPLETE
                 14.3 DOCX Evidence + Source Viewer COMPLETE
-                14.4 Windows OCR runtime distribution NEXT
-                14.5 offline OCR model distribution PENDING
+                14.4 Windows OCR runtime distribution COMPLETE
+                14.5 offline OCR model distribution NEXT
                 14.6 Pipeline + Home integration PENDING
                 14.7 full regression + packaged Windows smoke PENDING
 ```
@@ -122,49 +122,16 @@ Stage 14.3 makes the existing Contract Evidence navigation work for structural D
 
 ### Backend source navigation
 
-`GET /api/documents/{job_id}/evidence/{evidence_id}` is now source-format aware:
+`GET /api/documents/{job_id}/evidence/{evidence_id}` is source-format aware:
 
 ```text
 PDF/image Evidence -> page / bbox / polygon / text offset
 DOCX Evidence      -> DOCX_PARAGRAPH / DOCX_TABLE_CELL / DOCX_EMBEDDED_IMAGE anchor
 ```
 
-For DOCX, `page_number` remains `null`. Canonical references and the current canonical quote can be returned while the persisted typed source anchor remains authoritative.
+For DOCX, `page_number` remains `null`. `GET /api/documents/{job_id}/source/docx` returns a local read-only logical source representation preserving paragraph/table/image order and table row/cell structure.
 
-`GET /api/documents/{job_id}/source/docx` returns a local, read-only logical source representation:
-
-```text
-paragraph
- -> table (row -> cell -> paragraph)
- -> paragraph
- -> embedded-image placeholder
-```
-
-Blocks preserve persisted Evidence order. Tables preserve their table index, row/cell coordinates and `parent_group_id`. Embedded images remain visible Evidence placeholders; Stage 14.3 does not OCR them.
-
-The historical paginated route remains for PDF/image. Calling `/source/pages/{page}` for a DOCX fails explicitly instead of inventing page 1.
-
-### Workspace integration
-
-Workspace Stage 2 validation now discriminates the persisted source-evidence representation:
-
-- PDF/image jobs validate historical `PageEvidence[]`;
-- DOCX jobs validate `SourceEvidenceArtifact`.
-
-Therefore `page_count=0` is valid for DOCX logical source semantics and does not make an otherwise valid DOCX job look corrupt.
-
-The existing Issue Workspace Contract Evidence callback now drives the same `SourceViewerPane` in two modes:
-
-```text
-paginated source viewer  — PDF/image
-logical structural viewer — DOCX
-```
-
-Clicking a DOCX Contract Evidence ID scrolls to and highlights the exact paragraph or table-cell paragraph. Source warnings such as tracked changes remain visible in the viewer, including whether they block complete source coverage.
-
-All Source Viewer reads are local/provider-free and do not mutate audit artifacts.
-
-### 14.3 validation
+Workspace Stage 2 discriminates historical PDF/image `PageEvidence[]` from DOCX `SourceEvidenceArtifact`. The Source Viewer uses paginated mode for PDF/image and structural mode for DOCX; Contract Evidence navigation scrolls to and highlights the exact DOCX paragraph/table-cell paragraph.
 
 Authoritative Stage 14.3 code CI run #604 (`32120133931`):
 
@@ -174,55 +141,102 @@ public deterministic quality gates PASS
 frontend production build          PASS
 ```
 
-The only warning remains the pre-existing Starlette TestClient/httpx deprecation warning.
-
-New Stage 14.3 regression coverage verifies:
-
-- DOCX paragraph Evidence resolves to a typed structural anchor with no fake page;
-- DOCX table-cell Evidence resolves exact table/row/cell/paragraph coordinates with no fake page;
-- logical DOCX source preserves paragraph/table order and table structure;
-- blocking source warnings remain visible and make source coverage incomplete;
-- DOCX page rendering endpoint refuses synthetic pagination;
-- Workspace accepts structural DOCX Evidence and surfaces source uncertainty;
-- unknown DOCX Evidence fails explicitly;
-- existing PDF/image source-viewer regressions remain green;
-- frontend TypeScript/Vite production build passes for both source-view modes.
-
 Detailed viewer behavior is documented in `docs/DOCX_SOURCE_VIEWER.md`.
 
-### Intentional 14.3 boundary
+## 14.4 — Windows OCR runtime distribution — COMPLETE
 
-Stage 14.3 does not claim the complete end-user DOCX/OCR distribution path yet:
+Stage 14.4 makes the Paddle OCR **runtime** part of the normal Windows onedir without requiring an end user to install Python, pip, PaddlePaddle or PaddleOCR manually.
 
-- embedded DOCX images are not OCR-processed yet;
-- PaddlePaddle/PaddleOCR is not yet bundled into the normal Windows runtime;
-- fixed OCR model weights/offline integrity behavior remain Stage 14.5;
-- Home/Pipeline product rollout remains Stage 14.6;
-- final packaged Windows validation remains Stage 14.7.
+### Exact Windows runtime closure
 
-## 14.4 — Windows OCR runtime distribution — NEXT
+The existing CPython `3.12.10` Windows release baseline is retained. PaddlePaddle `3.3.0` is installed from the official PaddlePaddle CPU wheel index and PaddleOCR `3.7.0` plus its transitive runtime closure are pinned in:
 
-The next slice is limited to making the current local PaddleOCR implementation available inside the normal Windows release runtime without requiring the user to install Python/Paddle dependencies manually.
+```text
+backend/requirements-release-ocr-lock-windows.txt
+```
 
-Required behavior:
+The build sequence is:
 
-- determine and pin the Windows-compatible PaddlePaddle CPU + PaddleOCR dependency set used by the packaged runtime;
-- extend the isolated release environment/build so OCR Python/native runtime dependencies are included deliberately rather than relying on a developer machine;
-- keep OCR model weights separate from the 14.4 runtime decision unless a minimal runtime asset is strictly required;
-- preserve existing OCR provider abstraction and Stage 3 evidence behavior;
-- add packaged/runtime import and deterministic no-network dependency checks;
-- make missing/broken OCR runtime fail visibly instead of silently falling back;
-- do not begin offline model-weight distribution, Home/Pipeline rollout or installer work in 14.4.
+```text
+fresh release venv
+ -> base requirements-release-lock-windows.txt --no-deps
+ -> paddlepaddle==3.3.0 official CPU wheel --no-deps
+ -> requirements-release-ocr-lock-windows.txt --no-deps
+ -> pip check
+ -> local Paddle/PaddleOCR import + paddle.utils.run_check()
+ -> PyInstaller onedir
+```
+
+The base release pins remain authoritative for overlaps such as `pypdfium2==5.12.1` and `Pillow==12.3.0`; OCR packaging does not silently upgrade the validated PDF/image stack.
+
+### Frozen runtime validation
+
+`Law-Rag.exe --diagnose-ocr-runtime` validates the bundled distributions, imports Paddle/PaddleOCR and runs Paddle's local native self-check. It deliberately does **not** construct `PaddleOCR`, select a model or download weights.
+
+The Windows release smoke runs the frozen OCR diagnostic with HTTP/HTTPS/ALL proxies pointed at an unusable local endpoint, proving the runtime import/native check does not require network/model downloads.
+
+PyInstaller explicitly collects Paddle/PaddleOCR/PaddleX Python modules, data, native DLL/PYD files and distribution metadata. The final onedir is checked for:
+
+- exact PaddlePaddle/PaddleOCR/PaddleX pins;
+- Paddle native DLL/PYD presence;
+- existing `pdfium.dll` presence;
+- no Law-Rag root runtime/uploads/jobs/logs/private data;
+- no `.paddlex`, `.paddleocr`, `model_cache`, `official_models` or PP-OCR detector/recognizer model directories.
+
+Generic dependency-internal code directories named `runtime` are allowed; the RC scanner no longer confuses PaddleX package code with Law-Rag private runtime data. Private application data remains forbidden at the bundle root, while OCR cache/model identities remain recursively forbidden.
+
+### Release/notices boundary
+
+The release build collects third-party NOTICE/license material across both exact base and OCR locks. `release-metadata.json` fingerprints both locks. PaddlePaddle/PaddleOCR/PaddleX are now classified as bundled runtime components in `release/dependency-inventory.json`.
+
+**PP-OCR model weights are not bundled in Stage 14.4.** Model licensing, fixed model identity, hashes, offline startup and actual OCR inference without downloads are Stage 14.5.
+
+### 14.4 validation
+
+Authoritative Stage 14.4 full Windows CI run #648 (`32125214669`):
+
+```text
+backend pytest                               304 passed, 5 skipped, 1 third-party warning
+public deterministic quality gates          PASS
+frontend production build                   PASS
+Windows exact OCR dependency/pip-check       PASS
+Windows OCR import/native check offline      PASS
+PyInstaller onedir build                     PASS
+packaged exact pins/Paddle native/PDFium     PASS
+private/cache/model bundle scans             PASS
+frozen base diagnostics                      PASS
+frozen OCR native diagnostic offline         PASS
+packaged HTTP/PDF/privacy smoke               PASS
+deterministic RC ZIP + manifest              PASS
+final extracted RC user-flow smoke            PASS
+Windows onedir + portable RC artifact upload PASS
+```
+
+The only warning remains the pre-existing Starlette TestClient/httpx deprecation warning.
+
+## 14.5 — Offline OCR model distribution — NEXT
+
+The next slice owns the model layer, not the Python/native runtime.
+
+Required direction:
+
+- choose/freeze the exact PP-OCR detector + recognizer model identities used by Law-Rag;
+- review the exact model redistribution/license boundary before bundling weights;
+- define deterministic local model paths and SHA-256/integrity metadata;
+- ensure production OCR never silently downloads or switches models;
+- validate a packaged OCR inference path with network unavailable;
+- make missing/corrupt model assets fail visibly and recoverably;
+- keep Stage 13 reasoning topology unchanged;
+- do not begin Home/Pipeline rollout or installer work in 14.5.
 
 ## Remaining Stage 14 sequence
 
 ```text
-14.5  bundle fixed local OCR models + integrity/offline behavior
 14.6  unify PDF/image/DOCX paths in Pipeline + Home
 14.7  full regression + packaged Windows validation
 ```
 
-The intended final Windows UX is one self-contained installation experience. Internally Law-Rag should remain an onedir-style runtime rather than a giant self-extracting single EXE.
+The intended final Windows UX is one self-contained installation experience. Internally Law-Rag remains an onedir-style runtime rather than a giant self-extracting single EXE.
 
 ## Deferred after Stage 14
 
@@ -236,6 +250,6 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 14.1–14.3 are complete. Stage 14.4 — Windows OCR runtime distribution — is NEXT.**
+**Stage 14.1–14.4 are complete. Stage 14.5 — offline OCR model distribution — is NEXT.**
 
-Do not start 14.5–14.7 in the same iteration as 14.4.
+Do not start 14.6–14.7 in the same iteration as 14.5.
