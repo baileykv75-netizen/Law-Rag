@@ -62,12 +62,15 @@ from .upload_streaming import (
 APP_NAME = "Law-Rag Local API"
 APP_VERSION = "0.8.0"
 
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+OLE_CFB_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".docx"}
 EXPECTED_MEDIA_TYPES = {
     ".pdf": {"application/pdf", "application/octet-stream"},
     ".jpg": {"image/jpeg", "application/octet-stream"},
     ".jpeg": {"image/jpeg", "application/octet-stream"},
     ".png": {"image/png", "application/octet-stream"},
+    ".docx": {DOCX_MEDIA_TYPE, "application/zip", "application/octet-stream"},
 }
 
 app = FastAPI(title=APP_NAME, version=APP_VERSION)
@@ -99,7 +102,7 @@ def _extension(filename: str | None) -> str:
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported file type. Use PDF, JPG, JPEG, or PNG.",
+            detail="Unsupported file type. Use PDF, DOCX, JPG, JPEG, or PNG.",
         )
     return extension
 
@@ -122,6 +125,8 @@ def _signature_matches(extension: str, header: bytes) -> bool:
         return header.startswith(b"\xff\xd8\xff")
     if extension == ".png":
         return header.startswith(b"\x89PNG\r\n\x1a\n")
+    if extension == ".docx":
+        return header.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"))
     return False
 
 
@@ -220,7 +225,7 @@ def legal_retrieve(request: RetrievalRequest) -> RetrievalResponse:
 
 @app.post("/api/documents", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
 async def ingest_document(
-    file: Annotated[UploadFile, File(description="One PDF/JPG/JPEG/PNG contract document")],
+    file: Annotated[UploadFile, File(description="One PDF/DOCX/JPG/JPEG/PNG contract document")],
 ) -> IngestResponse:
     original_filename = file.filename or ""
     extension = _extension(original_filename)
@@ -258,6 +263,13 @@ async def ingest_document(
         _cleanup_upload(stored_path)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
 
+    if extension == ".docx" and header.startswith(OLE_CFB_SIGNATURE):
+        _cleanup_upload(stored_path)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Password-protected or encrypted DOCX files are not supported. Save an unencrypted .docx copy before audit.",
+        )
+
     if not _signature_matches(extension, header):
         _cleanup_upload(stored_path)
         raise HTTPException(
@@ -265,11 +277,7 @@ async def ingest_document(
             detail="File contents do not match the selected file type.",
         )
 
-    media_type = (
-        file.content_type
-        or mimetypes.guess_type(original_filename)[0]
-        or "application/octet-stream"
-    )
+    media_type = file.content_type or mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
 
     try:
         inspection = inspect_document(
@@ -279,6 +287,7 @@ async def ingest_document(
             source_path=stored_path,
         )
     except DocumentProcessingError as exc:
+        _cleanup_upload(stored_path)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
@@ -306,6 +315,8 @@ async def ingest_document(
             )
             for page in inspection.pages
         ],
+        evidence_count=inspection.evidence_count,
+        warnings=inspection.warnings,
     )
 
 

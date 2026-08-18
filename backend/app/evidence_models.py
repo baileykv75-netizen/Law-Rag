@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 from .models import DocumentKind, OcrRunResult, PageEvidence, PageRoute, SourceMethod
 
 
-SOURCE_EVIDENCE_SCHEMA_VERSION = "2.0.0"
+SOURCE_EVIDENCE_SCHEMA_VERSION = "2.1.0"
 
 
 class SourceDocumentIdentity(BaseModel):
@@ -115,6 +115,13 @@ def source_anchor_page_number(anchor: SourceAnchor | None) -> int | None:
     return None
 
 
+class SourceEvidenceWarning(BaseModel):
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    source_locator: str | None = None
+    blocks_complete_coverage: bool = False
+
+
 class SourceEvidence(BaseModel):
     """Cross-format evidence identity plus an explicit typed source anchor.
 
@@ -148,7 +155,7 @@ class SourceEvidenceArtifact(BaseModel):
     job_id: UUID
     source_document: SourceDocumentIdentity
     evidence: list[SourceEvidence] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
+    warnings: list[SourceEvidenceWarning] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_job_identity(self) -> "SourceEvidenceArtifact":
