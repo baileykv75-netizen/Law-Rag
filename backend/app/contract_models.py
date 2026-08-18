@@ -9,7 +9,7 @@ from .evidence_models import SourceAnchor, source_anchor_page_number
 from .models import SourceMethod
 
 CONTRACT_SCHEMA_VERSION = "1.1.0"
-EXTRACTOR_VERSION = "stage14-1.0.0"
+EXTRACTOR_VERSION = "stage14-2.0.0"
 
 
 class ExtractionConfidence(str, Enum):
