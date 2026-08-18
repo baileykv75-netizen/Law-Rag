@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
+from pydantic import Field
 
 from .human_review_api import router as human_review_router
 from .issue_workspace import IssueWorkspaceError, load_issue_workspace_detail, load_issue_workspace_summary
@@ -16,15 +18,20 @@ from .workspace import WorkspaceLoadError, load_workspace_summary
 from .workspace_models import WorkspaceSummary
 
 
+WorkspaceResponse = Annotated[
+    WorkspaceSummary | IssueWorkspaceSummary,
+    Field(discriminator="architecture"),
+]
+
 router = APIRouter()
 router.include_router(human_review_router)
 
 
 @router.get(
     "/api/documents/{job_id}/workspace",
-    response_model=WorkspaceSummary | IssueWorkspaceSummary,
+    response_model=WorkspaceResponse,
 )
-def get_workspace(job_id: UUID) -> WorkspaceSummary | IssueWorkspaceSummary:
+def get_workspace(job_id: UUID) -> WorkspaceResponse:
     """Read the authoritative local workspace model without executing pipeline/provider work.
 
     Stage 13G.4 architecture ownership is resolved first. Legacy RC2 jobs keep the
