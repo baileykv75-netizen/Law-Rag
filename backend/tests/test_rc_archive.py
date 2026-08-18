@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import zipfile
 from pathlib import Path
@@ -7,6 +8,17 @@ from pathlib import Path
 import pytest
 
 from app.rc_archive_cli import build_rc_artifacts
+
+
+MODEL_FILES = {
+    "inference.json": b'{"fixture":true}\n',
+    "inference.pdiparams": b"fictional-parameters",
+    "inference.yml": b"Global:\n  model_name: fixture\n",
+}
+
+
+def _sha(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _fixture_bundle(root: Path) -> Path:
@@ -42,6 +54,40 @@ def _fixture_bundle(root: Path) -> Path:
     (bundle / "_internal" / "frontend-dist" / "third-party-frontend-licenses.json").write_text(
         "{}", encoding="utf-8"
     )
+
+    models = []
+    model_root = bundle / "_internal" / "ocr-models"
+    for role, model_name in (
+        ("text_detection", "PP-OCRv6_medium_det"),
+        ("text_recognition", "PP-OCRv6_medium_rec"),
+    ):
+        directory = model_root / model_name
+        directory.mkdir(parents=True)
+        for name, payload in MODEL_FILES.items():
+            (directory / name).write_bytes(payload)
+        models.append(
+            {
+                "role": role,
+                "model_name": model_name,
+                "archive_url": f"https://paddle-model-ecology.bj.bcebos.com/{model_name}.tar",
+                "archive_sha256": "a" * 64,
+                "archive_root": model_name + "_infer",
+                "packaged_dir": model_name,
+                "required_files": list(MODEL_FILES),
+                "file_sha256": {name: _sha(payload) for name, payload in MODEL_FILES.items()},
+            }
+        )
+    (bundle / "_internal" / "release" / "ocr-models-manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "artifact_set": "fixture",
+                "distribution_policy": "build-time-fetch-verified-package-runtime-offline",
+                "models": models,
+            }
+        ),
+        encoding="utf-8",
+    )
     return bundle
 
 
@@ -71,12 +117,14 @@ def test_rc_archive_is_deterministic_and_manifest_has_no_local_paths(tmp_path: P
     assert first["artifact"]["size_bytes"] == second["artifact"]["size_bytes"]
     assert first["source_commit_sha"] == "a" * 40
     assert first["publication_state"] == "NOT_PUBLISHED"
+    assert len(first["ocr_models_manifest_sha256"]) == 64
     assert first["reproducibility"]["wall_clock_timestamp_embedded"] is False
 
     zip_path = tmp_path / "first" / "Law-Rag-0.8.0-rc1-windows-x64.zip"
     with zipfile.ZipFile(zip_path) as archive:
         names = archive.namelist()
         assert "Law-Rag/Law-Rag.exe" in names
+        assert "Law-Rag/_internal/ocr-models/PP-OCRv6_medium_det/inference.pdiparams" in names
         assert all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist())
 
     manifest_text = (tmp_path / "first" / "RC-MANIFEST.json").read_text(encoding="utf-8")
@@ -121,12 +169,22 @@ def test_rc_archive_rejects_nested_ocr_cache_directory(tmp_path: Path, relative:
         build_rc_artifacts(bundle_dir=bundle, config_path=config, output_dir=tmp_path / "out")
 
 
-def test_rc_archive_rejects_nested_ocr_model_payload_directory(tmp_path: Path) -> None:
+def test_rc_archive_rejects_unapproved_nested_ocr_model_payload_directory(tmp_path: Path) -> None:
     bundle = _fixture_bundle(tmp_path / "input")
-    model_dir = bundle / "_internal" / "paddlex" / "official_models" / "PP-OCRv6_mobile_det"
+    model_dir = bundle / "_internal" / "paddlex" / "PP-OCRv6_mobile_det"
     model_dir.mkdir(parents=True)
-    (model_dir / "inference.pdmodel").write_bytes(b"not-a-real-model")
+    (model_dir / "inference.pdiparams").write_bytes(b"not-a-real-model")
     config = _config(tmp_path / "rc-config.json")
 
-    with pytest.raises(RuntimeError, match="banned OCR model directory"):
+    with pytest.raises(RuntimeError, match="unapproved OCR model directory"):
+        build_rc_artifacts(bundle_dir=bundle, config_path=config, output_dir=tmp_path / "out")
+
+
+def test_rc_archive_rejects_tampered_approved_model(tmp_path: Path) -> None:
+    bundle = _fixture_bundle(tmp_path / "input")
+    target = bundle / "_internal" / "ocr-models" / "PP-OCRv6_medium_det" / "inference.pdiparams"
+    target.write_bytes(b"tampered")
+    config = _config(tmp_path / "rc-config.json")
+
+    with pytest.raises(RuntimeError, match="OCR model integrity failed"):
         build_rc_artifacts(bundle_dir=bundle, config_path=config, output_dir=tmp_path / "out")
