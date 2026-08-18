@@ -143,7 +143,8 @@ def test_stage13g_provider_free_chain_is_complete_and_one_to_one(tmp_path: Path,
     comparison_ids = [item.issue_id for item in report.comparisons]
 
     assert plan.coverage_complete is True
-    assert len(plan.coverage) == len(plan.coverage)
+    assert len(plan.coverage) == 1
+    assert len({item.canonical_object_id for item in plan.coverage}) == len(plan.coverage)
     assert all(
         item.state
         in {
