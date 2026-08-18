@@ -19,7 +19,12 @@ from .models import (
     PageRoute,
     SourceMethod,
 )
-from .ocr_models import OcrModelIntegrityError, resolve_ocr_model_paths
+from .ocr_models import (
+    OcrModelIntegrityError,
+    OcrPipelineConfigError,
+    resolve_ocr_model_paths,
+    resolve_ocr_pipeline_config_path,
+)
 from .rendering import PdfPageRenderer, PdfRenderError, PdfiumPageRenderer
 from .storage import (
     find_source_path,
@@ -149,8 +154,9 @@ class PaddleOcrProvider:
     Paddle-specific imports and result-shape normalization remain inside this
     adapter. The pipeline is initialized lazily so native-text-only documents
     do not pay OCR startup cost. The production path accepts only the pinned,
-    SHA-256-verified local model directories; it never asks PaddleOCR/PaddleX
-    to resolve or download model weights.
+    SHA-256-verified local model directories and Law-Rag's fixed PaddleX OCR
+    pipeline config; it never asks PaddleOCR/PaddleX to resolve or download
+    model weights.
     """
 
     provider_name = "paddleocr"
@@ -164,11 +170,13 @@ class PaddleOcrProvider:
         recognition_model_name: str = DEFAULT_PADDLE_RECOGNITION_MODEL,
         model_root: Path | None = None,
         model_manifest_path: Path | None = None,
+        pipeline_config_path: Path | None = None,
     ) -> None:
         self._pipeline_factory = pipeline_factory
         self._pipeline: Any | None = None
         self._model_root = model_root
         self._model_manifest_path = model_manifest_path
+        self._pipeline_config_path = pipeline_config_path
         self.detection_model_name = detection_model_name
         self.recognition_model_name = recognition_model_name
         self.model_name = f"{detection_model_name}+{recognition_model_name}"
@@ -197,7 +205,10 @@ class PaddleOcrProvider:
                 model_root=self._model_root,
                 manifest_path=self._model_manifest_path,
             )
-        except OcrModelIntegrityError as exc:
+            pipeline_config_path = resolve_ocr_pipeline_config_path(
+                config_path=self._pipeline_config_path,
+            )
+        except (OcrModelIntegrityError, OcrPipelineConfigError) as exc:
             raise OcrProviderUnavailable(str(exc)) from exc
 
         try:
@@ -209,6 +220,7 @@ class PaddleOcrProvider:
 
         try:
             return PaddleOCR(
+                paddlex_config=str(pipeline_config_path),
                 text_detection_model_name=self.detection_model_name,
                 text_detection_model_dir=str(model_paths.detection),
                 text_recognition_model_name=self.recognition_model_name,
@@ -221,7 +233,7 @@ class PaddleOcrProvider:
             )
         except Exception as exc:
             raise OcrProviderUnavailable(
-                "PaddleOCR could not initialize with the verified packaged local model assets."
+                "PaddleOCR could not initialize with the verified packaged local model assets and fixed OCR pipeline config."
             ) from exc
 
     def _get_pipeline(self) -> Any:
