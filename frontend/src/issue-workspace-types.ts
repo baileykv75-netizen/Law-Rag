@@ -2,6 +2,7 @@ export type ArtifactState = 'READY' | 'MISSING' | 'NOT_REQUIRED' | 'INVALID'
 export type OverallState = 'COMPLETE' | 'INCOMPLETE' | 'HUMAN_REVIEW_REQUIRED' | 'INVALID'
 export type Severity = 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 export type ReviewPriority = 'NORMAL' | 'IMPORTANT' | 'HIGH_ATTENTION'
+export type HumanDecisionState = 'UNREVIEWED' | 'CONFIRMED' | 'REJECTED' | 'NEEDS_MORE_REVIEW'
 
 export type WorkspaceDocument = {
   filename: string
@@ -53,6 +54,11 @@ export type IssueWorkspaceReview = {
   insufficient_evidence_count: number
   review_required_count: number
   consistent_with_review_count: number
+  human_review_available: boolean
+  human_review_revision_count: number
+  human_review_resolved_required_count: number
+  human_review_outstanding_required_count: number
+  human_review_stale_latest_count: number
 }
 
 export type IssueQueueItem = {
@@ -69,6 +75,9 @@ export type IssueQueueItem = {
   coverage_assessment: string | null
   comparison_state: string | null
   requires_human_review: boolean
+  human_decision_state: HumanDecisionState | null
+  human_decision_revision: number | null
+  human_decision_stale: boolean
 }
 
 export type IssueWorkspaceSummary = {
@@ -197,4 +206,30 @@ export type IssueWorkspaceDetail = {
   secondary: IssueSecondaryResult | null
   comparison: IssueComparison | null
   warnings: string[]
+}
+
+export type HumanDecisionRevision = {
+  schema_version: string
+  decision_id: string
+  revision: number
+  job_id: string
+  target_type: 'finding' | 'omission' | 'issue'
+  target_id: string
+  state: HumanDecisionState
+  reviewer_note: string
+  decided_at: string
+  contract_evidence_ids: string[]
+  legal_evidence_ids: string[]
+  review_report_fingerprint: string
+  is_stale: boolean
+}
+
+export type IssueHumanReviewView = {
+  schema_version: string
+  job_id: string
+  authoritative_architecture: 'ISSUE_V1'
+  current_review_report_artifact: 'issue-review-report.json'
+  current_review_report_fingerprint: string
+  revisions: HumanDecisionRevision[]
+  latest_by_target: Record<string, HumanDecisionRevision>
 }
