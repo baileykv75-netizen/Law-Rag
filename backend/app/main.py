@@ -63,6 +63,7 @@ APP_NAME = "Law-Rag Local API"
 APP_VERSION = "0.8.0"
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+OLE_CFB_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".docx"}
 EXPECTED_MEDIA_TYPES = {
     ".pdf": {"application/pdf", "application/octet-stream"},
@@ -262,6 +263,13 @@ async def ingest_document(
         _cleanup_upload(stored_path)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
 
+    if extension == ".docx" and header.startswith(OLE_CFB_SIGNATURE):
+        _cleanup_upload(stored_path)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Password-protected or encrypted DOCX files are not supported. Save an unencrypted .docx copy before audit.",
+        )
+
     if not _signature_matches(extension, header):
         _cleanup_upload(stored_path)
         raise HTTPException(
@@ -269,11 +277,7 @@ async def ingest_document(
             detail="File contents do not match the selected file type.",
         )
 
-    media_type = (
-        file.content_type
-        or mimetypes.guess_type(original_filename)[0]
-        or "application/octet-stream"
-    )
+    media_type = file.content_type or mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
 
     try:
         inspection = inspect_document(
