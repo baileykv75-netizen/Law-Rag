@@ -13,7 +13,12 @@ router = APIRouter()
 
 def _http_error(exc: HumanReviewError) -> HTTPException:
     message = str(exc)
-    if "required before human review" in message or "architecture is conflicted" in message or "not valid for an authoritative" in message:
+    if (
+        "required before human review" in message
+        or "architecture is conflicted" in message
+        or "not valid for an authoritative" in message
+        or "Unable to resolve the authoritative audit architecture" in message
+    ):
         http_status = status.HTTP_409_CONFLICT
     elif "does not exist in the current" in message:
         http_status = status.HTTP_404_NOT_FOUND
