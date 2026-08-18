@@ -42,6 +42,7 @@ from .safe_persistence import atomic_write_text
 from .storage import job_issue_secondary_review_path
 
 MAX_SECONDARY_ISSUE_REQUESTS = 256
+MAX_SECONDARY_CONTEXT_CHARS = 120_000
 
 
 class IssueSecondaryReviewError(RuntimeError):
@@ -69,6 +70,35 @@ def _unique(values) -> list[str]:
             seen.add(value)
             out.append(value)
     return out
+
+
+def _secondary_context_char_count(context, primary: IssuePrimaryAuditResult) -> int:
+    payload = {
+        "issue_context": context.model_dump(mode="json"),
+        "primary_result": primary.model_dump(mode="json"),
+    }
+    return len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+
+
+def _budget_result(context, primary: IssuePrimaryAuditResult) -> IssueSecondaryReviewResult:
+    contract_ids = _unique(eid for item in context.target_items for eid in item.evidence_ids)
+    return IssueSecondaryReviewResult(
+        issue_id=context.issue_id,
+        topic=context.topic,
+        primary_state=primary.state.value,
+        assessment=SecondaryIssueAssessment.REVIEW_REQUIRED,
+        coverage_assessment=SecondaryCoverageAssessment.INSUFFICIENT_EVIDENCE,
+        severity=primary.severity,
+        reasoning_summary=(
+            f"该 Issue 的完整 Kimi 复核上下文超过 {MAX_SECONDARY_CONTEXT_CHARS} 字符的应用级安全预算。"
+            "Law-Rag 没有截断合同、法律证据或主审结果，也没有发送残缺上下文。"
+        ),
+        suggestion="人工复核该 Issue；若真实样本中频繁出现，应增加二审 Issue 内部分层，而不是静默删减证据。",
+        contract_evidence_ids=contract_ids,
+        legal_evidence_ids=[],
+        review_reasons=["SECONDARY_CONTEXT_BUDGET_EXCEEDED"],
+        context_fingerprint=context.context_fingerprint,
+    )
 
 
 def validate_issue_secondary_output(content: str, context, primary: IssuePrimaryAuditResult) -> IssueSecondaryReviewResult:
@@ -209,6 +239,12 @@ def run_issue_secondary_review(job_id: UUID, *, provider_name: str = "kimi", pro
             if issue_id in reusable_calls:
                 calls.append(reusable_calls[issue_id])
             continue
+        context_chars = _secondary_context_char_count(context, primary_result)
+        if context_chars > MAX_SECONDARY_CONTEXT_CHARS:
+            results.append(_budget_result(context, primary_result))
+            warnings.append(f"Issue {issue_id} secondary context size {context_chars} exceeded {MAX_SECONDARY_CONTEXT_CHARS}; no truncated Kimi request was sent.")
+            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+            continue
         try:
             begin_provider_call(job_id, provider.provider_name)
             try:
@@ -239,6 +275,8 @@ def load_issue_secondary_review(job_id: UUID, *, validate_freshness: bool = True
         artifact = IssueSecondaryReviewArtifact.model_validate_json(path.read_bytes())
     except ValidationError as exc:
         raise IssueSecondaryReviewValidationError("Persisted Stage 13F artifact is malformed.") from exc
+    if artifact.job_id != job_id:
+        raise IssueSecondaryReviewValidationError("Persisted Stage 13F artifact belongs to a different job.")
     payload = artifact.model_dump(mode="json", exclude={"artifact_fingerprint"})
     if artifact.artifact_fingerprint != _fingerprint(payload):
         raise IssueSecondaryReviewValidationError("Persisted Stage 13F artifact fingerprint is invalid.")
