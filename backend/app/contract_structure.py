@@ -7,21 +7,17 @@ from uuid import UUID
 
 from .canonical_extraction import build_canonical_contract
 from .contract_models import CanonicalContract, EvidenceUnit, ExtractionWarning, StructureSummary
-from .evidence_models import (
-    PageRegionAnchor,
-    PageTextAnchor,
-    SourceEvidenceArtifact,
-)
+from .evidence_models import PageRegionAnchor, PageTextAnchor, SourceEvidenceArtifact
 from .models import (
     DocumentInspection,
     DocumentKind,
     OcrPageState,
     OcrRunResult,
-    PageEvidence,
     PageRoute,
     SourceMethod,
 )
 from .storage import (
+    find_source_path,
     job_contract_path,
     job_document_path,
     job_evidence_path,
@@ -67,6 +63,17 @@ def _document_kind(document_payload: dict) -> DocumentKind:
         ) from exc
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        raise StructureProcessingError("The local source file could not be re-read for integrity verification.") from exc
+    return digest.hexdigest()
+
+
 def _load_paginated_inputs(
     job_id: UUID,
     *,
@@ -78,18 +85,14 @@ def _load_paginated_inputs(
         evidence_payload = json.loads(evidence_bytes.decode("utf-8"))
         if not isinstance(evidence_payload, list):
             raise ValueError("legacy evidence must be a list")
-        inspection = DocumentInspection.model_validate(
-            {**document_payload, "pages": evidence_payload}
-        )
+        inspection = DocumentInspection.model_validate({**document_payload, "pages": evidence_payload})
     except Exception as exc:
         raise StructureProcessingError(
             "Persisted document evidence is malformed and cannot be structured safely."
         ) from exc
 
     if inspection.document_kind not in {DocumentKind.PDF, DocumentKind.IMAGE}:
-        raise StructureProcessingError(
-            "Paginated evidence may only be used for PDF/image jobs."
-        )
+        raise StructureProcessingError("Paginated evidence may only be used for PDF/image jobs.")
 
     ocr_result: OcrRunResult | None = None
     ocr_bytes = b""
@@ -108,9 +111,7 @@ def _load_paginated_inputs(
             ) from exc
 
         if ocr_result.job_id != job_id or ocr_result.page_count != inspection.page_count:
-            raise StructureProcessingError(
-                "OCR evidence does not match the document job/page count."
-            )
+            raise StructureProcessingError("OCR evidence does not match the document job/page count.")
 
         page_states = {page.page_number: page.state for page in ocr_result.pages}
         incomplete_pages: list[int] = []
@@ -118,10 +119,7 @@ def _load_paginated_inputs(
             if page.route != PageRoute.OCR_REQUIRED:
                 continue
             state = page_states.get(page.page_number)
-            if state not in {
-                OcrPageState.OCR_COMPLETE,
-                OcrPageState.OCR_LOW_CONFIDENCE,
-            }:
+            if state not in {OcrPageState.OCR_COMPLETE, OcrPageState.OCR_LOW_CONFIDENCE}:
                 incomplete_pages.append(page.page_number)
         if incomplete_pages:
             rendered = ", ".join(str(value) for value in incomplete_pages)
@@ -163,6 +161,20 @@ def _load_docx_inputs(
     if artifact.source_document.filename != inspection.filename:
         raise StructureProcessingError("DOCX source evidence filename does not match document metadata.")
 
+    try:
+        source_path = find_source_path(job_id)
+        source_size = source_path.stat().st_size
+    except (FileNotFoundError, OSError) as exc:
+        raise StructureProcessingError("The original DOCX source file is missing or unreadable.") from exc
+    if source_size != artifact.source_document.size_bytes:
+        raise StructureProcessingError(
+            "The DOCX source file size no longer matches the persisted source identity."
+        )
+    if _file_sha256(source_path) != artifact.source_document.source_sha256:
+        raise StructureProcessingError(
+            "The DOCX source file SHA-256 no longer matches the persisted source identity."
+        )
+
     fingerprint = hashlib.sha256(document_bytes + b"\n" + evidence_bytes).digest()
     return inspection, artifact, fingerprint
 
@@ -179,9 +191,7 @@ def _native_units(
     for raw_line in page_text.splitlines(keepends=True):
         line_without_break = raw_line.rstrip("\r\n")
         stripped = line_without_break.strip()
-        line_start = cursor + (
-            len(line_without_break) - len(line_without_break.lstrip())
-        )
+        line_start = cursor + (len(line_without_break) - len(line_without_break.lstrip()))
         cursor += len(raw_line)
         if not stripped:
             continue
@@ -259,9 +269,7 @@ def build_evidence_stream(
 
         ocr_page = ocr_pages.get(page.page_number)
         if ocr_page is None:
-            raise StructureIncompleteError(
-                f"Missing OCR evidence for page {page.page_number}."
-            )
+            raise StructureIncompleteError(f"Missing OCR evidence for page {page.page_number}.")
         for block in sorted(ocr_page.blocks, key=lambda value: value.block_index):
             text = block.text.strip()
             if not text:
