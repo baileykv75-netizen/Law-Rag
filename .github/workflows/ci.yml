@@ -87,7 +87,7 @@ jobs:
       - name: Show resolved isolated Python release environment
         shell: pwsh
         run: Get-Content release/.build/python-resolved.txt
-      - name: Verify packaged runtime inventory
+      - name: Verify packaged exact dependency pins
         shell: pwsh
         run: |
           $bundle = Join-Path $PWD "release\dist\Law-Rag"
@@ -97,18 +97,38 @@ jobs:
           foreach ($pin in @("paddlepaddle==3.3.0", "paddleocr==3.7.0", "paddlex==3.7.2", "pypdfium2==5.12.1")) {
             if ($resolved -notmatch [regex]::Escape($pin)) { throw "Missing exact packaged pin: $pin" }
           }
+          Write-Host "Packaged exact dependency pins: OK"
+      - name: Verify packaged Paddle native files
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $PWD "release\dist\Law-Rag"
           $paddleNative = Get-ChildItem -Path $bundle -Recurse -File -ErrorAction Stop | Where-Object {
             $_.FullName.ToLowerInvariant().Contains("paddle") -and $_.Extension.ToLowerInvariant() -in @(".dll", ".pyd")
           }
           if (-not $paddleNative) { throw "No packaged Paddle native DLL/PYD files found" }
+          $paddleNative | Select-Object -First 20 -ExpandProperty FullName
+          Write-Host "Packaged Paddle native files: OK"
+      - name: Verify packaged PDFium native file
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $PWD "release\dist\Law-Rag"
           $pdfium = Get-ChildItem -Path $bundle -Recurse -File -Filter "pdfium.dll" -ErrorAction Stop
           if (-not $pdfium) { throw "pdfium.dll missing after OCR runtime packaging" }
+          $pdfium | Select-Object -ExpandProperty FullName
+          Write-Host "Packaged PDFium native file: OK"
+      - name: Verify no OCR model or cache payloads are bundled
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $PWD "release\dist\Law-Rag"
           $banned = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
             $_.Name.ToLowerInvariant() -in @("runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private", "model_cache", ".paddlex", ".paddleocr", "official_models") -or
             $_.Name -like "PP-OCRv6*_det" -or $_.Name -like "PP-OCRv6*_rec"
           }
-          if ($banned) { throw "Banned runtime/model directories found: $($banned.FullName -join '; ')" }
-          Write-Host "Packaged runtime inventory: OK"
+          if ($banned) {
+            $banned | Select-Object -ExpandProperty FullName
+            throw "Banned runtime/model directories found in packaged bundle"
+          }
+          Write-Host "No OCR model/cache payload directories bundled: OK"
       - name: Run frozen base diagnostics
         shell: pwsh
         run: |
