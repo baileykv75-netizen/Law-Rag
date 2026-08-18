@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0.0",
+  "artifact_set": "law-rag-ppocrv6-medium-offline",
+  "distribution_policy": "build-time-fetch-verified-package-runtime-offline",
+  "license": "Apache-2.0",
+  "license_evidence": [
+    "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_det",
+    "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec"
+  ],
+  "notes": [
+    "Model binaries are never committed to the Law-Rag repository.",
+    "The Windows release build fetches only the official Paddle BOS inference archives and must verify exact hashes before extraction.",
+    "Runtime OCR must use the packaged local directories and must never fall back to PaddleOCR/PaddleX model download behavior."
+  ],
+  "models": [
+    {
+      "role": "text_detection",
+      "model_name": "PP-OCRv6_medium_det",
+      "archive_url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv6_medium_det_infer.tar",
+      "archive_sha256": null,
+      "archive_root": null,
+      "packaged_dir": "PP-OCRv6_medium_det",
+      "required_files": [
+        "inference.json",
+        "inference.pdiparams",
+        "inference.yml"
+      ],
+      "file_sha256": {}
+    },
+    {
+      "role": "text_recognition",
+      "model_name": "PP-OCRv6_medium_rec",
+      "archive_url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv6_medium_rec_infer.tar",
+      "archive_sha256": null,
+      "archive_root": null,
+      "packaged_dir": "PP-OCRv6_medium_rec",
+      "required_files": [
+        "inference.json",
+        "inference.pdiparams",
+        "inference.yml"
+      ],
+      "file_sha256": {}
+    }
+  ]
+}
