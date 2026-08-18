@@ -9,6 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 from .ai_audit_models import AiAuditReport
 from .audit_rule_models import AuditRuleReport
 from .contract_models import CanonicalContract
+from .evidence_models import SourceEvidenceArtifact
 from .human_review_models import HumanReviewArtifact
 from .models import OcrRunResult, PageEvidence
 from .review_report import ReviewReport
@@ -147,7 +148,21 @@ def load_workspace_summary(job_id: UUID) -> WorkspaceSummary:
                 raise WorkspaceLoadError("Invalid local artifact document.json: expected an object.")
             document = WorkspaceDocumentSummary.model_validate(raw_document)
             raw_evidence = evidence_path.read_text(encoding="utf-8")
-            _PAGE_EVIDENCE_ADAPTER.validate_json(raw_evidence)
+            if document.document_kind == "docx":
+                source_evidence = SourceEvidenceArtifact.model_validate_json(raw_evidence)
+                if source_evidence.job_id != job_id:
+                    raise WorkspaceLoadError("DOCX Source Evidence belongs to a different job.")
+                if source_evidence.source_document.document_kind.value != "docx":
+                    raise WorkspaceLoadError("DOCX document metadata does not match Source Evidence kind.")
+                for warning in source_evidence.warnings:
+                    rendered = f"{warning.code}: {warning.message}"
+                    source_uncertainty.append(rendered)
+                    if warning.blocks_complete_coverage:
+                        warnings.append(rendered)
+                stage_detail = "Document metadata and structural DOCX Source Evidence are valid local artifacts."
+            else:
+                _PAGE_EVIDENCE_ADAPTER.validate_json(raw_evidence)
+                stage_detail = "Document metadata and page evidence are valid local artifacts."
             document_valid = True
             stages.append(
                 _stage(
@@ -155,7 +170,7 @@ def load_workspace_summary(job_id: UUID) -> WorkspaceSummary:
                     "Document ingestion",
                     WorkspaceArtifactState.READY,
                     "document.json + evidence.json",
-                    "Document metadata and page evidence are valid local artifacts.",
+                    stage_detail,
                 )
             )
         except (OSError, ValidationError, WorkspaceLoadError) as exc:
@@ -179,7 +194,11 @@ def load_workspace_summary(job_id: UUID) -> WorkspaceSummary:
                 "OCR evidence",
                 WorkspaceArtifactState.NOT_REQUIRED,
                 None,
-                "All pages used reliable native text; OCR was not required.",
+                (
+                    "Native DOCX source evidence does not require page OCR. Embedded-image review remains explicit in Source Evidence."
+                    if document.document_kind == "docx"
+                    else "All pages used reliable native text; OCR was not required."
+                ),
             )
         )
     elif not ocr_path.exists():
