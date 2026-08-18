@@ -47,7 +47,7 @@ jobs:
         run: npm run build
 
   windows-release-bundle-smoke:
-    if: (github.event_name == 'pull_request' && github.head_ref == 'stage13g-1-issue-review-report') || (github.event_name == 'push' && (contains(github.event.head_commit.message, 'verify Windows bundle') || contains(github.event.head_commit.message, 'verify Windows RC')))
+    if: github.event_name == 'push' && (contains(github.event.head_commit.message, 'verify Windows bundle') || contains(github.event.head_commit.message, 'verify Windows RC'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -112,7 +112,7 @@ jobs:
           retention-days: 7
 
   windows-ocr-dependency-smoke:
-    if: (github.event_name == 'pull_request' && github.head_ref == 'stage13g-1-issue-review-report') || (github.event_name == 'push' && contains(github.event.head_commit.message, 'verify OCR deps'))
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'verify OCR deps')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -127,7 +127,7 @@ jobs:
         run: python -c "import paddle, paddleocr; paddle.utils.run_check(); print('Paddle', paddle.__version__); print('PaddleOCR', paddleocr.__version__)"
 
   windows-rag-semantic-smoke:
-    if: (github.event_name == 'pull_request' && github.head_ref == 'stage13g-1-issue-review-report') || (github.event_name == 'push' && contains(github.event.head_commit.message, 'verify RAG semantic'))
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'verify RAG semantic')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
