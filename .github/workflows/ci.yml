@@ -133,27 +133,18 @@ jobs:
         run: |
           $bundle = Join-Path $PWD "release\dist\Law-Rag"
           $found = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
-            $_.Name.ToLowerInvariant() -in @("model_cache", ".paddlex", ".paddleocr")
+            $_.Name.ToLowerInvariant() -in @("model_cache", ".paddlex", ".paddleocr", "official_models")
           }
           if ($found) {
             $found | ForEach-Object { Write-Host ("FOUND_OCR_CACHE=" + $_.FullName) }
             throw "OCR cache directories found in packaged bundle"
           }
           Write-Host "OCR cache directory scan: OK"
-      - name: Reject OCR model payload directories in bundle
+      - name: Verify approved packaged OCR model assets
         shell: pwsh
         run: |
-          $bundle = Join-Path $PWD "release\dist\Law-Rag"
-          $found = Get-ChildItem -Path $bundle -Recurse -Directory -ErrorAction Stop | Where-Object {
-            $_.Name.ToLowerInvariant() -eq "official_models" -or
-            $_.Name -like "PP-OCRv6*_det" -or
-            $_.Name -like "PP-OCRv6*_rec"
-          }
-          if ($found) {
-            $found | ForEach-Object { Write-Host ("FOUND_OCR_MODEL_DIR=" + $_.FullName) }
-            throw "OCR model payload directories found in packaged bundle"
-          }
-          Write-Host "OCR model directory scan: OK"
+          & ./release/dist/Law-Rag/Law-Rag.exe --diagnose-ocr-models --json
+          if ($LASTEXITCODE -ne 0) { throw "Frozen OCR model integrity diagnostic failed with exit code $LASTEXITCODE" }
       - name: Run frozen base diagnostics
         shell: pwsh
         run: |
@@ -180,14 +171,14 @@ jobs:
       - name: Upload inspectable Windows onedir bundle
         uses: actions/upload-artifact@v4
         with:
-          name: law-rag-windows-onedir-stage14-4
+          name: law-rag-windows-onedir-stage14-5
           path: release/dist/Law-Rag
           if-no-files-found: error
           retention-days: 3
       - name: Upload portable RC files
         uses: actions/upload-artifact@v4
         with:
-          name: law-rag-windows-x64-stage14-4
+          name: law-rag-windows-x64-stage14-5
           path: release/rc
           if-no-files-found: error
           retention-days: 7
