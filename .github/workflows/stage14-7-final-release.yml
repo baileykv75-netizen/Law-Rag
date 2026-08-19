@@ -1,8 +1,8 @@
 name: Stage 14.7 final Windows release validation
 
 on:
-  push:
-    branches: [stage14-7-final-release-validation]
+  pull_request:
+    branches: [stage14-6-pipeline-home-integration]
 
 permissions:
   contents: read
