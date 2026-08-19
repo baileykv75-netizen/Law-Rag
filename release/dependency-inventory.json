@@ -1,7 +1,7 @@
 {
-  "schema_version": "1.1.0",
-  "stage": "14.4",
-  "inventory_status": "LOCKED_BASE_PLUS_OCR_RUNTIME_NOTICE_COLLECTION_AUTOMATED_REVIEW_PENDING",
+  "schema_version": "1.2.0",
+  "stage": "14.5",
+  "inventory_status": "LOCKED_BASE_PLUS_OCR_RUNTIME_PLUS_VERIFIED_MODELS_NOTICE_COLLECTION_AUTOMATED_REVIEW_PENDING",
   "target": {
     "os": "Windows 10/11 x64",
     "python": "3.12.10",
@@ -12,11 +12,14 @@
   },
   "notes": [
     "The Windows release build uses an isolated virtual environment and installs backend/requirements-release-lock-windows.txt plus backend/requirements-release-ocr-lock-windows.txt with --no-deps.",
-    "PaddlePaddle CPU 3.3.0 is installed from the official PaddlePaddle CPU wheel index; PaddleOCR 3.7.0 and its exact runtime closure are bundled into the Windows onedir.",
-    "The Stage 14.4 bundle includes the OCR Python/native runtime but deliberately excludes PP-OCR model weights and OCR model/cache directories; fixed offline model distribution is Stage 14.5.",
+    "PaddlePaddle CPU 3.3.0 is installed from the official PaddlePaddle CPU wheel index; PaddleOCR 3.7.0, PaddleX 3.7.2 and their exact runtime closure are bundled into the Windows onedir.",
+    "Stage 14.5 bundles only the exact PP-OCRv6_medium_det and PP-OCRv6_medium_rec inference assets listed in release/ocr-models-manifest.json. Model payloads are fetched from the approved official Paddle source during the clean build, archive/file SHA-256 verified, and never committed to Git.",
+    "Production OCR uses deterministic local model paths plus a fixed minimal PaddleX OCR config and has no runtime model-download or model-substitution fallback.",
+    "PaddleX ocr-core dependency metadata is explicitly preserved in the frozen bundle because PaddleX validates the extra through importlib.metadata.version().",
+    "For the pinned PaddlePaddle 3.3.0 Windows CPU path, enable_mkldnn=false is a tested compatibility requirement after the packaged OCR regression exposed a oneDNN/PIR ArrayAttribute<Double> failure.",
     "frontend/package-lock.json is committed (lockfileVersion 3) and release/CI frontend installs use npm ci.",
-    "A clean Windows Server 2025 runner has built and smoke-run the pinned onedir bundle with CPython 3.12.10, Node 22.23.2 and npm 10.9.8, including frozen offline Paddle native self-check and final extracted-RC smoke.",
-    "The release build extracts license/NOTICE material from the exact installed base and OCR Python distributions and Vite emits bundled frontend license metadata.",
+    "A clean Windows Server 2025 runner has built and smoke-run the pinned onedir and final extracted portable RC with network-blocked real OCR inference.",
+    "The release build extracts license/NOTICE material from the exact installed base and OCR Python distributions; the OCR model manifest separately records approved model provenance/license identity and exact payload hashes.",
     "This inventory remains review evidence, not a declaration that every redistribution obligation is automatically satisfied."
   ],
   "components": [
@@ -83,10 +86,10 @@
       "version": "5.12.1",
       "source": "PyPI Windows x64 platform wheel",
       "scope": "bundled-runtime",
-      "runtime_role": "PDFium-based local PDF page rendering",
+      "runtime_role": "PDFium-based local PDF page rendering and PaddleX ocr-core dependency",
       "license": "Apache-2.0 OR BSD-3-Clause plus PDFium/dependency licenses",
       "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_WHEEL_NOTICE_EXTRACTION_REQUIRED_AND_AUTOMATED",
-      "redistribution_note": "The release build fails if pypdfium2/PDFium dependency license material cannot be found in the exact installed wheel."
+      "redistribution_note": "The release build fails if pypdfium2/PDFium dependency license material cannot be found in the exact installed wheel. Its distribution metadata is also preserved for frozen PaddleX dependency checks."
     },
     {
       "name": "Pillow",
@@ -154,36 +157,59 @@
       "runtime_role": "Local CPU tensor/native runtime for OCR",
       "license": "Apache-2.0",
       "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED",
-      "redistribution_note": "Stage 14.4 bundles the exact CPU runtime and validates it inside the frozen executable with network unavailable; OCR model weights are not included."
+      "redistribution_note": "Bundled with the exact CPU runtime. Stage 14.5 network-blocked real OCR validation uses engine=paddle_static with enable_mkldnn=false for the tested Windows compatibility path."
     },
     {
       "name": "PaddleOCR",
       "version": "3.7.0",
       "source": "PyPI / PaddlePaddle repository",
       "scope": "bundled-runtime",
-      "runtime_role": "Local OCR pipeline code; model initialization is deferred until fixed local model distribution is available",
+      "runtime_role": "Local OCR pipeline code using fixed verified packaged detector/recognizer assets",
       "license": "Apache-2.0",
       "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED",
-      "redistribution_note": "Runtime code is bundled in Stage 14.4. PP-OCR model weights/caches remain excluded and are owned by Stage 14.5."
+      "redistribution_note": "Production passes explicit verified local model directories and a fixed PaddleX OCR config; runtime model download/substitution is not permitted."
     },
     {
       "name": "PaddleX",
       "version": "3.7.2",
       "source": "PyPI / PaddlePaddle repository",
       "scope": "bundled-runtime",
-      "runtime_role": "PaddleOCR runtime dependency collected into the frozen Windows onedir",
+      "runtime_role": "PaddleOCR pipeline runtime dependency collected into the frozen Windows onedir",
       "license": "Apache-2.0",
       "license_review_state": "PRIMARY_SOURCE_CHECKED_EXACT_NOTICE_COLLECTION_ENABLED",
-      "redistribution_note": "Dependency-internal runtime code directories are legitimate package code; downloaded model/cache directories remain recursively forbidden."
+      "redistribution_note": "The frozen bundle preserves ocr-core distribution metadata required by PaddleX importlib.metadata checks; downloaded cache/model directories remain forbidden."
     },
     {
-      "name": "PP-OCRv6 detector/recognizer weights",
-      "version": "Stage 14 model family",
-      "source": "Paddle model distribution",
-      "scope": "not-bundled-stage14-4",
-      "runtime_role": "Required local OCR model weights once Stage 14.5 is complete",
-      "license": "MODEL_LICENSE_AND_REDISTRIBUTION_MUST_BE_REVIEWED_FOR_EXACT_WEIGHTS",
-      "license_review_state": "NOT_REDISTRIBUTED_STAGE14_4"
+      "name": "PaddleX OCR-core metadata set",
+      "version": "locked by backend/requirements-release-ocr-lock-windows.txt",
+      "source": "installed exact Windows OCR runtime distributions",
+      "scope": "bundled-runtime-metadata",
+      "runtime_role": "Allows PaddleX frozen OCR-extra checks to see already-installed OCR-core dependencies",
+      "license": "per-distribution licenses collected by the release notice process",
+      "license_review_state": "EXACT_NOTICE_COLLECTION_ENABLED",
+      "redistribution_note": "PyInstaller explicitly preserves metadata for imagesize, opencv-contrib-python, pyclipper, pypdfium2, python-bidi and shapely."
+    },
+    {
+      "name": "PP-OCRv6_medium_det",
+      "version": "Stage 14.5 pinned inference archive",
+      "source": "official Paddle model BOS archive locked by release/ocr-models-manifest.json",
+      "scope": "bundled-model-asset",
+      "runtime_role": "Local text detection model",
+      "license": "Apache-2.0",
+      "license_review_state": "PRIMARY_SOURCE_AND_EXACT_PAYLOAD_IDENTITY_CHECKED",
+      "archive_sha256": "144d0621e059566e5086e228829171591c144c2deb07b2dad4962214fbabfcf7",
+      "redistribution_note": "Fetched only during clean release build, verified before/after extraction, bundled at deterministic local path, not committed to Git."
+    },
+    {
+      "name": "PP-OCRv6_medium_rec",
+      "version": "Stage 14.5 pinned inference archive",
+      "source": "official Paddle model BOS archive locked by release/ocr-models-manifest.json",
+      "scope": "bundled-model-asset",
+      "runtime_role": "Local text recognition model",
+      "license": "Apache-2.0",
+      "license_review_state": "PRIMARY_SOURCE_AND_EXACT_PAYLOAD_IDENTITY_CHECKED",
+      "archive_sha256": "4eecc1c6a4623765042e6fc15446da0da110b7d875b6b72b2d351d2b2dbd4da6",
+      "redistribution_note": "Fetched only during clean release build, verified before/after extraction, bundled at deterministic local path, not committed to Git."
     },
     {
       "name": "sentence-transformers",

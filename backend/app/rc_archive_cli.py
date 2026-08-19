@@ -9,14 +9,16 @@ import stat
 import zipfile
 from pathlib import Path
 
+from .ocr_models import OcrModelIntegrityError, resolve_ocr_model_paths
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = REPO_ROOT / "release" / "rc-config.json"
 DEFAULT_BUNDLE = REPO_ROOT / "release" / "dist" / "Law-Rag"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "release" / "rc"
 _FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 _ROOT_PRIVATE_DIR_NAMES = {"runtime", "uploads", "jobs", "logs", "data_private", "benchmark_private"}
-_BANNED_OCR_CACHE_DIR_NAMES = {"model_cache", ".paddlex", ".paddleocr"}
-_BANNED_OCR_MODEL_DIR_NAMES = {"official_models"}
+_BANNED_OCR_CACHE_DIR_NAMES = {"model_cache", ".paddlex", ".paddleocr", "official_models"}
+_APPROVED_OCR_MODEL_DIR_NAMES = {"pp-ocrv6_medium_det", "pp-ocrv6_medium_rec"}
 _BANNED_FILE_NAMES = {
     ".env",
     "human-review.json",
@@ -67,38 +69,37 @@ def _validate_rc_config(config: dict[str, object]) -> tuple[str, str, str]:
     return rc_version, target, basename
 
 
-def _is_banned_ocr_model_dir(name: str) -> bool:
+def _looks_like_ppocr_model_dir(name: str) -> bool:
     lower = name.lower()
-    return (
-        lower in _BANNED_OCR_MODEL_DIR_NAMES
-        or re.fullmatch(r"pp-ocrv6.*_det", lower) is not None
-        or re.fullmatch(r"pp-ocrv6.*_rec", lower) is not None
-    )
+    return re.fullmatch(r"pp-ocrv6.*_(det|rec)", lower) is not None
 
 
 def _scan_bundle(bundle_dir: Path) -> None:
     if not (bundle_dir / "Law-Rag.exe").is_file():
         raise FileNotFoundError("Law-Rag.exe is missing from the RC source bundle.")
 
-    # Mutable Law-Rag user/application data belongs beside the executable. A
-    # generic nested directory called `runtime` or `logs` can legitimately be
-    # Python package code (PaddleX contains such runtime modules), so only the
-    # application-root locations are private-data violations.
     for name in sorted(_ROOT_PRIVATE_DIR_NAMES):
         path = bundle_dir / name
         if path.exists():
             raise RuntimeError(f"RC source bundle contains banned private application directory: {name}")
 
-    # Stage 14.4 deliberately excludes downloaded OCR caches/model weights.
-    # Those identities remain unsafe regardless of where they appear in the
-    # onedir tree, so they are rejected recursively.
+    model_root = bundle_dir / "_internal" / "ocr-models"
+    model_manifest = bundle_dir / "_internal" / "release" / "ocr-models-manifest.json"
+    try:
+        approved_paths = resolve_ocr_model_paths(model_root=model_root, manifest_path=model_manifest)
+    except OcrModelIntegrityError as exc:
+        raise RuntimeError(f"RC source bundle OCR model integrity failed: {exc}") from exc
+    approved_dirs = {approved_paths.detection.resolve(), approved_paths.recognition.resolve()}
+
     for path in bundle_dir.rglob("*"):
         if path.is_dir():
             lower = path.name.lower()
             if lower in _BANNED_OCR_CACHE_DIR_NAMES:
                 raise RuntimeError(f"RC source bundle contains banned OCR cache directory: {path.name}")
-            if _is_banned_ocr_model_dir(path.name):
-                raise RuntimeError(f"RC source bundle contains banned OCR model directory: {path.name}")
+            if _looks_like_ppocr_model_dir(path.name) and path.resolve() not in approved_dirs:
+                raise RuntimeError(f"RC source bundle contains unapproved OCR model directory: {path.name}")
+            if path.resolve() in approved_dirs and lower not in _APPROVED_OCR_MODEL_DIR_NAMES:
+                raise RuntimeError(f"RC source bundle OCR model directory name is not approved: {path.name}")
         elif path.is_file() and path.name.lower() in _BANNED_FILE_NAMES:
             raise RuntimeError(f"RC source bundle contains banned private/job file: {path.name}")
 
@@ -138,12 +139,14 @@ def build_rc_artifacts(
     release_metadata_path = bundle_dir / "_internal" / "release" / "release-metadata.json"
     public_assets_path = bundle_dir / "_internal" / "release" / "public-assets-metadata.json"
     dependency_inventory_path = bundle_dir / "_internal" / "release" / "dependency-inventory.json"
+    ocr_models_manifest_path = bundle_dir / "_internal" / "release" / "ocr-models-manifest.json"
     python_notices_path = bundle_dir / "_internal" / "THIRD-PARTY-NOTICES" / "python-third-party-notices.json"
     frontend_notices_path = bundle_dir / "_internal" / "frontend-dist" / "third-party-frontend-licenses.json"
     for required in (
         release_metadata_path,
         public_assets_path,
         dependency_inventory_path,
+        ocr_models_manifest_path,
         python_notices_path,
         frontend_notices_path,
     ):
@@ -179,6 +182,7 @@ def build_rc_artifacts(
         "toolchain": release_metadata.get("toolchain"),
         "release_metadata_sha256": _sha256(release_metadata_path),
         "dependency_inventory_sha256": _sha256(dependency_inventory_path),
+        "ocr_models_manifest_sha256": _sha256(ocr_models_manifest_path),
         "python_notices_sha256": _sha256(python_notices_path),
         "frontend_notices_sha256": _sha256(frontend_notices_path),
         "public_assets": {

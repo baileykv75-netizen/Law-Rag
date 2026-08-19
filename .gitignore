@@ -68,6 +68,11 @@ release/dist/
 release/work/
 release/rc/
 
+# Stage 14.5 transient OCR model verification payloads. Model binaries are
+# fetched only into ignored build/verification staging and are never tracked.
+release/.ocr-model-probe/
+release/.ocr-model-verify/
+
 # Frontend local env files
 frontend/.env
 frontend/.env.*

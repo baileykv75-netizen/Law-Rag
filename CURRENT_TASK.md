@@ -14,8 +14,8 @@ Stage 14       IN PROGRESS — OCR distribution + DOCX
                 14.2 DOCX native ingestion COMPLETE
                 14.3 DOCX Evidence + Source Viewer COMPLETE
                 14.4 Windows OCR runtime distribution COMPLETE
-                14.5 offline OCR model distribution NEXT
-                14.6 Pipeline + Home integration PENDING
+                14.5 offline OCR model distribution COMPLETE
+                14.6 Pipeline + Home integration NEXT
                 14.7 full regression + packaged Windows smoke PENDING
 ```
 
@@ -173,23 +173,9 @@ The base release pins remain authoritative for overlaps such as `pypdfium2==5.12
 
 `Law-Rag.exe --diagnose-ocr-runtime` validates the bundled distributions, imports Paddle/PaddleOCR and runs Paddle's local native self-check. It deliberately does **not** construct `PaddleOCR`, select a model or download weights.
 
-The Windows release smoke runs the frozen OCR diagnostic with HTTP/HTTPS/ALL proxies pointed at an unusable local endpoint, proving the runtime import/native check does not require network/model downloads.
+The Windows release smoke runs the frozen OCR diagnostic with HTTP/HTTPS/ALL proxy variables pointed at an unusable local endpoint, proving the runtime import/native check does not require network/model downloads.
 
-PyInstaller explicitly collects Paddle/PaddleOCR/PaddleX Python modules, data, native DLL/PYD files and distribution metadata. The final onedir is checked for:
-
-- exact PaddlePaddle/PaddleOCR/PaddleX pins;
-- Paddle native DLL/PYD presence;
-- existing `pdfium.dll` presence;
-- no Law-Rag root runtime/uploads/jobs/logs/private data;
-- no `.paddlex`, `.paddleocr`, `model_cache`, `official_models` or PP-OCR detector/recognizer model directories.
-
-Generic dependency-internal code directories named `runtime` are allowed; the RC scanner no longer confuses PaddleX package code with Law-Rag private runtime data. Private application data remains forbidden at the bundle root, while OCR cache/model identities remain recursively forbidden.
-
-### Release/notices boundary
-
-The release build collects third-party NOTICE/license material across both exact base and OCR locks. `release-metadata.json` fingerprints both locks. PaddlePaddle/PaddleOCR/PaddleX are now classified as bundled runtime components in `release/dependency-inventory.json`.
-
-**PP-OCR model weights are not bundled in Stage 14.4.** Model licensing, fixed model identity, hashes, offline startup and actual OCR inference without downloads are Stage 14.5.
+PyInstaller explicitly collects Paddle/PaddleOCR/PaddleX Python modules, data, native DLL/PYD files and distribution metadata.
 
 ### 14.4 validation
 
@@ -212,22 +198,99 @@ final extracted RC user-flow smoke            PASS
 Windows onedir + portable RC artifact upload PASS
 ```
 
-The only warning remains the pre-existing Starlette TestClient/httpx deprecation warning.
+## 14.5 — Offline OCR model distribution — COMPLETE
 
-## 14.5 — Offline OCR model distribution — NEXT
+Stage 14.5 closes the model layer on top of the Stage 14.4 runtime. The normal Windows onedir/portable RC now contains the exact local PP-OCR detector and recognizer used by production OCR. Git stores only the manifest/configuration and integrity logic; model payloads are fetched from the approved official Paddle source during the clean release build and are never committed to the repository.
 
-The next slice owns the model layer, not the Python/native runtime.
+### Fixed model identity and integrity
+
+Approved models:
+
+```text
+PP-OCRv6_medium_det
+PP-OCRv6_medium_rec
+```
+
+`release/ocr-models-manifest.json` freezes:
+
+- official Paddle BOS archive URLs;
+- Apache-2.0 model-license identity;
+- archive SHA-256 values;
+- exact packaged directory names;
+- exact required inference files;
+- per-file SHA-256 values.
+
+The locked archive SHA-256 values are:
+
+```text
+PP-OCRv6_medium_det  144d0621e059566e5086e228829171591c144c2deb07b2dad4962214fbabfcf7
+PP-OCRv6_medium_rec  4eecc1c6a4623765042e6fc15446da0da110b7d875b6b72b2d351d2b2dbd4da6
+```
+
+The release build downloads only those approved archives, validates archive identity before extraction, rejects unsafe tar paths/links/devices, verifies the exact file set and hashes, and places the verified models under the frozen release asset root. Upstream content drift therefore fails the build rather than silently changing the OCR model.
+
+### Runtime no-download boundary
+
+Production `PaddleOcrProvider`:
+
+- permits only the two pinned PP-OCRv6 medium model identities;
+- resolves and SHA-256-verifies the packaged local model directories before importing/constructing PaddleOCR;
+- supplies explicit local detector/recognizer directories;
+- supplies Law-Rag's fixed minimal `paddlex_config` instead of relying on PaddleX package-relative/default configuration discovery;
+- disables document orientation, unwarping and text-line-orientation model branches so no third/fourth model is implicitly requested;
+- fails visibly when the model root, model manifest, fixed OCR pipeline config or any approved model file is missing/corrupt/unexpected;
+- never falls back to Hugging Face/BOS/Paddle model cache at runtime.
+
+### Frozen Windows compatibility hardening
+
+The real packaged inference regression exposed two frozen/runtime-specific issues and both are now locked by tests/configuration:
+
+1. PaddleX `ocr-core` availability is checked through `importlib.metadata.version(...)`. PyInstaller therefore explicitly preserves distribution metadata for `imagesize`, `opencv-contrib-python`, `pyclipper`, `pypdfium2`, `python-bidi` and `shapely`; the packages were already installed, but without their `.dist-info` PaddleX falsely reported the OCR extra as missing.
+2. PaddlePaddle `3.3.0` CPU inference on this PP-OCR path hit a oneDNN/PIR `ArrayAttribute<Double>` regression. Production keeps the pinned static CPU engine but sets `enable_mkldnn=False`, which maps the CPU inference path away from the failing oneDNN branch. This is a tested release compatibility requirement, not an optional performance toggle.
+
+The frozen inference diagnostic also preserves the exception cause chain so future packaging regressions expose the underlying Paddle/PaddleX error instead of only a generic Law-Rag wrapper message.
+
+### 14.5 validation
+
+Authoritative dedicated Windows run: **Stage 14.5 OCR model assets #64 (`32145367670`)**.
+
+```text
+clean Windows onedir build + locked official models PASS
+verified local model resolution/hash integrity       PASS
+frozen model integrity with network unavailable      PASS
+frozen real OCR inference with network unavailable   PASS
+base packaged workflow smoke                          PASS
+deterministic portable RC ZIP + manifest             PASS
+fresh extraction of final RC ZIP                      PASS
+final extracted RC user-flow smoke                    PASS
+model payload not tracked in Git                      PASS
+onedir + portable RC artifact upload                  PASS
+```
+
+Companion normal CI #727 (`32145367680`):
+
+```text
+backend pytest                      315 passed, 5 skipped, 1 third-party warning
+public deterministic quality gates PASS
+frontend production build          PASS
+Windows exact OCR dependency smoke PASS
+```
+
+The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
+
+## 14.6 — Pipeline + Home integration — NEXT
+
+The next slice owns product exposure of the input capabilities that are already implemented below the UI/orchestration boundary.
 
 Required direction:
 
-- choose/freeze the exact PP-OCR detector + recognizer model identities used by Law-Rag;
-- review the exact model redistribution/license boundary before bundling weights;
-- define deterministic local model paths and SHA-256/integrity metadata;
-- ensure production OCR never silently downloads or switches models;
-- validate a packaged OCR inference path with network unavailable;
-- make missing/corrupt model assets fail visibly and recoverably;
-- keep Stage 13 reasoning topology unchanged;
-- do not begin Home/Pipeline rollout or installer work in 14.5.
+- make Home/intake explicitly accept the supported PDF, JPG/JPEG, PNG and modern DOCX source set;
+- ensure native PDF, scanned PDF/image OCR and DOCX all enter the authoritative Pipeline without format-specific Stage 13 branches;
+- ensure OCR no-op/native-retained behavior remains correct for native-text PDF and DOCX;
+- surface source/OCR partial/failure states clearly instead of silently continuing;
+- preserve Provider approval semantics before the first model-provider call;
+- keep Legacy RC2 readability and Issue V1 architecture resolution unchanged;
+- do not begin Stage 14.7 final release closeout in the same implementation slice.
 
 ## Remaining Stage 14 sequence
 
@@ -250,6 +313,6 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 14.1–14.4 are complete. Stage 14.5 — offline OCR model distribution — is NEXT.**
+**Stage 14.1–14.5 are complete. Stage 14.6 — Pipeline + Home integration — is NEXT.**
 
-Do not start 14.6–14.7 in the same iteration as 14.5.
+Do not start Stage 14.7 in the same iteration as Stage 14.6.

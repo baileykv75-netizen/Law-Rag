@@ -1,0 +1,98 @@
+name: Stage 14.5 OCR model assets
+
+on:
+  push:
+    branches: [stage14-5-offline-ocr-models]
+  pull_request:
+    branches: [stage14-4-windows-ocr-runtime]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-offline-ocr-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12.10'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.2'
+          package-manager-cache: false
+      - name: Build Windows onedir with locked runtime and official OCR models
+        shell: pwsh
+        run: ./release/build-windows.ps1
+      - name: Show verified OCR model resolution
+        shell: pwsh
+        run: Get-Content release/.build/ocr-models/ocr-models-resolved.json
+      - name: Verify frozen model integrity without network
+        shell: pwsh
+        run: |
+          $env:HTTP_PROXY = "http://127.0.0.1:9"
+          $env:HTTPS_PROXY = "http://127.0.0.1:9"
+          $env:ALL_PROXY = "http://127.0.0.1:9"
+          $env:NO_PROXY = "127.0.0.1,localhost"
+          & ./release/dist/Law-Rag/Law-Rag.exe --diagnose-ocr-models --json
+          if ($LASTEXITCODE -ne 0) { throw "Frozen OCR model integrity diagnostic failed with exit code $LASTEXITCODE" }
+      - name: Run packaged offline real OCR and base workflow smoke
+        shell: pwsh
+        run: |
+          $log = "release/.build/stage14-5-smoke.log"
+          try {
+            & ./release/smoke-windows.ps1 *>&1 | Tee-Object -FilePath $log
+          }
+          catch {
+            $_ | Out-String | Tee-Object -FilePath $log -Append
+            throw
+          }
+      - name: Upload failed OCR smoke diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage14-5-ocr-smoke-diagnostic
+          path: release/.build/stage14-5-smoke.log
+          if-no-files-found: warn
+          retention-days: 3
+      - name: Build deterministic portable RC ZIP and manifest
+        shell: pwsh
+        run: ./release/package-rc.ps1
+      - name: Extract final RC and smoke user workflow
+        shell: pwsh
+        run: |
+          $log = "release/.build/stage14-5-rc-smoke.log"
+          try {
+            & ./release/smoke-rc-windows.ps1 *>&1 | Tee-Object -FilePath $log
+          }
+          catch {
+            $_ | Out-String | Tee-Object -FilePath $log -Append
+            throw
+          }
+      - name: Upload failed extracted RC smoke diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage14-5-rc-smoke-diagnostic
+          path: release/.build/stage14-5-rc-smoke.log
+          if-no-files-found: warn
+          retention-days: 3
+      - name: Verify model payload is not tracked in Git
+        shell: pwsh
+        run: |
+          $tracked = git ls-files | Select-String -Pattern 'PP-OCRv6_medium_(det|rec).*(inference\.pdiparams|inference\.json|inference\.yml)'
+          if ($tracked) { throw "OCR model binaries must not be committed to Git" }
+      - name: Upload inspectable Stage 14.5 onedir
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-onedir-stage14-5
+          path: release/dist/Law-Rag
+          if-no-files-found: error
+          retention-days: 3
+      - name: Upload Stage 14.5 portable RC
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-x64-stage14-5
+          path: release/rc
+          if-no-files-found: error
+          retention-days: 7

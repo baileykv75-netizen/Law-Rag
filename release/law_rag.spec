@@ -29,13 +29,21 @@ paddle_datas, paddle_binaries, paddle_hidden = collect_package("paddle")
 paddleocr_datas, paddleocr_binaries, paddleocr_hidden = collect_package("paddleocr")
 paddlex_datas, paddlex_binaries, paddlex_hidden = collect_package("paddlex")
 
-# Stage 14.4 validates runtime versions through importlib.metadata inside the
-# frozen executable. Keep distribution metadata alongside the collected Python
-# modules/native libraries; no OCR model weights are collected here.
+# Runtime versions are validated through importlib.metadata inside the frozen
+# executable. PaddleX also checks its ocr-core extra with
+# importlib.metadata.version(...) before creating the OCR pipeline, so the
+# distribution metadata for every ocr-core dependency must survive freezing
+# even though the importable modules themselves are already collected.
 ocr_metadata = [
     *collect_metadata("paddlepaddle"),
     *collect_metadata("paddleocr"),
     *collect_metadata("paddlex"),
+    *collect_metadata("imagesize"),
+    *collect_metadata("opencv-contrib-python"),
+    *collect_metadata("pyclipper"),
+    *collect_metadata("pypdfium2"),
+    *collect_metadata("python-bidi"),
+    *collect_metadata("shapely"),
 ]
 
 datas = [
@@ -44,6 +52,16 @@ datas = [
     (str(BUILD_ASSETS / "public-assets-metadata.json"), "release"),
     (str(BUILD_ASSETS / "release-metadata.json"), "release"),
     (str(BUILD_ASSETS / "THIRD-PARTY-NOTICES"), "THIRD-PARTY-NOTICES"),
+    (str(BUILD_ASSETS / "ocr-models"), "ocr-models"),
+    (str(REPO_ROOT / "release" / "ocr-models-manifest.json"), "release"),
+    # Keep Law-Rag's fixed two-model PaddleX config outside PaddleX package
+    # data. PaddleOcrProvider passes this path explicitly via paddlex_config,
+    # so collect_all("paddlex") cannot overwrite it with PaddleX's default
+    # OCR.yaml and no package-relative lookup is required at runtime.
+    (
+        str(REPO_ROOT / "release" / "paddlex" / "configs" / "pipelines" / "OCR.yaml"),
+        "release/ocr-pipeline",
+    ),
     (str(REPO_ROOT / "release" / "dependency-inventory.json"), "release"),
     (str(REPO_ROOT / "docs" / "WINDOWS_PACKAGING.md"), "docs"),
     (str(REPO_ROOT / ".env.example"), "."),
@@ -99,10 +117,6 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    # Keep a console-enabled executable so PowerShell/CMD diagnostics still
-    # receive stdout/stderr, but hide the console automatically when Law-Rag
-    # owns it (the normal double-click launch path). This prevents users from
-    # accidentally closing the local server by closing a visible console.
     console=True,
     hide_console="hide-early",
     disable_windowed_traceback=False,
