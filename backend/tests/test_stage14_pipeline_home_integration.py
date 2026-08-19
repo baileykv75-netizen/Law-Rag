@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from datetime import date
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -26,7 +25,7 @@ from app.models import (
     PageRoute,
     SourceMethod,
 )
-from app.pipeline_models import PipelineReport, PipelineStage, PipelineStageState
+from app.pipeline_models import PipelineReport, PipelineStage
 
 
 client = TestClient(app)
@@ -51,13 +50,19 @@ def _seed_docx_job(root: Path, job_id: UUID, *, warnings: list[str] | None = Non
         native_text_pages=0,
         ocr_required_pages=0,
         pages=[],
-        evidence_count=1,
+        evidence_count=4,
         warnings=warning_messages,
     )
     (job_dir / "document.json").write_text(
         json.dumps(inspection.model_dump(mode="json", exclude={"pages"}), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    evidence_texts = [
+        "设备采购合同",
+        "第一条 服务范围",
+        "甲方委托乙方提供设备采购与安装服务。",
+        "合同总价为人民币100000元，乙方应于2026年9月1日前交付。",
+    ]
     artifact = SourceEvidenceArtifact(
         job_id=job_id,
         source_document=SourceDocumentIdentity(
@@ -70,12 +75,13 @@ def _seed_docx_job(root: Path, job_id: UUID, *, warnings: list[str] | None = Non
         ),
         evidence=[
             SourceEvidence(
-                evidence_id=f"ev-{job_id}-docx-p000001",
-                order_index=1,
-                text="第一条 服务范围",
+                evidence_id=f"ev-{job_id}-docx-p{index:06d}",
+                order_index=index,
+                text=text,
                 source_method=SourceMethod.NATIVE_DOCX_TEXT,
-                source_anchor=DocxParagraphAnchor(paragraph_index=1),
+                source_anchor=DocxParagraphAnchor(paragraph_index=index),
             )
+            for index, text in enumerate(evidence_texts, start=1)
         ],
         warnings=[
             SourceEvidenceWarning(
@@ -209,6 +215,57 @@ def test_docx_enters_authoritative_pipeline_and_skips_ocr_without_provider_call(
     ocr_stage = next(stage for stage in completed["stages"] if stage["stage"] == "OCR")
     assert ocr_stage["state"] == "SKIPPED"
     assert "无需 OCR" in ocr_stage["detail"]
+
+
+def test_docx_runs_real_local_structure_and_rules_before_existing_provider_approval_boundary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+    job_id = uuid4()
+    _seed_docx_job(tmp_path, job_id)
+
+    import app.pipeline as pipeline
+
+    class ConfiguredPlannerThatMustNotBeCalled:
+        provider_name = "deepseek"
+        model_name = "stage14.6-boundary-fixture"
+        api_key = "synthetic-configured-key"
+
+        def generate(self, planner_input):
+            raise AssertionError("REQUIRE_APPROVAL must stop before the actual provider call")
+
+    def forbidden_ocr(*args, **kwargs):
+        raise AssertionError("native DOCX must not initialize or call PaddleOCR")
+
+    monkeypatch.setattr(pipeline, "run_ocr_for_job", forbidden_ocr)
+    monkeypatch.setattr(
+        pipeline,
+        "planner_provider_from_name",
+        lambda provider_name: ConfiguredPlannerThatMustNotBeCalled(),
+    )
+
+    response = client.post(
+        f"/api/documents/{job_id}/pipeline",
+        json={
+            "as_of": "2026-08-19",
+            "use_semantic": False,
+            "provider_mode": "REQUIRE_APPROVAL",
+        },
+    )
+    assert response.status_code == 202
+    paused = _wait(job_id, {"PAUSED_BEFORE_PROVIDER", "FAILED"})
+    assert paused["status"] == "PAUSED_BEFORE_PROVIDER", paused
+    assert paused["current_stage"] == "AUDIT_PLAN"
+    assert paused["progress_percent"] == 48
+    assert paused["failure_code"] == "PROVIDER_APPROVAL_REQUIRED"
+    assert (tmp_path / "jobs" / str(job_id) / "contract.json").exists()
+    assert (tmp_path / "jobs" / str(job_id) / "audit-rules.json").exists()
+    ocr_stage = next(stage for stage in paused["stages"] if stage["stage"] == "OCR")
+    structure_stage = next(stage for stage in paused["stages"] if stage["stage"] == "STRUCTURE")
+    rules_stage = next(stage for stage in paused["stages"] if stage["stage"] == "RULES")
+    assert ocr_stage["state"] == "SKIPPED"
+    assert structure_stage["state"] == "COMPLETE"
+    assert rules_stage["state"] == "COMPLETE"
 
 
 def test_pipeline_loader_validates_docx_source_evidence_and_fails_closed_on_corruption(
