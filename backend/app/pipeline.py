@@ -23,6 +23,7 @@ from .contract_structure import (
     build_contract_structure,
     load_contract_structure,
 )
+from .evidence_models import SourceEvidenceArtifact
 from .issue_legal_context import (
     IssueLegalContextError,
     IssueLegalContextStaleError,
@@ -60,7 +61,7 @@ from .issue_secondary_review_provider import (
     IssueSecondaryReviewProviderError,
     issue_secondary_provider_from_name,
 )
-from .models import DocumentInspection, OcrRunResult
+from .models import DocumentInspection, DocumentKind, OcrRunResult
 from .ocr import OcrProcessingError, OcrProviderUnavailable, run_ocr_for_job
 from .pipeline_control import (
     PipelineCancellationRequested,
@@ -346,10 +347,37 @@ def _checkpoint_cancel(report: PipelineReport) -> bool:
 
 
 def _load_document(job_id: UUID) -> DocumentInspection:
+    """Load common document metadata without forcing every source into pages.
+
+    PDF/image jobs keep their historical PageEvidence[] persistence. DOCX jobs
+    persist a SourceEvidenceArtifact instead, so the pipeline validates that
+    typed artifact and supplies an empty pages list to the common inspection
+    model. Source-format differences stop here; later pipeline stages remain
+    format-neutral.
+    """
+
     try:
         document_payload = json.loads(job_document_path(job_id).read_text(encoding="utf-8"))
-        evidence_payload = json.loads(job_evidence_path(job_id).read_text(encoding="utf-8"))
-        return DocumentInspection.model_validate({**document_payload, "pages": evidence_payload})
+        document_kind = DocumentKind(document_payload["document_kind"])
+        evidence_text = job_evidence_path(job_id).read_text(encoding="utf-8")
+
+        if document_kind == DocumentKind.DOCX:
+            evidence = SourceEvidenceArtifact.model_validate_json(evidence_text)
+            if evidence.job_id != job_id:
+                raise ValueError("DOCX evidence job identity does not match the pipeline job")
+            if evidence.source_document.document_kind != DocumentKind.DOCX:
+                raise ValueError("DOCX evidence source kind does not match document metadata")
+            if evidence.source_document.filename != document_payload.get("filename"):
+                raise ValueError("DOCX evidence filename does not match document metadata")
+            if evidence.source_document.media_type != document_payload.get("media_type"):
+                raise ValueError("DOCX evidence media type does not match document metadata")
+            pages = []
+        else:
+            pages = json.loads(evidence_text)
+            if not isinstance(pages, list):
+                raise ValueError("PDF/image evidence must remain a paginated evidence list")
+
+        return DocumentInspection.model_validate({**document_payload, "pages": pages})
     except Exception as exc:
         raise _StageFailure("DOCUMENT_EVIDENCE_INVALID", "已接收文件的文档证据无法安全读取。") from exc
 
@@ -368,7 +396,7 @@ def _run_ocr_stage(report: PipelineReport) -> None:
     job_id = report.job_id
     document = _load_document(job_id)
     if document.ocr_required_pages == 0:
-        _mark_done(report, PipelineStage.OCR, detail="原生文本可用，无需 OCR。", skipped=True)
+        _mark_done(report, PipelineStage.OCR, detail="现有源文本可用，无需 OCR。", skipped=True)
         return
 
     existing = _existing_ocr(job_id)
