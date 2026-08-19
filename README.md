@@ -24,25 +24,27 @@ PDF / JPG / JPEG / PNG / DOCX
   -> /results + /workspace
 ```
 
-The backend/source layer already supports modern DOCX and the Windows release already contains fixed offline OCR runtime/models. Stage 14.6 is the remaining product integration slice that makes the complete source set explicit through Home/intake and the authoritative Pipeline.
+Source-format differences stop at the Evidence/Canonical boundary. The Issue V1 Planner/RAG/DeepSeek/Kimi/comparison/Human Review topology does not branch on PDF/image/DOCX.
 
 Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupported, conflicting, stale, incomplete or insufficient-evidence states remain visible for human review.
 
 ## Status
 
-**Stage 13G is complete. Stage 14.1–14.5 are complete. Stage 14.6 — Pipeline + Home integration — is next.**
+**Stage 13G is complete. Stage 14.1–14.6 are complete. Stage 14.7 — full regression + packaged Windows validation — is next.**
 
-Validated Stage 14 foundations now include:
+Stage 14 now includes:
 
 - cross-format Evidence identities with typed PDF/image/DOCX source anchors;
 - safe modern DOCX OOXML ingestion without synthetic page numbers;
 - logical DOCX Source Viewer navigation to exact paragraphs/table cells;
+- Home/intake support for PDF, DOCX, JPG/JPEG and PNG;
+- source warnings preserved from ingestion through Home/Workspace;
+- source-format-aware Pipeline loading for historical paginated PDF/image Evidence and DOCX `SourceEvidenceArtifact`;
 - bundled Windows PaddlePaddle/PaddleOCR/PaddleX runtime;
 - fixed `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec` assets fetched from approved official Paddle sources during clean release builds;
 - archive and per-file SHA-256 model integrity validation;
 - no runtime model download/fallback;
-- real frozen Windows OCR inference with network unavailable;
-- deterministic RC ZIP plus extracted-RC user-flow validation.
+- real frozen Windows OCR inference with network unavailable.
 
 The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
@@ -57,6 +59,27 @@ The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
 Opening Results, Workspace or the Stage 13 Developer diagnostic surface reads persisted artifacts and does not implicitly call DeepSeek/Kimi.
 
+## Supported inputs
+
+```text
+native PDF
+scanned PDF
+JPG / JPEG / PNG
+modern DOCX
+```
+
+Legacy `.doc` is not accepted as DOCX.
+
+DOCX has no stable source pagination. It uses structural anchors such as:
+
+```text
+DOCX_PARAGRAPH
+DOCX_TABLE_CELL
+DOCX_EMBEDDED_IMAGE
+```
+
+The UI therefore shows DOCX as structural Source Evidence rather than inventing page 1 or presenting `0 pages` as if it were an error.
+
 ## Provider boundary
 
 Local ingest/OCR/structure/rules run before the first cloud-model phase. With:
@@ -69,7 +92,9 @@ Law-Rag pauses before the Audit Planner's first actual provider call. A configur
 
 Every later Planner/DeepSeek/Kimi request crosses the persisted provider/cancellation boundary independently. An already-started HTTP request cannot be recalled, but cancellation blocks subsequent requests.
 
-Local OCR is independent of those cloud-provider permissions.
+Stage 14.6 regression proves a native DOCX job can run the real local STRUCTURE + RULES stages and still stop at `AUDIT_PLAN`, 48%, with `PROVIDER_APPROVAL_REQUIRED` before the synthetic configured Planner can execute.
+
+Local OCR is independent of cloud-provider permission.
 
 ## Quick start on Windows
 
@@ -178,9 +203,7 @@ PDF/image -> PAGE_TEXT / PAGE_REGION
 DOCX      -> DOCX_PARAGRAPH / DOCX_TABLE_CELL / DOCX_EMBEDDED_IMAGE
 ```
 
-DOCX never receives fake page numbers. The logical Source Viewer resolves structural Evidence directly to the corresponding paragraph or table-cell paragraph.
-
-Unsupported/partial DOCX constructs remain explicit source warnings instead of being silently dropped.
+Unsupported/partial DOCX constructs remain explicit source warnings instead of being silently dropped. Pipeline and Workspace validate the persisted source representation rather than forcing DOCX into the historical paginated schema.
 
 ## Offline OCR integrity
 
@@ -188,22 +211,11 @@ Production OCR permits only the pinned detector and recognizer. Before pipeline 
 
 The packaged path does not initialize document-orientation, unwarping or text-line-orientation model branches and does not silently use Hugging Face, BOS or downloaded Paddle caches at runtime.
 
-PyInstaller preserves PaddleX `ocr-core` distribution metadata required by `importlib.metadata` dependency checks. For the pinned Windows PaddlePaddle 3.3.0 CPU path, `enable_mkldnn=False` is kept as a tested compatibility requirement after the real packaged regression exposed a oneDNN/PIR failure with that branch enabled.
+PyInstaller preserves PaddleX `ocr-core` distribution metadata required by `importlib.metadata` dependency checks. For the pinned Windows PaddlePaddle 3.3.0 CPU path, `enable_mkldnn=False` is kept as a tested compatibility requirement after real packaged regression exposed a oneDNN/PIR failure with that branch enabled.
 
-## Audit Plan and coverage
+## Audit Plan, legal evidence and review
 
-`audit-plan.json` is the authoritative review scope for Issue V1. Every canonical clause/block is assigned one planning coverage state:
-
-```text
-REVIEWED_WITH_ISSUE
-REVIEWED_NO_SPECIFIC_ISSUE
-```
-
-`REVIEWED_NO_SPECIFIC_ISSUE` means planning coverage only. It is never presented as a legal-safe conclusion.
-
-Short contracts use a bounded direct Planner pass. Long contracts use complete-object chunk passes plus bounded global planning synthesis; canonical objects are not character-truncated merely to fit a model request.
-
-## Legal evidence and retrieval
+`audit-plan.json` is the authoritative review scope for Issue V1. Every canonical clause/block receives explicit planning coverage.
 
 Canonical legal identity is:
 
@@ -211,66 +223,9 @@ Canonical legal identity is:
 authority -> authority version -> article / Legal Evidence ID
 ```
 
-Applicability is deterministic:
+Retrieval combines exact citation lookup, SQLite FTS5 trigram/BM25, optional local BGE semantic retrieval and weighted reciprocal-rank fusion. Absence from the checked-in `CURATED_EXCERPT` seed is never proof that no applicable legal rule exists.
 
-```text
-effective_date <= as_of < end_date_exclusive
-```
-
-Retrieval combines:
-
-```text
-exact citation
-+ SQLite FTS5 trigram / BM25
-+ optional local BGE semantic retrieval
-+ weighted reciprocal-rank fusion
-```
-
-The checked-in public legal seed is deliberately `CURATED_EXCERPT`. **Absence from the local seed is never evidence that no applicable legal rule exists.**
-
-## Human review
-
-Issue V1 human decisions bind to `AuditPlan.issue_id` and append revisions to `human-review.json`.
-
-The server snapshots current Contract Evidence / Legal Evidence references and binds each revision to the current `issue-review-report.json` artifact fingerprint. If the audit chain later changes, the old revision remains visible as stale and cannot close the new review state.
-
-Only fresh final `CONFIRMED` or `REJECTED` decisions close a mandatory Issue review. `NEEDS_MORE_REVIEW`, `UNREVIEWED`, stale revisions and incomplete planning coverage remain outstanding.
-
-Legacy finding/omission review revisions remain readable without being fabricated into Issue identities.
-
-## Results priority
-
-The `/results` queue uses deterministic workload ordering:
-
-```text
-unresolved human review
-> possible omission
-> material disagreement
-> critical
-> high
-> insufficient evidence
-> medium
-> low
-```
-
-This is an audit workload priority, **not a legal-risk probability or correctness score**.
-
-## Developer diagnostics
-
-`/developer` defaults to GET-only Stage 13 diagnostics for:
-
-```text
-architecture
-pipeline
-Audit Plan
-Issue Legal Context
-Issue Primary Audit
-Issue Secondary Review
-Issue Comparison
-Human Review
-```
-
-Missing, stale/conflicting and invalid artifacts remain explicit. Historical Stage 1–9 execution tools are retained only under the collapsed `Legacy / RC2` area.
+Human Review is append-only and fingerprint-bound. Only fresh final `CONFIRMED` or `REJECTED` decisions close a mandatory Issue review; stale or incomplete states remain visible.
 
 ## Validation
 
@@ -287,18 +242,19 @@ Stage 14.5 OCR model assets #64 (32145367670)
   onedir + RC artifact upload                  PASS
 ```
 
-Companion normal CI #727 (`32145367680`):
+Stage 14.6 authoritative final CI:
 
 ```text
-backend pytest: 315 passed, 5 skipped, 1 warning
-public deterministic quality gates: PASS
-frontend production build: PASS
-Windows exact OCR dependency smoke: PASS
+Law-Rag CI #746 (32244495929)
+  backend pytest: 320 passed, 5 skipped, 1 warning
+  public deterministic quality gates: PASS
+  frontend production build: PASS
+  Windows exact OCR dependency smoke: PASS
 ```
 
 The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
 
-No additional global Kimi coverage-synthesis call is part of Stage 13. The current regression evidence did not demonstrate a missing cross-Issue failure mode that justifies adding another provider call. That decision should be revisited only if later expert/benchmark evidence demonstrates such omissions.
+Stage 14.7 is responsible for the final combined packaged Windows regression across PDF/image/DOCX, offline OCR, provider approval, UI routes, privacy scans and deterministic RC extraction.
 
 ## Core engineering principles
 
@@ -317,15 +273,6 @@ No additional global Kimi coverage-synthesis call is part of Stage 13. The curre
 
 ## Repository safety
 
-This repository is public. Treat every committed file as public information.
-
-Do not commit:
-
-- real/private contracts;
-- API keys or `.env` secrets;
-- runtime uploads or generated job reports;
-- private benchmark labels;
-- model caches or private vector stores;
-- logs containing private contract text.
+This repository is public. Do not commit real/private contracts, API keys, runtime uploads, generated private reports, private benchmark labels, model caches/private vector stores, or logs containing private contract text.
 
 See [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CURRENT_TASK.md`](CURRENT_TASK.md), and [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
