@@ -1,6 +1,6 @@
 # CURRENT_TASK.md
 
-# Stage 14 — OCR Distribution + DOCX
+# Stage 15 — Official Legal Corpus Expansion + Versioning + Retrieval Tuning
 
 ## Status
 
@@ -8,18 +8,12 @@
 Stage 11A–11E  COMPLETE / validated release foundations
 Stage 12A–12F  COMPLETE / RC2 VALIDATED
 Stage 13A–13G  COMPLETE / ISSUE_V1 production migration validated
+Stage 14.1–14.7 COMPLETE / OCR distribution + DOCX + packaged Windows validation
 
-Stage 14       IN PROGRESS — OCR distribution + DOCX
-                14.1 cross-format Evidence architecture COMPLETE
-                14.2 DOCX native ingestion COMPLETE
-                14.3 DOCX Evidence + Source Viewer COMPLETE
-                14.4 Windows OCR runtime distribution COMPLETE
-                14.5 offline OCR model distribution COMPLETE
-                14.6 Pipeline + Home integration COMPLETE
-                14.7 full regression + packaged Windows smoke NEXT
+Stage 15       NEXT — official legal corpus expansion + update/versioning + retrieval tuning
 ```
 
-Stage 13 is closed. Do not reopen the audit topology without new evidence. Stage 14 extends the reliable local input/distribution boundary without changing the proven `ISSUE_V1` reasoning chain.
+Stage 13 audit topology and Stage 14 source/distribution architecture are closed. Do not reopen them without new evidence. Stage 15 may improve the official legal corpus, version management and retrieval quality, but must not silently change the proven `ISSUE_V1` reasoning topology or the Stage 14 source-format/OCR distribution boundary.
 
 ## Production baseline
 
@@ -41,112 +35,78 @@ Source file
 
 Historical completed RC2 jobs remain readable as `LEGACY_RC2`; provenance conflicts fail closed as `CONFLICT`.
 
-## Stage 14 completed work
+## Stage 14 — COMPLETE
 
-### 14.1 — Cross-format Evidence architecture — COMPLETE
+Stage 14 delivered and validated:
 
-- Evidence IDs are opaque identities.
-- Typed `source_anchor` carries location semantics.
-- PDF/image use real page/region anchors; DOCX never fabricates page numbers.
-- Unsupported/partial source constructs remain visible.
+- cross-format Evidence identities with typed PDF/image/DOCX source anchors;
+- safe modern DOCX OOXML ingestion without synthetic page numbers;
+- logical DOCX Source Viewer navigation to exact paragraphs/table cells;
+- Home/intake support for PDF, DOCX, JPG/JPEG and PNG;
+- source warnings preserved through Home/Workspace;
+- source-format-aware Pipeline loading for historical `PageEvidence[]` and DOCX `SourceEvidenceArtifact`;
+- bundled Windows PaddlePaddle/PaddleOCR/PaddleX runtime;
+- fixed local `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec` assets with archive/file SHA-256 verification;
+- no runtime OCR model download/fallback;
+- real frozen Windows OCR inference with outbound network unavailable;
+- native DOCX real local STRUCTURE + RULES execution with `REQUIRE_APPROVAL` still blocking before the first Planner provider call;
+- deterministic portable Windows RC ZIP + manifest + fresh-extraction user-flow smoke.
 
-### 14.2 — DOCX native ingestion — COMPLETE
+### Stage 14 final validation
 
-- modern `.docx` OOXML only; legacy `.doc` is not accepted;
-- unsafe/encrypted/macro/pathological packages fail closed;
-- paragraphs, Word numbering, tables and embedded-image inventory preserve source identity;
-- tracked changes and unsupported meaningful constructs create explicit warnings;
-- DOCX enters the same deterministic canonical extraction boundary as PDF/OCR.
-
-### 14.3 — DOCX Evidence + Source Viewer — COMPLETE
-
-- source navigation is source-format aware;
-- DOCX Source Viewer resolves exact logical paragraph/table-cell anchors;
-- `page_count=0` means no stable source pagination, not malformed evidence;
-- source warnings remain visible in Workspace.
-
-### 14.4 — Windows OCR runtime distribution — COMPLETE
-
-Pinned packaged runtime:
+Authoritative normal CI on the Stage 14.7 validated head:
 
 ```text
-CPython 3.12.10
-PaddlePaddle CPU 3.3.0
-PaddleOCR 3.7.0
-PaddleX 3.7.2
-```
-
-### 14.5 — Offline OCR model distribution — COMPLETE
-
-Pinned local models:
-
-```text
-PP-OCRv6_medium_det
-PP-OCRv6_medium_rec
-```
-
-The clean Windows build fetches only approved official Paddle archives, verifies archive and inference-file SHA-256 values, and packages fixed local detector/recognizer assets. Production OCR does not silently download or substitute weights.
-
-Authoritative Stage 14.5 Windows run: `32145367670`.
-Companion normal CI: `32145367680` — backend `315 passed, 5 skipped, 1 warning`, quality/frontend/Windows OCR dependency smoke PASS.
-
-## 14.6 — Pipeline + Home integration — COMPLETE
-
-Implemented on `stage14-6-pipeline-home-integration`:
-
-- Home accepts PDF, modern DOCX, JPG/JPEG and PNG;
-- Home preserves backend `document_kind`, `evidence_count` and source warnings;
-- DOCX is shown as structural Source Evidence instead of fake `0 pages` pagination;
-- Pipeline loading discriminates persisted source representation explicitly:
-  - PDF/image -> historical `PageEvidence[]`;
-  - DOCX -> validated `SourceEvidenceArtifact`;
-- DOCX evidence identity must match job/document metadata or fail closed as `DOCUMENT_EVIDENCE_INVALID`;
-- native DOCX with `ocr_required_pages=0` skips OCR without initializing PaddleOCR;
-- PDF/image paginated behavior remains backward compatible;
-- source-format differences stop before STRUCTURE/RULES/Audit Planner;
-- the Stage 13 Issue V1 stage sequence and Legacy RC2 compatibility remain unchanged;
-- `REQUIRE_APPROVAL` still blocks the first actual Planner call after local STRUCTURE + RULES.
-
-### 14.6 validation
-
-Authoritative final head CI: **Law-Rag CI #746 (`32244495929`)**.
-
-```text
+Law-Rag CI #755 (32245812433)
 backend pytest                      320 passed, 5 skipped, 1 third-party warning
 public deterministic quality gates PASS
 frontend production build          PASS
 Windows exact OCR dependency smoke PASS
 ```
 
-The 320-test suite includes a persisted DOCX Pipeline regression that uses the real local STRUCTURE + RULES stages and proves `REQUIRE_APPROVAL` stops at `AUDIT_PLAN`, progress `48`, with `PROVIDER_APPROVAL_REQUIRED` before the configured synthetic Planner can execute.
-
-The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
-
-## 14.7 — NEXT: full regression + packaged Windows validation
-
-Stage 14.7 closes Stage 14. It is validation/release hardening only; it must not redesign the audit topology.
-
-Required acceptance:
-
-1. normal backend + public deterministic quality gates + frontend build PASS on final Stage 14 head;
-2. clean Windows onedir build from exact base/OCR locks;
-3. fixed local OCR model hashes verify with network unavailable;
-4. real frozen OCR inference succeeds offline;
-5. packaged Home accepts PDF/DOCX/JPG/JPEG/PNG;
-6. packaged native DOCX enters the authoritative Pipeline, runs real local STRUCTURE + RULES, and preserves source warnings/provenance;
-7. packaged scanned PDF/image OCR still works with the fixed local models;
-8. `REQUIRE_APPROVAL` still pauses before the first actual Planner call after local work;
-9. `/`, `/results`, `/workspace`, `/developer` load from the final bundle;
-10. private runtime data, source contracts, API keys and model caches are absent from release payloads;
-11. deterministic portable RC ZIP + manifest + fresh-extraction smoke PASS;
-12. final docs close Stage 14 and set Stage 15 as NEXT.
-
-Do not add legal-corpus expansion, expert benchmarking, tray/history, encryption/report export, installer/signing or update infrastructure in Stage 14.7.
-
-## Deferred after Stage 14
+Authoritative packaged Windows validation:
 
 ```text
-Stage 15  official legal corpus expansion + update/versioning + retrieval tuning
+Stage 14.7 final Windows release validation (32245812422)
+clean Windows onedir + exact runtime/models      PASS
+frozen OCR model integrity, network unavailable  PASS
+packaged PDF/OCR/UI/privacy smoke                 PASS
+packaged DOCX Pipeline + image OCR API smoke      PASS
+deterministic portable RC ZIP + manifest          PASS
+fresh-extracted final RC complete user-flow smoke PASS
+model payload absent from Git                     PASS
+onedir + RC artifact upload                       PASS
+```
+
+Artifacts from the authoritative run:
+
+```text
+law-rag-windows-onedir-stage14-7
+law-rag-windows-x64-stage14-7
+```
+
+The remaining pytest warning is the existing Starlette TestClient/httpx deprecation warning.
+
+## Stage 15 — NEXT
+
+Stage 15 owns **official legal corpus expansion + update/versioning + retrieval tuning**.
+
+Target scope:
+
+1. expand the checked-in/public legal corpus only from authoritative public sources with explicit provenance;
+2. preserve canonical authority -> version -> article / Legal Evidence identity;
+3. make source updates/version transitions deterministic and reviewable rather than overwriting history;
+4. improve coverage metadata so `CURATED_EXCERPT`, full-text and missing/ambiguous states stay explicit;
+5. tune lexical/exact/semantic retrieval against an expanded public regression set;
+6. preserve applicability semantics and fail-closed behavior for version ambiguity/no applicable version;
+7. add deterministic corpus/retrieval regression evidence before claiming quality improvement;
+8. keep private contracts, private benchmarks, model caches and secrets out of Git.
+
+Stage 15 must **not** fold in Stage 16 expert benchmark/real-provider UAT, Stage 17 tray/history, Stage 18 encryption/report export or Stage 19 installer/signing/update infrastructure.
+
+## Deferred after Stage 15
+
+```text
 Stage 16  expert benchmark + regression corpus + real-provider UAT
 Stage 17  tray/graceful quit + history + storage management
 Stage 18  runtime encryption + DOCX/PDF report export + cost/resource controls + advanced provider settings
@@ -155,4 +115,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 14.6 is complete. Stage 14.7 is the only next implementation scope.**
+**Stage 14 is complete. Stage 15 is the only next implementation scope.**

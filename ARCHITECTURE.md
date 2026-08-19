@@ -36,7 +36,7 @@ Local FastAPI backend
 
 Source navigation, Results/Workspace reads, Stage 13 Developer diagnostics, Human Review and local OCR do not implicitly execute external providers.
 
-As of Stage 14.6, the Home intake and authoritative Pipeline expose the complete supported source set: PDF, JPG/JPEG, PNG and modern DOCX. The Windows release already contains the pinned OCR runtime and fixed verified detector/recognizer assets; Stage 14.7 owns the final combined packaged regression.
+**Stage 14 is complete.** Home/Pipeline expose PDF, JPG/JPEG, PNG and modern DOCX; the Windows release contains the pinned OCR runtime and verified detector/recognizer assets; the complete packaged Windows onedir/RC flow has passed final combined validation.
 
 ## 3. Authoritative job architectures
 
@@ -68,8 +68,6 @@ The application owns mandatory stage ordering. Neither a model nor the UI may sk
 
 ### 4.1 Source-format boundary
 
-Stage 14.6 makes the Pipeline source-format aware only at the persisted document/evidence boundary:
-
 ```text
 PDF/image document.json + PageEvidence[]
 DOCX      document.json + SourceEvidenceArtifact
@@ -83,9 +81,9 @@ OCR decision -> STRUCTURE -> RULES -> unchanged Issue V1 chain
 
 PDF/image keep their historical paginated evidence representation for compatibility. DOCX is validated as `SourceEvidenceArtifact`; it is never coerced into fake pages. Job identity, source kind, filename and media type must agree or the Pipeline fails closed as `DOCUMENT_EVIDENCE_INVALID`.
 
-Native DOCX reports `ocr_required_pages=0` and skips the OCR stage without constructing PaddleOCR. Native-text PDF keeps the same no-op behavior. Scanned PDF/images continue through the existing local OCR path.
+Native DOCX reports `ocr_required_pages=0` and skips OCR without constructing PaddleOCR. Native-text PDF keeps the same no-op behavior. Scanned PDF/images continue through the local OCR path.
 
-The Stage 13 Planner/RAG/DeepSeek/Kimi/comparison/Human Review layers therefore remain source-format neutral.
+Planner/RAG/DeepSeek/Kimi/comparison/Human Review remain source-format neutral.
 
 ### 4.2 Provider boundary
 
@@ -93,7 +91,7 @@ The Stage 13 Planner/RAG/DeepSeek/Kimi/comparison/Human Review layers therefore 
 
 A provider must also be configured. Approval does not manufacture credentials. Planner, DeepSeek and Kimi requests cross persisted approval/cancellation checks independently. A request that has already started cannot be recalled, but cancellation prevents later calls.
 
-Stage 14.6 regression runs a persisted DOCX job through real local STRUCTURE + RULES and proves the Pipeline pauses at:
+Validated Stage 14 behavior:
 
 ```text
 current_stage     AUDIT_PLAN
@@ -101,7 +99,7 @@ progress_percent  48
 failure_code      PROVIDER_APPROVAL_REQUIRED
 ```
 
-before the configured synthetic Planner can execute.
+before the configured Planner can execute.
 
 Background limits remain bounded:
 
@@ -139,7 +137,7 @@ DOCX_TABLE_CELL
 DOCX_EMBEDDED_IMAGE
 ```
 
-PDF/image jobs may carry real page/bbox/polygon/text-offset coordinates. DOCX has no stable source pagination and never receives synthetic page numbers.
+PDF/image may carry real page/bbox/polygon/text-offset coordinates. DOCX has no stable source pagination and never receives synthetic page numbers.
 
 DOCX `SourceEvidenceArtifact` preserves original source SHA-256/size, ordered structural Evidence and structured warnings. Before canonical structuring, original DOCX size/hash are revalidated; changed/missing source fails closed.
 
@@ -171,7 +169,7 @@ DOCX Evidence
 
 `GET /api/documents/{job_id}/source/docx` is local/read-only. The paginated source endpoint refuses DOCX rather than inventing page 1.
 
-Home and Workspace preserve source warnings. Home renders DOCX as structural Evidence counts instead of presenting `page_count=0` as a malformed document.
+Home and Workspace preserve source warnings. Home renders DOCX as structural Evidence counts instead of presenting `page_count=0` as malformed.
 
 ## 6. Local OCR distribution
 
@@ -193,9 +191,9 @@ PP-OCRv6_medium_rec
 
 `release/ocr-models-manifest.json` freezes approved official Paddle archive URLs, license identity, archive SHA-256, packaged directory names, required inference files and per-file SHA-256 values.
 
-Production OCR permits only those two model identities, validates the local model file set/hashes before constructing PaddleOCR, and passes explicit local model directories plus Law-Rag's fixed minimal PaddleX configuration. There is no runtime fallback to Hugging Face, BOS, Paddle caches or another model.
+Production OCR permits only those model identities, validates the local model file set/hashes before constructing PaddleOCR, and passes explicit local model directories plus Law-Rag's fixed minimal PaddleX configuration. There is no runtime fallback to Hugging Face, BOS, Paddle caches or another model.
 
-The fixed configuration disables document orientation, unwarping and text-line-orientation model branches. The Windows CPU path keeps `enable_mkldnn=False` because regression exposed a PaddlePaddle 3.3.0 oneDNN/PIR failure when that branch was enabled.
+The fixed configuration disables document orientation, unwarping and text-line-orientation model branches. The Windows CPU path keeps `enable_mkldnn=False` because packaged regression exposed a PaddlePaddle 3.3.0 oneDNN/PIR failure when that branch was enabled.
 
 PyInstaller preserves PaddleX `ocr-core` distribution metadata and required native DLL/PYD files. PDFium/pypdfium2 provides bounded local rasterization for OCR-required PDFs and source-page rendering.
 
@@ -261,119 +259,81 @@ Local absence or partial corpus coverage is never converted into a claim that no
 
 ## 10. DeepSeek primary + Kimi secondary review
 
-DeepSeek performs one bounded request per AuditPlan Issue. Terminal primary states:
-
-```text
-SUPPORTED_FINDING
-NO_MATERIAL_RISK_FOUND
-INSUFFICIENT_EVIDENCE
-REVIEW_REQUIRED
-```
-
-Kimi performs one bounded independent finding + coverage review per Issue. Finding assessments:
-
-```text
-SUPPORTED
-PARTIALLY_SUPPORTED
-DISAGREED
-INSUFFICIENT_EVIDENCE
-REVIEW_REQUIRED
-```
-
-Coverage assessments:
-
-```text
-COVERED
-COVERED_BUT_QUESTIONABLE
-POSSIBLE_OMISSION
-INSUFFICIENT_EVIDENCE
-```
-
-Both providers may cite only supplied canonical Contract/Legal Evidence identities. Unsupported identities fail validation. Results checkpoint per Issue; unchanged completed checkpoints are reused rather than repeating paid calls.
+DeepSeek performs one bounded request per AuditPlan Issue. Kimi performs one bounded independent finding + coverage review per Issue. Both providers may cite only supplied canonical Contract/Legal Evidence identities. Unsupported identities fail validation. Results checkpoint per Issue; unchanged completed checkpoints are reused rather than repeating paid calls.
 
 No extra global Kimi vote/synthesis pass exists without demonstrated evidence of a cross-Issue failure mode.
 
 ## 11. Deterministic Issue comparison and Human Review
 
-`issue-review-report.json` compares DeepSeek/Kimi outputs without another model. Representative states:
+`issue-review-report.json` compares DeepSeek/Kimi outputs without another model. Only `CONSISTENT` avoids mandatory human review. Two-model agreement is not proof or a correctness probability.
 
-```text
-CONSISTENT
-CONSISTENT_WITH_REVIEW
-MATERIAL_DISAGREEMENT
-POSSIBLE_OMISSION
-INSUFFICIENT_EVIDENCE
-REVIEW_REQUIRED
-```
-
-Only `CONSISTENT` avoids mandatory human review. Two-model agreement is not proof or a correctness probability.
-
-Human Review is append-only and fingerprint-bound to the current authoritative Issue report. For Issue V1:
-
-```text
-target_type = issue
-target_id   = AuditPlan.issue_id
-```
-
-Only fresh final `CONFIRMED` or `REJECTED` decisions resolve mandatory review. Stale revisions and incomplete planning coverage cannot silently close a job.
+Human Review is append-only and fingerprint-bound to the current authoritative Issue report. Only fresh final `CONFIRMED` or `REJECTED` decisions resolve mandatory review. Stale revisions and incomplete planning coverage cannot silently close a job.
 
 ## 12. Results, Workspace and Developer
 
-`/results` and `/workspace` resolve authoritative architecture before choosing artifacts. Workspace shows every AuditPlan Issue and exposes Planner scope, Contract Evidence, Legal Evidence, DeepSeek, Kimi, deterministic comparison and Human Review.
+`/results` and `/workspace` resolve authoritative architecture before choosing artifacts. Workspace exposes Planner scope, Contract Evidence, Legal Evidence, DeepSeek, Kimi, deterministic comparison and Human Review.
 
 `/developer` defaults to GET-only diagnostics over persisted Stage 13 artifacts. Opening diagnostics must not create/re-run stages or call providers. Historical Stage 1–9 execution tools stay visibly isolated under Legacy/RC2.
 
 ## 13. Persistence and privacy
 
-Current private Issue V1 artifacts include:
+Current private Issue V1 artifacts include document/evidence/OCR/canonical/rule/Pipeline/Issue review/human-review JSON under ignored runtime paths.
+
+`evidence.json` is intentionally source-format compatible rather than artificially uniform:
 
 ```text
-document.json
-evidence.json
-ocr.json
-contract.json
-audit-rules.json
-pipeline.json
-pipeline-control.json
-audit-plan.json
-issue-legal-context.json
-issue-primary-audit.json
-issue-secondary-review.json
-issue-review-report.json
-human-review.json
+PDF/image -> PageEvidence[]
+DOCX      -> SourceEvidenceArtifact
 ```
-
-Artifacts are local/ignored by Git. `evidence.json` is intentionally source-format compatible rather than artificially uniform: PDF/image may contain historical `PageEvidence[]`; DOCX contains `SourceEvidenceArtifact`.
 
 Private runtime jobs, source contracts, API keys, downloaded model caches and private benchmark data must not enter the release bundle or public repository.
 
-## 14. Validation boundary
+## 14. Stage 14 validation boundary — COMPLETE
 
-Stage 14.5 authoritative packaged Windows run: `32145367670`.
-
-Stage 14.6 authoritative final CI: **Law-Rag CI #746 (`32244495929`)**:
+Authoritative normal CI on the validated Stage 14.7 head:
 
 ```text
+Law-Rag CI #755 (32245812433)
 backend pytest                      320 passed, 5 skipped, 1 third-party warning
 public deterministic quality gates PASS
 frontend production build          PASS
 Windows exact OCR dependency smoke PASS
 ```
 
-Stage 14.6 proves the complete input set is exposed in Home/Pipeline and that DOCX remains source-format neutral after the evidence boundary while preserving the original Stage 13 provider approval semantics.
+Authoritative packaged Windows validation:
 
-## 15. Next boundary — Stage 14.7
+```text
+Stage 14.7 final Windows release validation (32245812422)
+clean Windows onedir + exact runtime/models      PASS
+frozen OCR model integrity, network unavailable  PASS
+packaged PDF/OCR/UI/privacy smoke                 PASS
+packaged DOCX Pipeline + image OCR API smoke      PASS
+deterministic portable RC ZIP + manifest          PASS
+fresh-extracted final RC complete user-flow smoke PASS
+model payload absent from Git                     PASS
+onedir + RC artifact upload                       PASS
+```
 
-Stage 14.7 is release validation/hardening only. It must perform the final combined Windows onedir/RC regression across:
+Validated artifacts:
 
-- PDF/image/DOCX intake;
-- real offline OCR model integrity + inference;
-- native DOCX STRUCTURE/RULES/Pipeline entry;
-- Provider approval before the first actual Planner call;
-- `/`, `/results`, `/workspace`, `/developer` packaged routes;
-- privacy/cache/private-artifact scans;
-- deterministic portable RC ZIP/manifest and fresh extraction.
+```text
+law-rag-windows-onedir-stage14-7
+law-rag-windows-x64-stage14-7
+```
 
-It must not expand the legal corpus, redesign Issue V1, add expert benchmark scope, tray/history, encryption/report export or installer/update infrastructure.
+Stage 14 is closed. Its proven source/OCR/distribution boundary should not be redesigned without new evidence.
 
-After Stage 14.7 closes, Stage 15 becomes next.
+## 15. Next boundary — Stage 15
+
+Stage 15 owns official legal corpus expansion, update/versioning and retrieval tuning.
+
+It must preserve:
+
+- canonical authority -> version -> article / Legal Evidence identity;
+- deterministic applicability and explicit ambiguity/no-applicable states;
+- authoritative public-source provenance;
+- explicit corpus coverage state;
+- the existing Issue V1 reasoning topology;
+- the Stage 14 source-format/OCR distribution boundary.
+
+Stage 15 must not absorb Stage 16 expert benchmark/real-provider UAT, Stage 17 tray/history, Stage 18 encryption/report export or Stage 19 installer/signing/update infrastructure.

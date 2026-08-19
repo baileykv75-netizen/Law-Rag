@@ -30,9 +30,9 @@ Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupp
 
 ## Status
 
-**Stage 13G is complete. Stage 14.1–14.6 are complete. Stage 14.7 — full regression + packaged Windows validation — is next.**
+**Stage 14 is complete. Stage 15 — official legal corpus expansion + update/versioning + retrieval tuning — is next.**
 
-Stage 14 now includes:
+Stage 14 delivered:
 
 - cross-format Evidence identities with typed PDF/image/DOCX source anchors;
 - safe modern DOCX OOXML ingestion without synthetic page numbers;
@@ -44,7 +44,8 @@ Stage 14 now includes:
 - fixed `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec` assets fetched from approved official Paddle sources during clean release builds;
 - archive and per-file SHA-256 model integrity validation;
 - no runtime model download/fallback;
-- real frozen Windows OCR inference with network unavailable.
+- real frozen Windows OCR inference with outbound network unavailable;
+- final packaged Windows DOCX/PDF/image/provider-boundary/privacy/RC regression.
 
 The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
@@ -92,18 +93,37 @@ Law-Rag pauses before the Audit Planner's first actual provider call. A configur
 
 Every later Planner/DeepSeek/Kimi request crosses the persisted provider/cancellation boundary independently. An already-started HTTP request cannot be recalled, but cancellation blocks subsequent requests.
 
-Stage 14.6 regression proves a native DOCX job can run the real local STRUCTURE + RULES stages and still stop at `AUDIT_PLAN`, 48%, with `PROVIDER_APPROVAL_REQUIRED` before the synthetic configured Planner can execute.
+Stage 14 regression proves a native DOCX job can run the real local STRUCTURE + RULES stages and still stop at `AUDIT_PLAN`, 48%, with `PROVIDER_APPROVAL_REQUIRED` before the configured Planner can execute.
 
 Local OCR is independent of cloud-provider permission.
 
-## Quick start on Windows
+## Windows OCR distribution
+
+The packaged Windows onedir/portable RC does **not** require the end user to install Python, pip, PaddlePaddle, PaddleOCR or download OCR weights separately.
+
+Pinned packaged OCR path:
+
+```text
+CPython 3.12.10
+PaddlePaddle CPU 3.3.0
+PaddleOCR 3.7.0
+PaddleX 3.7.2
+PP-OCRv6_medium_det
+PP-OCRv6_medium_rec
+```
+
+`release/ocr-models-manifest.json` freezes official model provenance plus archive/file SHA-256 values. Model binaries are not committed to Git; clean Windows builds fetch and verify them before packaging.
+
+Production OCR permits only the pinned detector and recognizer. Law-Rag validates the exact packaged model directories and file hashes and passes explicit local model paths plus a fixed minimal PaddleX OCR config. The runtime path does not silently use Hugging Face, BOS or downloaded Paddle caches.
+
+PyInstaller preserves PaddleX `ocr-core` distribution metadata required by `importlib.metadata` dependency checks. For the pinned Windows PaddlePaddle 3.3.0 CPU path, `enable_mkldnn=False` remains a tested compatibility requirement after packaged regression exposed a oneDNN/PIR failure when that branch was enabled.
+
+## Development quick start
 
 For source/development use:
 
 - Python 3.11 or newer;
 - Node.js 22 LTS recommended.
-
-Base setup:
 
 ```text
 setup-dev.bat
@@ -131,20 +151,6 @@ Developer OCR setup remains available for source checkouts:
 setup-ocr-cpu.bat
 ```
 
-The packaged Windows onedir/portable RC does **not** require the end user to install Python, pip, PaddlePaddle, PaddleOCR or download OCR weights separately.
-
-Pinned packaged OCR path:
-
-```text
-PaddlePaddle CPU 3.3.0
-PaddleOCR 3.7.0
-PaddleX 3.7.2
-PP-OCRv6_medium_det
-PP-OCRv6_medium_rec
-```
-
-`release/ocr-models-manifest.json` freezes official model provenance plus archive/file SHA-256 values. Model binaries are not committed to Git; clean Windows builds fetch and verify them before packaging.
-
 ### Configure DeepSeek
 
 ```bat
@@ -163,37 +169,6 @@ set MOONSHOT_MODEL=kimi-k3
 
 Never commit real keys or a private `.env` file.
 
-## Issue V1 private job artifacts
-
-Generated/private job data remains under ignored runtime paths:
-
-```text
-runtime/uploads/<job-id>/source.<ext>
-runtime/jobs/<job-id>/document.json
-runtime/jobs/<job-id>/evidence.json
-runtime/jobs/<job-id>/ocr.json
-runtime/jobs/<job-id>/contract.json
-runtime/jobs/<job-id>/audit-rules.json
-runtime/jobs/<job-id>/pipeline.json
-runtime/jobs/<job-id>/pipeline-control.json
-runtime/jobs/<job-id>/audit-plan.json
-runtime/jobs/<job-id>/issue-legal-context.json
-runtime/jobs/<job-id>/issue-primary-audit.json
-runtime/jobs/<job-id>/issue-secondary-review.json
-runtime/jobs/<job-id>/issue-review-report.json
-runtime/jobs/<job-id>/human-review.json
-```
-
-Historical RC2 jobs may also contain:
-
-```text
-ai-audit.json
-secondary-review.json
-review-report.json
-```
-
-Those files remain readable for `LEGACY_RC2` jobs. After an explicit legacy migration they are historical only and are not treated as authoritative Issue V1 results.
-
 ## Cross-format Evidence
 
 Evidence IDs identify evidence; they do not encode source location. Typed source anchors carry location semantics.
@@ -205,14 +180,6 @@ DOCX      -> DOCX_PARAGRAPH / DOCX_TABLE_CELL / DOCX_EMBEDDED_IMAGE
 
 Unsupported/partial DOCX constructs remain explicit source warnings instead of being silently dropped. Pipeline and Workspace validate the persisted source representation rather than forcing DOCX into the historical paginated schema.
 
-## Offline OCR integrity
-
-Production OCR permits only the pinned detector and recognizer. Before pipeline construction Law-Rag validates the exact packaged model directories and file hashes and passes explicit local model paths plus a fixed minimal PaddleX OCR config.
-
-The packaged path does not initialize document-orientation, unwarping or text-line-orientation model branches and does not silently use Hugging Face, BOS or downloaded Paddle caches at runtime.
-
-PyInstaller preserves PaddleX `ocr-core` distribution metadata required by `importlib.metadata` dependency checks. For the pinned Windows PaddlePaddle 3.3.0 CPU path, `enable_mkldnn=False` is kept as a tested compatibility requirement after real packaged regression exposed a oneDNN/PIR failure with that branch enabled.
-
 ## Audit Plan, legal evidence and review
 
 `audit-plan.json` is the authoritative review scope for Issue V1. Every canonical clause/block receives explicit planning coverage.
@@ -223,38 +190,44 @@ Canonical legal identity is:
 authority -> authority version -> article / Legal Evidence ID
 ```
 
-Retrieval combines exact citation lookup, SQLite FTS5 trigram/BM25, optional local BGE semantic retrieval and weighted reciprocal-rank fusion. Absence from the checked-in `CURATED_EXCERPT` seed is never proof that no applicable legal rule exists.
+Retrieval combines exact citation lookup, SQLite FTS5 trigram/BM25, optional local BGE semantic retrieval and weighted reciprocal-rank fusion. Absence from a checked-in `CURATED_EXCERPT` source is never proof that no applicable legal rule exists.
 
 Human Review is append-only and fingerprint-bound. Only fresh final `CONFIRMED` or `REJECTED` decisions close a mandatory Issue review; stale or incomplete states remain visible.
 
-## Validation
+## Stage 14 final validation
 
-Stage 14.5 authoritative packaged validation:
-
-```text
-Stage 14.5 OCR model assets #64 (32145367670)
-  clean Windows onedir + locked models         PASS
-  frozen model integrity, network unavailable  PASS
-  real frozen OCR, network unavailable         PASS
-  packaged base workflow                       PASS
-  deterministic RC ZIP + manifest              PASS
-  extracted final RC user flow                 PASS
-  onedir + RC artifact upload                  PASS
-```
-
-Stage 14.6 authoritative final CI:
+Normal regression on the validated Stage 14.7 head:
 
 ```text
-Law-Rag CI #746 (32244495929)
+Law-Rag CI #755 (32245812433)
   backend pytest: 320 passed, 5 skipped, 1 warning
   public deterministic quality gates: PASS
   frontend production build: PASS
   Windows exact OCR dependency smoke: PASS
 ```
 
-The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
+Final packaged Windows regression:
 
-Stage 14.7 is responsible for the final combined packaged Windows regression across PDF/image/DOCX, offline OCR, provider approval, UI routes, privacy scans and deterministic RC extraction.
+```text
+Stage 14.7 final Windows release validation (32245812422)
+  clean Windows onedir + exact runtime/models      PASS
+  frozen OCR model integrity, network unavailable  PASS
+  packaged PDF/OCR/UI/privacy smoke                PASS
+  packaged DOCX Pipeline + image OCR API smoke      PASS
+  deterministic portable RC ZIP + manifest          PASS
+  extracted final RC complete user-flow smoke       PASS
+  model payload absent from Git                     PASS
+  onedir + RC artifact upload                       PASS
+```
+
+Validated artifacts:
+
+```text
+law-rag-windows-onedir-stage14-7
+law-rag-windows-x64-stage14-7
+```
+
+The remaining pytest warning is the existing Starlette TestClient/httpx deprecation warning.
 
 ## Core engineering principles
 
