@@ -9,8 +9,9 @@ The target product is a Windows-friendly local application rather than a generic
 New jobs use the Stage 13 `ISSUE_V1` architecture:
 
 ```text
-PDF / JPG / PNG
-  -> reliable native PDF text or local OCR where required
+PDF / JPG / JPEG / PNG / DOCX
+  -> reliable native PDF/DOCX text or local OCR where required
+  -> cross-format Source Evidence
   -> evidence-grounded Canonical Contract
   -> deterministic audit rules
   -> Audit Planner + explicit canonical-object coverage
@@ -23,26 +24,25 @@ PDF / JPG / PNG
   -> /results + /workspace
 ```
 
+The backend/source layer already supports modern DOCX and the Windows release already contains fixed offline OCR runtime/models. Stage 14.6 is the remaining product integration slice that makes the complete source set explicit through Home/intake and the authoritative Pipeline.
+
 Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupported, conflicting, stale, incomplete or insufficient-evidence states remain visible for human review.
 
 ## Status
 
-**Stage 13G is complete. Stage 14 is next and has not started.**
+**Stage 13G is complete. Stage 14.1–14.5 are complete. Stage 14.6 — Pipeline + Home integration — is next.**
 
-Stage 13G migrated the application-owned production path from the legacy RC2 Stage 8/9 contract-level reports to the Issue V1 architecture while preserving historical readability.
+Validated Stage 14 foundations now include:
 
-Validated Stage 13 foundations include:
-
-- Stage 13A persisted provider policy, explicit approval, cooperative cancel and resume;
-- Stage 13B/C Audit Planner with baseline scope, dynamic issues and explicit coverage of every canonical clause/block;
-- Stage 13D issue-based Exact + BM25 + optional local BGE Legal RAG;
-- Stage 13E one bounded DeepSeek request per AuditPlan Issue with checkpoint/resume;
-- Stage 13F one bounded Kimi finding + coverage review per AuditPlan Issue with checkpoint/resume;
-- deterministic one-to-one Issue comparison and `issue-review-report.json`;
-- architecture-aware Human Review, Results, Workspace and Developer views;
-- `ISSUE_V1` / `LEGACY_RC2` / fail-closed `CONFLICT` job architecture resolution;
-- provider-free end-to-end regression with outbound HTTP forbidden;
-- clean Windows portable bundle, OCR dependency and real local BGE semantic smoke validation.
+- cross-format Evidence identities with typed PDF/image/DOCX source anchors;
+- safe modern DOCX OOXML ingestion without synthetic page numbers;
+- logical DOCX Source Viewer navigation to exact paragraphs/table cells;
+- bundled Windows PaddlePaddle/PaddleOCR/PaddleX runtime;
+- fixed `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec` assets fetched from approved official Paddle sources during clean release builds;
+- archive and per-file SHA-256 model integrity validation;
+- no runtime model download/fallback;
+- real frozen Windows OCR inference with network unavailable;
+- deterministic RC ZIP plus extracted-RC user-flow validation.
 
 The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
@@ -69,9 +69,11 @@ Law-Rag pauses before the Audit Planner's first actual provider call. A configur
 
 Every later Planner/DeepSeek/Kimi request crosses the persisted provider/cancellation boundary independently. An already-started HTTP request cannot be recalled, but cancellation blocks subsequent requests.
 
+Local OCR is independent of those cloud-provider permissions.
+
 ## Quick start on Windows
 
-Prerequisites:
+For source/development use:
 
 - Python 3.11 or newer;
 - Node.js 22 LTS recommended.
@@ -98,20 +100,25 @@ Initial local embedding provider:
 BAAI/bge-small-zh-v1.5
 ```
 
-Optional OCR runtime for scanned PDFs/images:
+Developer OCR setup remains available for source checkouts:
 
 ```text
 setup-ocr-cpu.bat
 ```
 
-Pinned OCR path:
+The packaged Windows onedir/portable RC does **not** require the end user to install Python, pip, PaddlePaddle, PaddleOCR or download OCR weights separately.
+
+Pinned packaged OCR path:
 
 ```text
 PaddlePaddle CPU 3.3.0
 PaddleOCR 3.7.0
+PaddleX 3.7.2
 PP-OCRv6_medium_det
 PP-OCRv6_medium_rec
 ```
+
+`release/ocr-models-manifest.json` freezes official model provenance plus archive/file SHA-256 values. Model binaries are not committed to Git; clean Windows builds fetch and verify them before packaging.
 
 ### Configure DeepSeek
 
@@ -161,6 +168,27 @@ review-report.json
 ```
 
 Those files remain readable for `LEGACY_RC2` jobs. After an explicit legacy migration they are historical only and are not treated as authoritative Issue V1 results.
+
+## Cross-format Evidence
+
+Evidence IDs identify evidence; they do not encode source location. Typed source anchors carry location semantics.
+
+```text
+PDF/image -> PAGE_TEXT / PAGE_REGION
+DOCX      -> DOCX_PARAGRAPH / DOCX_TABLE_CELL / DOCX_EMBEDDED_IMAGE
+```
+
+DOCX never receives fake page numbers. The logical Source Viewer resolves structural Evidence directly to the corresponding paragraph or table-cell paragraph.
+
+Unsupported/partial DOCX constructs remain explicit source warnings instead of being silently dropped.
+
+## Offline OCR integrity
+
+Production OCR permits only the pinned detector and recognizer. Before pipeline construction Law-Rag validates the exact packaged model directories and file hashes and passes explicit local model paths plus a fixed minimal PaddleX OCR config.
+
+The packaged path does not initialize document-orientation, unwarping or text-line-orientation model branches and does not silently use Hugging Face, BOS or downloaded Paddle caches at runtime.
+
+PyInstaller preserves PaddleX `ocr-core` distribution metadata required by `importlib.metadata` dependency checks. For the pinned Windows PaddlePaddle 3.3.0 CPU path, `enable_mkldnn=False` is kept as a tested compatibility requirement after the real packaged regression exposed a oneDNN/PIR failure with that branch enabled.
 
 ## Audit Plan and coverage
 
@@ -246,27 +274,38 @@ Missing, stale/conflicting and invalid artifacts remain explicit. Historical Sta
 
 ## Validation
 
-Normal CI uses no paid provider calls. Stage 13G final validation demonstrated:
+Stage 14.5 authoritative packaged validation:
 
 ```text
-backend pytest: 275 passed, 5 skipped
-public deterministic quality gates: PASS
-frontend production build: PASS
-Windows portable release-bundle smoke: PASS
-Windows PaddleOCR/PaddlePaddle dependency smoke: PASS
-Windows real local BGE semantic smoke: PASS
+Stage 14.5 OCR model assets #64 (32145367670)
+  clean Windows onedir + locked models         PASS
+  frozen model integrity, network unavailable  PASS
+  real frozen OCR, network unavailable         PASS
+  packaged base workflow                       PASS
+  deterministic RC ZIP + manifest              PASS
+  extracted final RC user flow                 PASS
+  onedir + RC artifact upload                  PASS
 ```
 
-The packaged release smoke covers Windows Credential Manager secret storage, the `/`, `/results`, `/workspace`, `/developer` routes, native PDF ingestion, PDFium rendering, private-job-artifact exclusion, legacy RC2 user-flow compatibility, and the Stage 13 Audit Planner approval/cancel/resume boundary using a synthetic unused provider key.
+Companion normal CI #727 (`32145367680`):
+
+```text
+backend pytest: 315 passed, 5 skipped, 1 warning
+public deterministic quality gates: PASS
+frontend production build: PASS
+Windows exact OCR dependency smoke: PASS
+```
+
+The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
 
 No additional global Kimi coverage-synthesis call is part of Stage 13. The current regression evidence did not demonstrate a missing cross-Issue failure mode that justifies adding another provider call. That decision should be revisited only if later expert/benchmark evidence demonstrates such omissions.
 
 ## Core engineering principles
 
 1. **Evidence first.** Material conclusions trace to exact contract evidence; legal conclusions additionally trace to canonical Legal Evidence.
-2. **Native text before OCR.** Reliable PDF text is not degraded unnecessarily.
+2. **Native text before OCR.** Reliable native text is not degraded unnecessarily.
 3. **Deterministic before probabilistic.** Machine-checkable conditions stay in code.
-4. **One canonical contract model.** Downstream systems do not independently reinterpret raw PDFs.
+4. **One canonical contract model.** Downstream systems do not independently reinterpret source files.
 5. **Complete planning coverage before Issue reasoning.** Missing review scope remains visible.
 6. **No fabricated legal authority.** Model citations must come from supplied canonical Legal Evidence.
 7. **Post-model validation, not prompt trust.** Invented IDs/versions fail closed.
