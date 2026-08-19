@@ -353,3 +353,23 @@ An additional global Kimi call would add provider cost, latency, privacy/transmi
 The default `/developer` Stage 13 diagnostic surface reads persisted authoritative artifacts only through GET endpoints. Opening diagnostics must not create an AuditPlan, rerun Legal RAG, call DeepSeek/Kimi or mutate review state.
 
 Missing, stale/conflicting and invalid artifacts remain explicit diagnostic states rather than being fabricated as success. Historical Stage 1–9 execution/debug tools may remain available, but must stay visibly isolated in the Legacy/RC2 area because some of those controls intentionally perform POST/provider work.
+
+## D-038 — Persisted source Evidence may be format-specific; Pipeline convergence occurs before STRUCTURE
+
+**Date:** 2026-08-19  
+**Status:** accepted
+
+Stage 14.6 explicitly rejects the idea that every source format must be forced into the same on-disk `evidence.json` shape.
+
+The supported persistence contract is:
+
+```text
+PDF/image -> historical PageEvidence[]
+DOCX      -> SourceEvidenceArtifact
+```
+
+Pipeline readers must discriminate the source representation from trusted persisted document metadata and validate the corresponding artifact. DOCX must never be converted into synthetic pagination merely to satisfy a legacy page-shaped reader.
+
+After this source boundary, supported formats converge again through common document metadata, deterministic STRUCTURE/RULES and the existing `ISSUE_V1` Pipeline. Planner, Legal RAG, DeepSeek, Kimi, deterministic comparison and Human Review must not branch on source format.
+
+A native DOCX job with no OCR-required content skips OCR without initializing PaddleOCR. Source identity conflicts or malformed DOCX Evidence fail closed. User-facing Home/Workspace surfaces must preserve source warnings and must describe structural DOCX Evidence without presenting `page_count=0` as an error.

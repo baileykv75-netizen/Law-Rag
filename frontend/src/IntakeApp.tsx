@@ -9,7 +9,7 @@ import {
   resumeCancelledPipeline,
 } from './pipelineControlClient'
 
-const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.jpg', '.jpeg', '.png']
 const CURRENT_MAX_BYTES = 500 * 1024 * 1024
 
 type QueueState =
@@ -25,9 +25,12 @@ type QueueState =
 type UploadResponse = {
   job_id: string
   filename: string
+  document_kind: 'pdf' | 'image' | 'docx'
   page_count: number
   route: string
   ocr_required_pages: number
+  evidence_count: number
+  warnings: string[]
 }
 
 type QueueItem = {
@@ -69,11 +72,25 @@ function formatBytes(bytes: number) {
 
 function validateFile(file: File): string | null {
   if (!ALLOWED_EXTENSIONS.includes(extensionOf(file.name))) {
-    return '暂支持 PDF、JPG、JPEG、PNG。'
+    return '暂支持 PDF、DOCX、JPG、JPEG、PNG。'
   }
   if (file.size === 0) return '文件为空。'
   if (file.size > CURRENT_MAX_BYTES) return '单文件上限为 500 MB。'
   return null
+}
+
+function sourceWarningNotice(warnings: string[]) {
+  if (!warnings.length) return null
+  const visible = warnings.slice(0, 2).join('；')
+  const remainder = warnings.length > 2 ? '；其余提示请在工作台源文件视图查看。' : ''
+  return `源文件解析提示（${warnings.length}）：${visible}${remainder}`
+}
+
+function sourceSummary(result: UploadResponse) {
+  if (result.document_kind === 'docx') {
+    return `DOCX · ${result.evidence_count} 个源证据`
+  }
+  return `${result.page_count} 页${result.ocr_required_pages > 0 ? ` · ${result.ocr_required_pages} 页需要 OCR` : ''}`
 }
 
 function localToday() {
@@ -351,7 +368,9 @@ function IntakeApp() {
     setActionId(item.id)
     setItems((current) =>
       current.map((candidate) =>
-        candidate.id === item.id ? { ...candidate, state: 'processing', error: null, notice: null } : candidate,
+        candidate.id === item.id
+          ? { ...candidate, state: 'processing', error: null, notice: sourceWarningNotice(item.result?.warnings ?? []) }
+          : candidate,
       ),
     )
     try {
@@ -549,7 +568,15 @@ function IntakeApp() {
           setItems((current) =>
             current.map((candidate) =>
               candidate.id === activeId
-                ? { ...candidate, state: 'processing', progress: 10, result, pipeline: null, error: null }
+                ? {
+                    ...candidate,
+                    state: 'processing',
+                    progress: 10,
+                    result,
+                    pipeline: null,
+                    error: null,
+                    notice: sourceWarningNotice(result.warnings ?? []),
+                  }
                 : candidate,
             ),
           )
@@ -660,7 +687,7 @@ function IntakeApp() {
             className="intake-file-input"
             type="file"
             multiple
-            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
             onChange={(event) => {
               void addFiles(Array.from(event.target.files ?? []))
               event.currentTarget.value = ''
@@ -669,11 +696,11 @@ function IntakeApp() {
           <div className="intake-drop-icon" aria-hidden="true">＋</div>
           <h2>拖入合同文件</h2>
           <p>也可以点击选择多个文件</p>
-          <span>PDF · JPG · PNG · 单文件最大 500 MB</span>
+          <span>PDF · DOCX · JPG · PNG · 单文件最大 500 MB</span>
         </div>
 
         <p className="intake-transmission-note">
-          合同先在本机完成读取、OCR（需要时）、结构化和确定性规则检查。之后 Audit Planner、DeepSeek 逐 Issue 主审与 Kimi 独立复核都必须经过持久化云端策略；每次真正发送前都会重新检查批准与取消状态。已经开始的外部请求无法撤回已发送内容。
+          合同先在本机完成读取、OCR（需要时）、结构化和确定性规则检查。DOCX 使用结构化源证据，不会伪造页码；源文件解析提示会先在此处显示，并可在工作台源文件视图继续查看。之后 Audit Planner、DeepSeek 逐 Issue 主审与 Kimi 独立复核都必须经过持久化云端策略；每次真正发送前都会重新检查批准与取消状态。已经开始的外部请求无法撤回已发送内容。
         </p>
 
         {items.length > 0 && (
@@ -729,8 +756,7 @@ function IntakeApp() {
                       {item.notice && <small>{item.notice}</small>}
                       {item.result && !item.error && item.state !== 'complete' && (
                         <small>
-                          {item.result.page_count} 页
-                          {item.result.ocr_required_pages > 0 ? ` · ${item.result.ocr_required_pages} 页需要 OCR` : ''}
+                          {sourceSummary(item.result)}
                           {item.pipeline ? ` · ${item.pipeline.progress_percent}%` : ''}
                         </small>
                       )}
