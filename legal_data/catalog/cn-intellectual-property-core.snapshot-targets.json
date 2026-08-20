@@ -7,6 +7,7 @@
     {
       "authority_id": "prc-patent-law",
       "version_id": "effective-2021-06-01",
+      "state": "READY_FOR_FREEZE",
       "snapshot_source_url": "https://www.cnipa.gov.cn/art/2020/11/23/art_2197_155169.html",
       "expected_article_count": 82,
       "verification_note": "CNIPA publishes the complete 2020-amended text; the republished law runs contiguously through Article 82. Primary enactment provenance remains the NPC amendment decision recorded in the catalog."
@@ -14,6 +15,7 @@
     {
       "authority_id": "prc-copyright-law",
       "version_id": "effective-2021-06-01",
+      "state": "READY_FOR_FREEZE",
       "snapshot_source_url": "https://www.npc.gov.cn/c2/c30834/202011/t20201119_308796.html",
       "expected_article_count": 67,
       "verification_note": "NPC publishes the complete 2020-amended text and Article 67 is the terminal article."
@@ -21,6 +23,7 @@
     {
       "authority_id": "prc-trademark-law",
       "version_id": "effective-2019-11-01",
+      "state": "READY_FOR_FREEZE",
       "snapshot_source_url": "https://www.npc.gov.cn/c2/c30834/201906/t20190608_298036.html",
       "expected_article_count": 73,
       "verification_note": "NPC publishes the complete 2019-amended text and Article 73 is the terminal article; this version ends immediately before 2027-01-01."
@@ -28,6 +31,7 @@
     {
       "authority_id": "prc-trademark-law",
       "version_id": "effective-2027-01-01",
+      "state": "READY_FOR_FREEZE",
       "snapshot_source_url": "https://www.cnipa.gov.cn/art/2026/6/26/art_3686_206940.html",
       "expected_article_count": 87,
       "verification_note": "CNIPA publishes the complete 2026 revised text sourced from NPC; Article 87 states the law takes effect on 2027-01-01, so the catalog status remains NOT_YET_EFFECTIVE on 2026-08-20."
@@ -35,6 +39,7 @@
     {
       "authority_id": "prc-anti-unfair-competition-law",
       "version_id": "effective-2025-10-15",
+      "state": "READY_FOR_FREEZE",
       "snapshot_source_url": "https://www.npc.gov.cn/npc/c2/c30834/202506/t20250627_446247.html",
       "expected_article_count": 41,
       "verification_note": "NPC publishes the complete 2025 second-revision text and Article 41 is the terminal article. This single Authority/Version is shared with the enterprise-compliance pack."

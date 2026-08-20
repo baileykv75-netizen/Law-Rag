@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator, model_validator
@@ -17,12 +18,34 @@ class SnapshotTargetsError(RuntimeError):
     pass
 
 
+class SnapshotTargetState(str, Enum):
+    READY_FOR_FREEZE = "READY_FOR_FREEZE"
+    SOURCE_UNRESOLVED = "SOURCE_UNRESOLVED"
+    SOURCE_POLICY_BLOCKED = "SOURCE_POLICY_BLOCKED"
+
+
 class FullTextSnapshotTarget(BaseModel):
     authority_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{2,127}$")
     version_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{1,127}$")
-    snapshot_source_url: HttpUrl
-    expected_article_count: int = Field(ge=1)
+    state: SnapshotTargetState
+    snapshot_source_url: HttpUrl | None = None
+    expected_article_count: int | None = Field(default=None, ge=1)
     verification_note: str = Field(min_length=1)
+    blocking_issue: str | None = None
+
+    @model_validator(mode="after")
+    def validate_state(self) -> "FullTextSnapshotTarget":
+        if self.state == SnapshotTargetState.READY_FOR_FREEZE:
+            if self.snapshot_source_url is None or self.expected_article_count is None:
+                raise ValueError("READY_FOR_FREEZE requires snapshot_source_url and expected_article_count")
+            if self.blocking_issue:
+                raise ValueError("READY_FOR_FREEZE must not set blocking_issue")
+        else:
+            if self.snapshot_source_url is not None:
+                raise ValueError("Non-ready snapshot targets must not pin a source URL as if freezing were approved")
+            if not self.blocking_issue:
+                raise ValueError("Non-ready snapshot targets require blocking_issue")
+        return self
 
 
 class FullTextSnapshotTargetSet(BaseModel):
@@ -89,6 +112,8 @@ def load_snapshot_targets(
         )
 
     for target in targets.targets:
+        if target.state != SnapshotTargetState.READY_FOR_FREEZE:
+            continue
         identity = (target.authority_id, target.version_id)
         entry = catalog_by_identity[identity]
         source_url = _normalize_url(str(target.snapshot_source_url))

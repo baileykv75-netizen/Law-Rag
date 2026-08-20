@@ -1,0 +1,57 @@
+{
+  "snapshot_targets_schema_version": "1.0.0",
+  "target_set_id": "cn-enterprise-compliance-core-2026-08-20",
+  "pack_id": "cn-enterprise-compliance-core",
+  "verified_on": "2026-08-20",
+  "targets": [
+    {
+      "authority_id": "prc-company-law",
+      "version_id": "effective-2024-07-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.npc.gov.cn/c2/c30834/202312/t20231229_433999.html",
+      "expected_article_count": 266,
+      "verification_note": "NPC publishes the complete 2023 second-revision text; Article 266 is the terminal article and the law took effect on 2024-07-01."
+    },
+    {
+      "authority_id": "prc-anti-unfair-competition-law",
+      "version_id": "effective-2025-10-15",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.npc.gov.cn/npc/c2/c30834/202506/t20250627_446247.html",
+      "expected_article_count": 41,
+      "verification_note": "Shared canonical Authority/Version with the IP pack; NPC full text terminates at Article 41."
+    },
+    {
+      "authority_id": "prc-anti-monopoly-law",
+      "version_id": "effective-2022-08-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://flk.npc.gov.cn/detail?id=ff8081818234ccb501829f46c6ac2a5a&title=中华人民共和国反垄断法",
+      "expected_article_count": 70,
+      "verification_note": "National Laws and Regulations Database identifies the 2022-06-24 effective text and provides the authoritative law document; the republished law terminates at Article 70."
+    },
+    {
+      "authority_id": "prc-data-security-law",
+      "version_id": "effective-2021-09-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.npc.gov.cn/npc/c2/c30834/202106/t20210610_311888.html",
+      "expected_article_count": 55,
+      "verification_note": "NPC publishes the complete enacted text and Article 55 is the terminal article."
+    },
+    {
+      "authority_id": "prc-personal-information-protection-law",
+      "version_id": "effective-2021-11-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.npc.gov.cn/npc/c2/c30834/202108/t20210820_313088.html",
+      "expected_article_count": 74,
+      "verification_note": "NPC publishes the complete enacted text and Article 74 is the terminal article."
+    },
+    {
+      "authority_id": "prc-cybersecurity-law",
+      "version_id": "effective-2026-01-01",
+      "state": "SOURCE_POLICY_BLOCKED",
+      "snapshot_source_url": null,
+      "expected_article_count": 81,
+      "verification_note": "The 2025 amendment decision requires the law to be republished and is effective 2026-01-01; a complete amended text reaching Article 81 is publicly available on CAC, but that host is not approved by the Stage 15.2A source registry.",
+      "blocking_issue": "The vetted catalog currently contains only the NPC amendment decision and presidential-order metadata, not a registry-approved consolidated FULL_TEXT source. Do not freeze the amendment decision as if it were the complete law."
+    }
+  ]
+}
