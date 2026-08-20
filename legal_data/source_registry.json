@@ -1,0 +1,60 @@
+{
+  "registry_schema_version": "1.0.0",
+  "verified_on": "2026-08-20",
+  "sources": [
+    {
+      "source_id": "npc-national-laws-database",
+      "organization": "全国人大常委会办公厅",
+      "hosts": ["flk.npc.gov.cn", "wb.flk.npc.gov.cn"],
+      "trust_tier": "AUTHORITATIVE_DATABASE",
+      "allowed_roles": ["PRIMARY", "TEXT", "METADATA", "CROSS_CHECK"],
+      "primary_normative_source_allowed": true,
+      "notes": "国家法律法规数据库。用于法律、行政法规和司法解释的权威状态、版本、正文及相关文件核验。域名命中只是必要条件，具体记录仍需逐条核验。"
+    },
+    {
+      "source_id": "npc-official-site",
+      "organization": "全国人民代表大会常务委员会",
+      "hosts": ["www.npc.gov.cn", "npc.gov.cn"],
+      "trust_tier": "ENACTING_OR_ISSUING_BODY",
+      "allowed_roles": ["PRIMARY", "TEXT", "METADATA", "CROSS_CHECK"],
+      "primary_normative_source_allowed": true,
+      "notes": "中国人大网。用于法律全文、主席令、修改决定和施行日期等立法原始材料。"
+    },
+    {
+      "source_id": "central-government-portal",
+      "organization": "中国政府网",
+      "hosts": ["www.gov.cn", "gov.cn"],
+      "trust_tier": "CENTRAL_GOVERNMENT_PORTAL",
+      "allowed_roles": ["PRIMARY", "TEXT", "METADATA", "CROSS_CHECK"],
+      "primary_normative_source_allowed": true,
+      "notes": "中国政府网中央政府门户。可用于正式发布的主席令、国务院行政法规和其他中央国家机关权威发布；仍优先与制定机关或国家法律法规数据库交叉核验。"
+    },
+    {
+      "source_id": "spc-official-site",
+      "organization": "最高人民法院",
+      "hosts": ["www.court.gov.cn", "court.gov.cn"],
+      "trust_tier": "ENACTING_OR_ISSUING_BODY",
+      "allowed_roles": ["PRIMARY", "TEXT", "METADATA", "CROSS_CHECK"],
+      "primary_normative_source_allowed": true,
+      "notes": "最高人民法院官网。用于最高人民法院司法解释的公告、正文、文号和施行信息。"
+    },
+    {
+      "source_id": "spc-gazette",
+      "organization": "最高人民法院办公厅",
+      "hosts": ["gongbao.court.gov.cn"],
+      "trust_tier": "AUTHORITATIVE_DATABASE",
+      "allowed_roles": ["PRIMARY", "TEXT", "METADATA", "CROSS_CHECK"],
+      "primary_normative_source_allowed": true,
+      "notes": "最高人民法院公报。用于司法解释正文及版本交叉核验。"
+    },
+    {
+      "source_id": "cnipa-official-site",
+      "organization": "国家知识产权局",
+      "hosts": ["www.cnipa.gov.cn", "cnipa.gov.cn"],
+      "trust_tier": "OFFICIAL_CROSS_CHECK",
+      "allowed_roles": ["TEXT", "METADATA", "CROSS_CHECK"],
+      "primary_normative_source_allowed": false,
+      "notes": "国家知识产权局官网。用于专利法、商标法等知识产权法律的官方转载和业务口径交叉核验；法律本身仍优先以全国人大、国家法律法规数据库或中国政府网的正式发布作为 PRIMARY。"
+    }
+  ]
+}

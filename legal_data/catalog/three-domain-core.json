@@ -1,0 +1,506 @@
+{
+  "catalog_schema_version": "1.0.0",
+  "catalog_id": "cn-three-domain-core-2026-08-20",
+  "verified_on": "2026-08-20",
+  "description": "Stage 15.2A vetted authority/version inventory for intellectual property, enterprise compliance, and labor/employment disputes. This catalog selects official source chains only; it is not itself imported Legal Evidence and makes no completeness claim.",
+  "entries": [
+    {
+      "authority": {
+        "authority_id": "prc-patent-law",
+        "title": "中华人民共和国专利法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第五十五号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-06-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2020-10-17",
+      "effective_date": "2021-06-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-intellectual-property-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：关于修改《中华人民共和国专利法》的决定",
+          "url": "https://www.npc.gov.cn/c2/c30834/202010/t20201019_308327.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "国家知识产权局：中华人民共和国专利法（2020年修正）",
+          "url": "https://www.cnipa.gov.cn/art/2020/11/23/art_2197_155169.html",
+          "role": "TEXT"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "2020年第四次修正，修改决定自2021年6月1日起施行。15.2B需以完整重新公布文本生成快照和条文哈希。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-copyright-law",
+        "title": "中华人民共和国著作权法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第六十二号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-06-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2020-11-11",
+      "effective_date": "2021-06-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-intellectual-property-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国著作权法（2020年修正后文本）",
+          "url": "https://www.npc.gov.cn/c2/c30834/202011/t20201119_308796.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第六十二号",
+          "url": "https://www.npc.gov.cn/c2/c30834/202011/t20201111_308668.html",
+          "role": "METADATA"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "2020年修改决定自2021年6月1日起施行；15.2B按现行完整文本建立版本快照。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-trademark-law",
+        "title": "中华人民共和国商标法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2019-11-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2019-04-23",
+      "effective_date": "2019-11-01",
+      "end_date_exclusive": "2027-01-01",
+      "pack_ids": ["cn-intellectual-property-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国商标法（2019年修正）",
+          "url": "https://www.npc.gov.cn/c2/c30834/201906/t20190608_298036.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "国家知识产权局：中华人民共和国商标法（2019年修正）",
+          "url": "https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html",
+          "role": "CROSS_CHECK"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "截至2026-08-20仍为现行版本；2026年修订法已公布并将于2027年1月1日起施行，因此当前版本区间在该日结束。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-trademark-law",
+        "title": "中华人民共和国商标法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第七十七号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2027-01-01",
+      "status": "NOT_YET_EFFECTIVE",
+      "publication_date": "2026-06-26",
+      "effective_date": "2027-01-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-intellectual-property-core"],
+      "source_refs": [
+        {
+          "name": "中国政府网：中华人民共和国主席令第七十七号",
+          "url": "https://www.gov.cn/yaowen/liebiao/202606/content_7073450.htm",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "国家知识产权局：中华人民共和国商标法（2026年修订）",
+          "url": "https://www.cnipa.gov.cn/art/2026/6/26/art_3686_206940.html",
+          "role": "TEXT"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "PROMULGATED_NOT_YET_EFFECTIVE",
+      "priority": "CORE",
+      "notes": "2026年6月26日修订通过并公布，但截至目录核验日尚未生效；不得在2026年的审计中当作现行版本。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-anti-unfair-competition-law",
+        "title": "中华人民共和国反不正当竞争法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2025-10-15",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-06-27",
+      "effective_date": "2025-10-15",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-intellectual-property-core", "cn-enterprise-compliance-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国反不正当竞争法（2025年第二次修订）",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202506/t20250627_446247.html",
+          "role": "PRIMARY"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "同时服务知识产权和企业合规两个Pack，只保留一个Authority/Version身份并由两个Pack共享引用。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-company-law",
+        "title": "中华人民共和国公司法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第十五号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2024-07-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2023-12-29",
+      "effective_date": "2024-07-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-enterprise-compliance-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国公司法（2023年修订）",
+          "url": "https://www.npc.gov.cn/c2/c30834/202312/t20231229_433999.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第十五号",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202312/t20231229_433967.html",
+          "role": "METADATA"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "2023年第二次修订，共266条，自2024年7月1日起施行。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-anti-monopoly-law",
+        "title": "中华人民共和国反垄断法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第一一六号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2022-08-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2022-06-24",
+      "effective_date": "2022-08-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-enterprise-compliance-core"],
+      "source_refs": [
+        {
+          "name": "国家法律法规数据库：中华人民共和国反垄断法",
+          "url": "https://flk.npc.gov.cn/detail?id=ff8081818234ccb501829f46c6ac2a5a&title=中华人民共和国反垄断法",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：关于修改《中华人民共和国反垄断法》的决定",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202206/t20220624_318281.html",
+          "role": "METADATA"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "2022年修改版本，自2022年8月1日起施行。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-data-security-law",
+        "title": "中华人民共和国数据安全法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-09-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2021-06-10",
+      "effective_date": "2021-09-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-enterprise-compliance-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国数据安全法",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202106/t20210610_311888.html",
+          "role": "PRIMARY"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "数据处理活动和数据安全义务的基础性法律，自2021年9月1日起施行。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-personal-information-protection-law",
+        "title": "中华人民共和国个人信息保护法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第九十一号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-11-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2021-08-20",
+      "effective_date": "2021-11-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-enterprise-compliance-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国个人信息保护法",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202108/t20210820_313088.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第九十一号",
+          "url": "https://www.npc.gov.cn/c2/c30834/202108/t20210820_313045.html",
+          "role": "METADATA"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "个人信息处理合规的基础性法律，自2021年11月1日起施行。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-cybersecurity-law",
+        "title": "中华人民共和国网络安全法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第六十一号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2026-01-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-10-28",
+      "effective_date": "2026-01-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-enterprise-compliance-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：关于修改《中华人民共和国网络安全法》的决定",
+          "url": "https://www.npc.gov.cn/npc/c1773/c1848/c21114/wlaqfxz/wlaqfxz002/202511/t20251103_449242.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第六十一号",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202510/t20251028_449031.html",
+          "role": "METADATA"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "2025年修改决定自2026年1月1日起施行；目录明确拒绝继续把2016年原始版本当作2026年的现行版本。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-labor-law",
+        "title": "中华人民共和国劳动法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2018-12-29",
+      "status": "EFFECTIVE",
+      "publication_date": "2018-12-29",
+      "effective_date": "2018-12-29",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-labor-dispute-core"],
+      "source_refs": [
+        {
+          "name": "国家法律法规数据库：中华人民共和国劳动法",
+          "url": "https://flk.npc.gov.cn/detail?id=ff8080816f135f46016f20f16ee11737&title=中华人民共和国劳动法",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国劳动法（2018年第二次修正）",
+          "url": "https://www.npc.gov.cn/c2/c30834/201905/t20190521_296651.html",
+          "role": "TEXT"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "国家法律法规数据库标记2018年12月29日版本有效，公布和施行日期均为2018年12月29日。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-labor-contract-law",
+        "title": "中华人民共和国劳动合同法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2013-07-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2012-12-28",
+      "effective_date": "2013-07-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-labor-dispute-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：关于修改《中华人民共和国劳动合同法》的决定",
+          "url": "https://www.npc.gov.cn/WZWSREL3pncmR3L25wYy94aW53ZW4vMjAxMi0xMi8yOS9jb250ZW50XzE3NDk1MjcuaHRt",
+          "role": "PRIMARY"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "2012年修改决定自2013年7月1日起施行并要求劳动合同法相应修改后重新公布。15.2B仍需锁定完整现行正文快照。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-labor-dispute-mediation-arbitration-law",
+        "title": "中华人民共和国劳动争议调解仲裁法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第八十号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2008-05-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2007-12-29",
+      "effective_date": "2008-05-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-labor-dispute-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国劳动争议调解仲裁法",
+          "url": "https://www.npc.gov.cn/c2986/c4488/201905/t20190523_48437.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第八十号",
+          "url": "https://www.npc.gov.cn/zgrdw/wxzl/gongbao/2008-02/23/content_1462434.htm",
+          "role": "METADATA"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "第五十四条明确自2008年5月1日起施行。"
+    },
+    {
+      "authority": {
+        "authority_id": "prc-social-insurance-law",
+        "title": "中华人民共和国社会保险法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2018-12-29",
+      "status": "EFFECTIVE",
+      "publication_date": "2018-12-29",
+      "effective_date": "2018-12-29",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-labor-dispute-core"],
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国社会保险法（2018年修正后文本）",
+          "url": "https://www.npc.gov.cn/zgrdw/npc/xinwen/2019-01/07/content_2070267.htm",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：关于修改《中华人民共和国社会保险法》的决定",
+          "url": "https://www.npc.gov.cn/zgrdw/npc/xinwen/2018-12/29/content_2069931.htm",
+          "role": "METADATA"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "SECONDARY_CORE",
+      "notes": "2018年修改决定自公布之日起施行并重新公布；作为劳动用工争议中的社会保险基础规范纳入首批目录。"
+    },
+    {
+      "authority": {
+        "authority_id": "spc-labor-dispute-interpretation-2",
+        "title": "最高人民法院关于审理劳动争议案件适用法律问题的解释（二）",
+        "authority_type": "JUDICIAL_INTERPRETATION",
+        "issuing_body": "最高人民法院",
+        "document_number": "法释〔2025〕12号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2025-09-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-07-31",
+      "effective_date": "2025-09-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-labor-dispute-core"],
+      "source_refs": [
+        {
+          "name": "最高人民法院公报：劳动争议司法解释（二）",
+          "url": "https://gongbao.court.gov.cn/Details/bb72019c45453f84d920bd6375573e.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "最高人民法院：发布劳动争议司法解释（二）和典型案例",
+          "url": "https://www.court.gov.cn/zixun/xiangqing/472691.html",
+          "role": "CROSS_CHECK"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "VETTED_FOR_SNAPSHOT",
+      "priority": "CORE",
+      "notes": "共21条，自2025年9月1日起施行；第二十一条同时废止劳动争议解释（一）第三十二条第一款。"
+    },
+    {
+      "authority": {
+        "authority_id": "spc-labor-dispute-interpretation-1",
+        "title": "最高人民法院关于审理劳动争议案件适用法律问题的解释（一）",
+        "authority_type": "JUDICIAL_INTERPRETATION",
+        "issuing_body": "最高人民法院",
+        "document_number": "法释〔2020〕26号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-01-01",
+      "status": "AMENDED",
+      "publication_date": "2020-12-29",
+      "effective_date": "2021-01-01",
+      "end_date_exclusive": null,
+      "pack_ids": ["cn-labor-dispute-core"],
+      "source_refs": [
+        {
+          "name": "最高人民法院：劳动争议司法解释（一）",
+          "url": "https://www.court.gov.cn/fabu/xiangqing/282121.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "最高人民法院公报：劳动争议司法解释（二）对解释（一）的部分废止规则",
+          "url": "https://gongbao.court.gov.cn/Details/bb72019c45453f84d920bd6375573e.html",
+          "role": "METADATA"
+        }
+      ],
+      "target_coverage": "FULL_TEXT",
+      "catalog_state": "BLOCKED",
+      "priority": "CORE",
+      "notes": "解释（一）整体仍具有重要适用价值，但2025年解释（二）明确废止其第三十二条第一款。现有LegalVersion只能表达版本级效力，不能安全表达单一款项的部分废止。",
+      "blocking_issue": "Do not import this authority as uniformly FULL_TEXT/current until article/paragraph-level partial-repeal applicability can be represented without overstating validity."
+    }
+  ]
+}
