@@ -14,7 +14,8 @@ Stage 15        IN PROGRESS
                  15.1 Corpus Pack architecture COMPLETE
                  15.2 three-domain official corpus IN PROGRESS
                    15.2A official source registry + vetted Authority/Version inventory COMPLETE
-                   15.2B official full-text snapshots + hashes + manifests NEXT
+                   15.2B source targeting + deterministic freeze tooling COMPLETE;
+                         exact official snapshots + hashes + manifests IN PROGRESS
                  15.3 corpus update + version management PENDING
                  15.4 domain-aware RAG PENDING
                  15.5 Windows baseline corpus packaging + final regression PENDING
@@ -136,20 +137,53 @@ New deterministic regression covers official source host/role policy, future-ver
 
 The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
 
-### 15.2B — NEXT: official full-text snapshots + hashes + manifests
+### 15.2B — IN PROGRESS: official full-text snapshots + hashes + manifests
 
-For each non-blocked 15.2A inventory entry, 15.2B must:
+Implemented on `stage15-2b-fulltext-snapshots` so far:
 
-1. resolve the official consolidated/full-text publication for the exact Authority/Version;
-2. freeze the exact source text under `legal_data/` without relying on a live page at runtime;
-3. compute and pin source SHA-256;
-4. parse and verify the expected article count;
-5. create Stage 6-compatible `LegalManifest` records with publication/effective/version provenance;
-6. prove a repeat import is deterministic and does not duplicate canonical Authority/Version/Article identities;
-7. keep the 2026 Trademark Law as not-yet-effective until 2027-01-01;
-8. leave any source whose complete current text or applicability cannot be proven out of the imported corpus rather than fabricating `FULL_TEXT` coverage.
+- Stage 6 importer has an optional registry-aware source-validation path; legacy Stage 6 seed behavior remains unchanged when no registry is supplied;
+- registry-aware imports validate source host, role and PRIMARY eligibility before database mutation;
+- `app.legal.fulltext_snapshot` adds a fail-closed FULL_TEXT gate that requires contiguous article ordinals `1..N`, safe relative snapshot paths, vetted source roles and pinned normalized SHA-256;
+- three checked-in snapshot-target sets map every non-blocked Authority/Version to one exact full-text source and expected article count;
+- CNIPA, CAC and MOHRSS may serve as official `TEXT` carriers under explicit registry policy but may not create or replace `PRIMARY` normative provenance;
+- supplemental Stage 15.2B sources are restricted to `TEXT`; a new PRIMARY source must be vetted through the Authority/Version inventory first;
+- Cybersecurity Law 2025 amendment uses NPC PRIMARY provenance plus CAC full-text carriage, expected 81 articles;
+- Labor Contract Law 2012 amendment uses NPC PRIMARY provenance plus MOHRSS consolidated full-text carriage, expected 98 articles;
+- all 15 non-blocked Authority/Version targets are now `READY_FOR_FREEZE` at the source-selection layer;
+- Labor Dispute Interpretation (I) remains outside the snapshot target sets because its paragraph-level partial repeal remains a legal-version modeling block;
+- `app.legal.fulltext_snapshot_cli` freezes an already-obtained exact official UTF-8 text into normalized `snapshot.txt` + one-record Stage 6 `manifest.json`;
+- the freezer is idempotent for identical normalized input and refuses to overwrite a different frozen snapshot/manifest under the same target directory;
+- deterministic regression tests cover importer source policy, target completeness, supplemental TEXT restrictions, contiguous article validation, Stage 6 manifest generation and freeze idempotency;
+- `docs/STAGE15_FULLTEXT_SNAPSHOTS.md` documents the trust chain and offline freeze workflow.
 
-Only after actual full-text snapshots/manifests pass deterministic import validation may eligible pack manifests be populated and considered for `READY`.
+Current snapshot-target counts:
+
+```text
+IP pack          5 targets READY_FOR_FREEZE
+Enterprise pack  6 targets READY_FOR_FREEZE
+Labor pack       5 non-blocked targets READY_FOR_FREEZE
+                 1 catalog entry BLOCKED and intentionally excluded
+
+Unique non-blocked Authority/Version identities across all packs: 15
+```
+
+The shared 2025 Anti-Unfair Competition Law appears in both IP and enterprise target sets but remains one canonical Authority/Version identity.
+
+#### Still required before 15.2B can be complete
+
+For each of the 15 non-blocked identities:
+
+1. obtain the exact official full-text UTF-8 source outside model/search-snippet reconstruction;
+2. run the deterministic freezer and check in `snapshot.txt` + `manifest.json`;
+3. verify pinned source SHA-256 and expected article count;
+4. import the complete manifest set through the registry-aware Stage 6 importer;
+5. repeat the import/rebuild and prove Authority/Version/Article identities remain deterministic and non-duplicated;
+6. verify the 2026 Trademark Law remains `NOT_YET_EFFECTIVE` before 2027-01-01;
+7. only after those checks populate Pack `authority_manifest_paths` and consider each Pack for `READY`.
+
+No exact official full-text snapshot files have been claimed as frozen on this branch yet. Search snippets, model-reconstructed text and amendment decisions must not be substituted for the exact consolidated source bytes.
+
+There is not yet a new authoritative full-branch CI result recorded for the current 15.2B head; do not treat the newly added regression tests as passed merely because they are checked in.
 
 ## Remaining Stage 15 boundaries
 
@@ -184,4 +218,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 15.2A is complete. Stage 15.2B — official full-text snapshots + hashes + manifests — is the only next implementation scope.**
+**Stage 15.2B remains the only implementation scope. Source targeting, source-role hardening and deterministic freeze tooling are in place; exact official snapshots, hashes, manifests, repeat-import proof and Pack READY transition are still pending.**
