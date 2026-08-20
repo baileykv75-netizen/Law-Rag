@@ -4,11 +4,11 @@
   "pack_version": "0.2.0",
   "display_name": "中国知识产权核心法规",
   "jurisdiction": "中华人民共和国",
-  "description": "知识产权核心规范的 Stage 15 Corpus Pack。Stage 15.2B 已冻结首批 5 个 Authority/Version 全文快照并完成本地确定性导入验证；Pack 在仓库级测试/CI 权威验证前继续保持 DRAFT。",
+  "description": "知识产权核心规范的 Stage 15 Corpus Pack。Stage 15.2B 已冻结并确定性验证首批 5 个 Authority/Version 全文快照；仓库级 Stage 15 CI 已通过 DRAFT 候选验证，Pack 进入 READY。",
   "domain_tags": [
     "intellectual-property"
   ],
-  "status": "DRAFT",
+  "status": "READY",
   "authority_manifest_paths": [
     "authorities/prc-patent-law/effective-2021-06-01/manifest.json",
     "authorities/prc-copyright-law/effective-2021-06-01/manifest.json",
