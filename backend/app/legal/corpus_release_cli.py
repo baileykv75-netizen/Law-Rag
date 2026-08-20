@@ -38,6 +38,12 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--corpus-version", required=True)
     build.add_argument("--released-on", required=True, type=_as_date)
     build.add_argument("--parent-corpus-version")
+    build.add_argument(
+        "--pack-id",
+        action="append",
+        dest="pack_ids",
+        help="READY Corpus Pack to include. Repeatable. Defaults to all READY packs.",
+    )
     build.add_argument("--output", required=True, type=Path)
 
     plan = sub.add_parser("plan")
@@ -45,6 +51,15 @@ def _parser() -> argparse.ArgumentParser:
     plan.add_argument("--candidate-root", type=Path, default=DEFAULT_CORPUS_ROOT)
     plan.add_argument("--candidate-version", required=True)
     plan.add_argument("--released-on", required=True, type=_as_date)
+    plan.add_argument(
+        "--pack-id",
+        action="append",
+        dest="pack_ids",
+        help=(
+            "READY Corpus Pack to include in the candidate. Repeatable. "
+            "Defaults to the current release's pack set."
+        ),
+    )
     plan.add_argument("--output", type=Path)
 
     rebuild = sub.add_parser("rebuild")
@@ -74,6 +89,7 @@ def main() -> int:
                 corpus_version=args.corpus_version,
                 released_on=args.released_on,
                 parent_corpus_version=args.parent_corpus_version,
+                pack_ids=args.pack_ids,
             )
             write_corpus_release(release, args.output)
             _emit(release)
@@ -81,12 +97,16 @@ def main() -> int:
 
         if args.command == "plan":
             current = load_corpus_release(args.current)
+            selected_packs = args.pack_ids or [
+                item["pack_id"] for item in current["packs"]
+            ]
             candidate = build_corpus_release(
                 args.candidate_root,
                 corpus_id=current["corpus_id"],
                 corpus_version=args.candidate_version,
                 released_on=args.released_on,
                 parent_corpus_version=current["corpus_version"],
+                pack_ids=selected_packs,
             )
             plan = plan_corpus_update(current, candidate)
             _emit(plan, args.output)
