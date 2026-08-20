@@ -38,10 +38,10 @@ class IssueDomainRoute(BaseModel):
     reason: str
 
 
-_DOMAIN_PACKS = {
-    LegalDomain.INTELLECTUAL_PROPERTY: "cn-intellectual-property-core",
-    LegalDomain.ENTERPRISE_COMPLIANCE: "cn-enterprise-compliance-core",
-    LegalDomain.LABOR_DISPUTE: "cn-labor-dispute-core",
+_DOMAIN_TAGS = {
+    LegalDomain.INTELLECTUAL_PROPERTY: "intellectual-property",
+    LegalDomain.ENTERPRISE_COMPLIANCE: "enterprise-compliance",
+    LegalDomain.LABOR_DISPUTE: "labor-dispute",
 }
 
 _DOMAIN_SIGNALS: dict[LegalDomain, tuple[str, ...]] = {
@@ -81,7 +81,6 @@ _DOMAIN_SIGNALS: dict[LegalDomain, tuple[str, ...]] = {
         "工时",
         "休息休假",
         "经济补偿",
-        "赔偿金",
         "社会保险",
         "社保",
         "用工",
@@ -142,13 +141,24 @@ def _pack_authorities(packs: list[LoadedCorpusPack]) -> list[str]:
 def _required_packs(
     ready: dict[str, LoadedCorpusPack], domains: list[LegalDomain]
 ) -> list[LoadedCorpusPack]:
-    required_ids = [_DOMAIN_PACKS[domain] for domain in domains]
-    missing = [pack_id for pack_id in required_ids if pack_id not in ready]
+    required_tags = {_DOMAIN_TAGS[domain] for domain in domains}
+    selected = [
+        ready[pack_id]
+        for pack_id in sorted(ready)
+        if required_tags & set(ready[pack_id].manifest.domain_tags)
+    ]
+    covered_tags = {
+        tag
+        for pack in selected
+        for tag in pack.manifest.domain_tags
+        if tag in required_tags
+    }
+    missing = sorted(required_tags - covered_tags)
     if missing:
         raise DomainRoutingError(
-            "Required READY Corpus Pack(s) are unavailable for domain routing: " + ", ".join(sorted(missing))
+            "Required READY Corpus Pack domain tag(s) are unavailable for routing: " + ", ".join(missing)
         )
-    return [ready[pack_id] for pack_id in required_ids]
+    return selected
 
 
 def route_issue_to_corpus_packs(
@@ -189,12 +199,12 @@ def route_issue_to_corpus_packs(
     elif contract_type == ContractType.EMPLOYMENT:
         domain = LegalDomain.LABOR_DISPUTE
         selected = _required_packs(ready, [LegalDomain.LABOR_DISPUTE])
-        reason = "No Issue-level domain signal matched; EMPLOYMENT contract type selected the labor-dispute pack."
+        reason = "No Issue-level domain signal matched; EMPLOYMENT contract type selected the labor-dispute domain."
         fallback = False
     elif contract_type == ContractType.EQUITY:
         domain = LegalDomain.ENTERPRISE_COMPLIANCE
         selected = _required_packs(ready, [LegalDomain.ENTERPRISE_COMPLIANCE])
-        reason = "No Issue-level domain signal matched; EQUITY contract type selected the enterprise-compliance pack."
+        reason = "No Issue-level domain signal matched; EQUITY contract type selected the enterprise-compliance domain."
         fallback = False
     elif contract_type == ContractType.TECHNOLOGY:
         domain = LegalDomain.CROSS_DOMAIN
@@ -202,7 +212,7 @@ def route_issue_to_corpus_packs(
             ready,
             [LegalDomain.INTELLECTUAL_PROPERTY, LegalDomain.ENTERPRISE_COMPLIANCE],
         )
-        reason = "No Issue-level domain signal matched; TECHNOLOGY contract type selected IP + enterprise packs."
+        reason = "No Issue-level domain signal matched; TECHNOLOGY contract type selected IP + enterprise domains."
         fallback = False
     else:
         domain = LegalDomain.UNMAPPED
