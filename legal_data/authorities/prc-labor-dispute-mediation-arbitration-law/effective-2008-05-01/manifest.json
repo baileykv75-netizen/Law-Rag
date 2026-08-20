@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-labor-dispute-mediation-arbitration-law",
+        "title": "中华人民共和国劳动争议调解仲裁法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第八十号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2008-05-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2007-12-29",
+      "effective_date": "2008-05-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 54 contiguous articles (1-54) were frozen from the ChinaJob/MOHRSS official full-text carrier while the NPC law publication remains PRIMARY provenance and Presidential Order No. 80 remains version metadata.",
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国劳动争议调解仲裁法",
+          "url": "https://www.npc.gov.cn/c2986/c4488/201905/t20190523_48437.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第八十号",
+          "url": "https://www.npc.gov.cn/zgrdw/wxzl/gongbao/2008-02/23/content_1462434.htm",
+          "role": "METADATA"
+        },
+        {
+          "name": "中国就业网（人力资源社会保障部）：中华人民共和国劳动争议调解仲裁法（完整文本）",
+          "url": "https://chinajob.mohrss.gov.cn/h5/c/2022-07-15/356212.shtml",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "f8f6cf170aa725d08dcdcb6309e316d6028f53e5b837258bc2cffa6aa3ec16c8",
+      "expected_article_count": 54,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "劳动争议调解、仲裁程序的基础性法律，第五十四条明确自2008年5月1日起施行。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the ChinaJob/MOHRSS official publication. Parsed contiguous Article 1 through Article 54; Article 27 preserves the one-year arbitration limitation rule, Article 47 preserves the statutory final-award scope, and Article 54 states the law took effect on 2008-05-01. Normalized UTF-8 SHA-256 f8f6cf170aa725d08dcdcb6309e316d6028f53e5b837258bc2cffa6aa3ec16c8. NPC remains the normative PRIMARY publication."
+    }
+  ]
+}
