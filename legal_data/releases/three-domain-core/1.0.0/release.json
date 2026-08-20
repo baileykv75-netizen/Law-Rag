@@ -1,0 +1,347 @@
+{
+  "release_schema_version": "1.0.0",
+  "corpus_id": "three-domain-core",
+  "corpus_version": "1.0.0",
+  "released_on": "2026-08-20",
+  "parent_corpus_version": null,
+  "packs": [
+    {
+      "pack_id": "cn-enterprise-compliance-core",
+      "pack_version": "0.2.0",
+      "domain_tags": [
+        "enterprise-compliance"
+      ],
+      "authority_manifest_paths": [
+        "authorities/prc-anti-monopoly-law/effective-2022-08-01/manifest.json",
+        "authorities/prc-anti-unfair-competition-law/effective-2025-10-15/manifest.json",
+        "authorities/prc-company-law/effective-2024-07-01/manifest.json",
+        "authorities/prc-cybersecurity-law/effective-2026-01-01/manifest.json",
+        "authorities/prc-data-security-law/effective-2021-09-01/manifest.json",
+        "authorities/prc-personal-information-protection-law/effective-2021-11-01/manifest.json"
+      ]
+    },
+    {
+      "pack_id": "cn-intellectual-property-core",
+      "pack_version": "0.2.0",
+      "domain_tags": [
+        "intellectual-property"
+      ],
+      "authority_manifest_paths": [
+        "authorities/prc-anti-unfair-competition-law/effective-2025-10-15/manifest.json",
+        "authorities/prc-copyright-law/effective-2021-06-01/manifest.json",
+        "authorities/prc-patent-law/effective-2021-06-01/manifest.json",
+        "authorities/prc-trademark-law/effective-2019-11-01/manifest.json",
+        "authorities/prc-trademark-law/effective-2027-01-01/manifest.json"
+      ]
+    },
+    {
+      "pack_id": "cn-labor-dispute-core",
+      "pack_version": "0.2.0",
+      "domain_tags": [
+        "labor-dispute"
+      ],
+      "authority_manifest_paths": [
+        "authorities/prc-labor-contract-law/effective-2013-07-01/manifest.json",
+        "authorities/prc-labor-dispute-mediation-arbitration-law/effective-2008-05-01/manifest.json",
+        "authorities/prc-labor-law/effective-2018-12-29/manifest.json",
+        "authorities/prc-social-insurance-law/effective-2018-12-29/manifest.json",
+        "authorities/spc-labor-dispute-interpretation-2/effective-2025-09-01/manifest.json"
+      ]
+    }
+  ],
+  "versions": [
+    {
+      "authority_id": "prc-anti-monopoly-law",
+      "version_id": "effective-2022-08-01",
+      "authority_fingerprint": "4514e87e7b474633cdcc0b22febd6c1d269e80b72bf20d611228bf3973b6bfe6",
+      "status": "EFFECTIVE",
+      "publication_date": "2022-06-24",
+      "effective_date": "2022-08-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "f948920c2b049a7a4a144b776002e580a417b3dbb6e9303442d2a4dbe0e02cef",
+      "expected_article_count": 70,
+      "manifest_path": "authorities/prc-anti-monopoly-law/effective-2022-08-01/manifest.json",
+      "pack_ids": [
+        "cn-enterprise-compliance-core"
+      ]
+    },
+    {
+      "authority_id": "prc-anti-unfair-competition-law",
+      "version_id": "effective-2025-10-15",
+      "authority_fingerprint": "3f6cddb248d259ac8cd0a2597a9dfeca6fef397a2662aa9d1c1d8cc4330d3744",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-06-27",
+      "effective_date": "2025-10-15",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "42fd07a55f6fa042c769d99d3c1b2db27301672d1f5b909bef9ac8133bd07ce6",
+      "expected_article_count": 41,
+      "manifest_path": "authorities/prc-anti-unfair-competition-law/effective-2025-10-15/manifest.json",
+      "pack_ids": [
+        "cn-enterprise-compliance-core",
+        "cn-intellectual-property-core"
+      ]
+    },
+    {
+      "authority_id": "prc-company-law",
+      "version_id": "effective-2024-07-01",
+      "authority_fingerprint": "410d836a939816d6d308c7f64f54e8723bb6fa3cbcb44e9150bf7425df40f0bd",
+      "status": "EFFECTIVE",
+      "publication_date": "2023-12-29",
+      "effective_date": "2024-07-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "481e1a60c111a6dc3abe0c65f8084e852c8435961a7203668ae4297bc150ee8b",
+      "expected_article_count": 266,
+      "manifest_path": "authorities/prc-company-law/effective-2024-07-01/manifest.json",
+      "pack_ids": [
+        "cn-enterprise-compliance-core"
+      ]
+    },
+    {
+      "authority_id": "prc-copyright-law",
+      "version_id": "effective-2021-06-01",
+      "authority_fingerprint": "996e072364e504ac9596d9edef4161299ea20cc8c49a14059aee5002e11d7a6a",
+      "status": "EFFECTIVE",
+      "publication_date": "2020-11-11",
+      "effective_date": "2021-06-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "427d53ac76a646e7d443f2ef8ae2ef092cf8471733c9538baa21db6eb1244871",
+      "expected_article_count": 67,
+      "manifest_path": "authorities/prc-copyright-law/effective-2021-06-01/manifest.json",
+      "pack_ids": [
+        "cn-intellectual-property-core"
+      ]
+    },
+    {
+      "authority_id": "prc-cybersecurity-law",
+      "version_id": "effective-2026-01-01",
+      "authority_fingerprint": "de1fe769c9b92830f0d3706e42927e12c0a2426812dfc84ced1bbf460ba3986e",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-10-28",
+      "effective_date": "2026-01-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "a0160d99f2b04c997fa2afcf31cab91353c26739feb250d2ffdd444036c8a819",
+      "expected_article_count": 81,
+      "manifest_path": "authorities/prc-cybersecurity-law/effective-2026-01-01/manifest.json",
+      "pack_ids": [
+        "cn-enterprise-compliance-core"
+      ]
+    },
+    {
+      "authority_id": "prc-data-security-law",
+      "version_id": "effective-2021-09-01",
+      "authority_fingerprint": "88258c60c3366e79976d1b4c72aef3ee1d4f33d7f8983bc8726f40f2711c15eb",
+      "status": "EFFECTIVE",
+      "publication_date": "2021-06-10",
+      "effective_date": "2021-09-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "a1a7bacbfa57343b79e1f621328d85a670ee79b0620d847d60b1f6baa1b4674f",
+      "expected_article_count": 55,
+      "manifest_path": "authorities/prc-data-security-law/effective-2021-09-01/manifest.json",
+      "pack_ids": [
+        "cn-enterprise-compliance-core"
+      ]
+    },
+    {
+      "authority_id": "prc-labor-contract-law",
+      "version_id": "effective-2013-07-01",
+      "authority_fingerprint": "7578d7d021d44d2243603ce969ec6b5a1af9bbb2ba405833e89c518c81dee808",
+      "status": "EFFECTIVE",
+      "publication_date": "2012-12-28",
+      "effective_date": "2013-07-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "1c437f33760e12cf633fad993c1d044b7f12ffae3d4e67862f0c8332a9cf8130",
+      "expected_article_count": 98,
+      "manifest_path": "authorities/prc-labor-contract-law/effective-2013-07-01/manifest.json",
+      "pack_ids": [
+        "cn-labor-dispute-core"
+      ]
+    },
+    {
+      "authority_id": "prc-labor-dispute-mediation-arbitration-law",
+      "version_id": "effective-2008-05-01",
+      "authority_fingerprint": "e63bdcdfc04e29619a74b04f74e4f06dbcf7e5af02001939c2ba837a93d9a365",
+      "status": "EFFECTIVE",
+      "publication_date": "2007-12-29",
+      "effective_date": "2008-05-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "f8f6cf170aa725d08dcdcb6309e316d6028f53e5b837258bc2cffa6aa3ec16c8",
+      "expected_article_count": 54,
+      "manifest_path": "authorities/prc-labor-dispute-mediation-arbitration-law/effective-2008-05-01/manifest.json",
+      "pack_ids": [
+        "cn-labor-dispute-core"
+      ]
+    },
+    {
+      "authority_id": "prc-labor-law",
+      "version_id": "effective-2018-12-29",
+      "authority_fingerprint": "e6e180433657bf57dbec5170fd13698fa0c51b34eecc0bd9c326b2b4d1fff41e",
+      "status": "EFFECTIVE",
+      "publication_date": "2018-12-29",
+      "effective_date": "2018-12-29",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "fb7d92fb342ec6a3df28401ba32f4dfe8640cc5e2f13d5904a963f6dceccded6",
+      "expected_article_count": 107,
+      "manifest_path": "authorities/prc-labor-law/effective-2018-12-29/manifest.json",
+      "pack_ids": [
+        "cn-labor-dispute-core"
+      ]
+    },
+    {
+      "authority_id": "prc-patent-law",
+      "version_id": "effective-2021-06-01",
+      "authority_fingerprint": "8fe7c52646a3d789e557bf5d1a5fff27b0690357f56f94251453302242551cc2",
+      "status": "EFFECTIVE",
+      "publication_date": "2020-10-17",
+      "effective_date": "2021-06-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "3fd787a8394ee5af31040f5366ac696c6dae725850148699d06a9c3f725baf2d",
+      "expected_article_count": 82,
+      "manifest_path": "authorities/prc-patent-law/effective-2021-06-01/manifest.json",
+      "pack_ids": [
+        "cn-intellectual-property-core"
+      ]
+    },
+    {
+      "authority_id": "prc-personal-information-protection-law",
+      "version_id": "effective-2021-11-01",
+      "authority_fingerprint": "de375f0e72eab26085a8469c58c7e1f5bf8d34bbf6eef34600252209ba1dd6b5",
+      "status": "EFFECTIVE",
+      "publication_date": "2021-08-20",
+      "effective_date": "2021-11-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "b1a9b3d1d9c6dfe9e8537d5231a66637750acd43451e320b2d2f271d4d39e560",
+      "expected_article_count": 74,
+      "manifest_path": "authorities/prc-personal-information-protection-law/effective-2021-11-01/manifest.json",
+      "pack_ids": [
+        "cn-enterprise-compliance-core"
+      ]
+    },
+    {
+      "authority_id": "prc-social-insurance-law",
+      "version_id": "effective-2018-12-29",
+      "authority_fingerprint": "aad9808e44b777c79fe00437475b005821e6da5f76b30a300130f77b762ce67b",
+      "status": "EFFECTIVE",
+      "publication_date": "2018-12-29",
+      "effective_date": "2018-12-29",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "2367530c1919c74512b3c855a478c0a59b2830c17135bd4e148d2e671e901ea4",
+      "expected_article_count": 98,
+      "manifest_path": "authorities/prc-social-insurance-law/effective-2018-12-29/manifest.json",
+      "pack_ids": [
+        "cn-labor-dispute-core"
+      ]
+    },
+    {
+      "authority_id": "prc-trademark-law",
+      "version_id": "effective-2019-11-01",
+      "authority_fingerprint": "a262bf2ac8420383cb165f94fdf89b63786f84e8255d177085b045b019926797",
+      "status": "EFFECTIVE",
+      "publication_date": "2019-04-23",
+      "effective_date": "2019-11-01",
+      "end_date_exclusive": "2027-01-01",
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": "effective-2027-01-01",
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "b2576f43a4093b9a6f1738dcc6c67f49cc18b3d29d87c21924bb673b9076669b",
+      "expected_article_count": 73,
+      "manifest_path": "authorities/prc-trademark-law/effective-2019-11-01/manifest.json",
+      "pack_ids": [
+        "cn-intellectual-property-core"
+      ]
+    },
+    {
+      "authority_id": "prc-trademark-law",
+      "version_id": "effective-2027-01-01",
+      "authority_fingerprint": "a262bf2ac8420383cb165f94fdf89b63786f84e8255d177085b045b019926797",
+      "status": "NOT_YET_EFFECTIVE",
+      "publication_date": "2026-06-26",
+      "effective_date": "2027-01-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": "effective-2019-11-01",
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "25d02fc504d607b776122f3c83385846f0daf334ac33d8e5faf2b583a2d87796",
+      "expected_article_count": 87,
+      "manifest_path": "authorities/prc-trademark-law/effective-2027-01-01/manifest.json",
+      "pack_ids": [
+        "cn-intellectual-property-core"
+      ]
+    },
+    {
+      "authority_id": "spc-labor-dispute-interpretation-2",
+      "version_id": "effective-2025-09-01",
+      "authority_fingerprint": "7ed8d61cb63635a1f1dd2d0cdafead786294bec5accf08d65a6d67e3fa16e9f9",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-07-31",
+      "effective_date": "2025-09-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "source_snapshot_sha256": "6021a750c2173172922eabe45dfd3374a09278d3c1adbd308ac0441e118c4400",
+      "expected_article_count": 21,
+      "manifest_path": "authorities/spc-labor-dispute-interpretation-2/effective-2025-09-01/manifest.json",
+      "pack_ids": [
+        "cn-labor-dispute-core"
+      ]
+    }
+  ],
+  "summary": {
+    "pack_count": 3,
+    "authority_count": 14,
+    "version_count": 15,
+    "article_count": 1274
+  },
+  "release_digest": "4009c06967cd2281089e85bdfda64388dd4ac8fc3b86125d971bfa1c0f642b4f"
+}
