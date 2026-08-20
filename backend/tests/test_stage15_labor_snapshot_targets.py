@@ -43,7 +43,7 @@ def test_checked_in_labor_targets_are_all_ready_for_exact_full_text_freeze() -> 
     labor_contract = by_identity[("prc-labor-contract-law", "effective-2013-07-01")]
     assert labor_contract.expected_article_count == 98
     assert str(labor_contract.snapshot_source_url) == (
-        "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394622.html"
+        "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_0abfdd261c03417b949df19d869add8d.html"
     )
     assert labor_contract.supplemental_source_ref is not None
     assert labor_contract.supplemental_source_ref.role.value == "TEXT"
