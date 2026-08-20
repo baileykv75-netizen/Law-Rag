@@ -7,7 +7,7 @@
         "title": "中华人民共和国商标法",
         "authority_type": "LAW",
         "issuing_body": "全国人民代表大会常务委员会",
-        "document_number": "中华人民共和国主席令第七十七号",
+        "document_number": null,
         "jurisdiction": "中华人民共和国"
       },
       "version_id": "effective-2027-01-01",
@@ -36,9 +36,9 @@
       "expected_source_sha256": "25d02fc504d607b776122f3c83385846f0daf334ac33d8e5faf2b583a2d87796",
       "expected_article_count": 87,
       "parser": "chinese-articles-v1",
-      "inclusion_reason": "2026年6月26日第十四届全国人大常委会第二十三次会议修订通过并公布，自2027年1月1日起施行；截至2026年8月20日属于已公布但尚未生效版本。",
+      "inclusion_reason": "2026年6月26日第十四届全国人大常委会第二十三次会议修订通过并公布，自2027年1月1日起施行；截至2026年8月20日属于已公布但尚未生效版本。主席令第七十七号作为版本级发布来源保留在source_refs，不进入跨版本共享的Authority元数据。",
       "verified_on": "2026-08-20",
-      "verification_note": "Canonical legal-text extraction from CNIPA official page https://www.cnipa.gov.cn/art/2026/6/26/art_3686_206940.html, which identifies China NPC as the information source. Parsed contiguous Article 1 through Article 87. Article 87 states the effective date is 2027-01-01. Normalized UTF-8 SHA-256 25d02fc504d607b776122f3c83385846f0daf334ac33d8e5faf2b583a2d87796. Freezing the text does not change status NOT_YET_EFFECTIVE before 2027-01-01."
+      "verification_note": "Canonical legal-text extraction from CNIPA official page https://www.cnipa.gov.cn/art/2026/6/26/art_3686_206940.html, which identifies China NPC as the information source. Parsed contiguous Article 1 through Article 87. Article 87 states the effective date is 2027-01-01. Normalized UTF-8 SHA-256 25d02fc504d607b776122f3c83385846f0daf334ac33d8e5faf2b583a2d87796. Freezing the text does not change status NOT_YET_EFFECTIVE before 2027-01-01. Presidential Order No. 77 remains explicit version provenance in source_refs; Authority metadata stays stable across Trademark Law versions."
     }
   ]
 }
