@@ -1,0 +1,13 @@
+{
+  "pack_schema_version": "1.0.0",
+  "pack_id": "cn-intellectual-property-core",
+  "pack_version": "0.1.0",
+  "display_name": "中国知识产权核心法规",
+  "jurisdiction": "中华人民共和国",
+  "description": "知识产权核心规范的 Stage 15 Corpus Pack。Stage 15.1 仅冻结包结构，官方法律内容在 Stage 15.2 填充。",
+  "domain_tags": [
+    "intellectual-property"
+  ],
+  "status": "DRAFT",
+  "authority_manifest_paths": []
+}
