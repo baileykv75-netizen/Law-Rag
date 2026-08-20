@@ -3,6 +3,8 @@ name: Law-Rag Stage 15 CI
 on:
   push:
     branches: ['stage15-*']
+  pull_request:
+    branches: ['stage15-*']
   workflow_dispatch:
 
 permissions:
