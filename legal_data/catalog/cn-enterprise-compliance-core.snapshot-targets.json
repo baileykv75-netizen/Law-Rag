@@ -1,0 +1,86 @@
+{
+  "snapshot_targets_schema_version": "1.0.0",
+  "target_set_id": "cn-enterprise-compliance-core-2026-08-20",
+  "pack_id": "cn-enterprise-compliance-core",
+  "verified_on": "2026-08-20",
+  "targets": [
+    {
+      "authority_id": "prc-company-law",
+      "version_id": "effective-2024-07-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.samr.gov.cn/xyjgs/flfg/art/2024/art_d4e84936a8a744f8928ac7aec7594345.html",
+      "supplemental_source_ref": {
+        "name": "国家市场监督管理总局：中华人民共和国公司法（2023年第二次修订完整文本，信息来源全国人大法律法规数据库）",
+        "url": "https://www.samr.gov.cn/xyjgs/flfg/art/2024/art_d4e84936a8a744f8928ac7aec7594345.html",
+        "role": "TEXT"
+      },
+      "expected_article_count": 266,
+      "verification_note": "NPC remains the normative PRIMARY publication. SAMR republishes the complete 2023 second-revision text from Article 1 through Article 266 and labels the information source as the National Laws and Regulations Database; Article 266 states the law took effect on 2024-07-01. SAMR remains TEXT-only."
+    },
+    {
+      "authority_id": "prc-anti-unfair-competition-law",
+      "version_id": "effective-2025-10-15",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cnipa.gov.cn/art/2026/5/20/art_104_206437.html",
+      "supplemental_source_ref": {
+        "name": "国家知识产权局：中华人民共和国反不正当竞争法（2025年修订完整文本）",
+        "url": "https://www.cnipa.gov.cn/art/2026/5/20/art_104_206437.html",
+        "role": "TEXT"
+      },
+      "expected_article_count": 41,
+      "verification_note": "Shared canonical Authority/Version with the IP pack. CNIPA publishes the complete 2025 second-revision text through Article 41 and identifies China NPC as its source; the NPC official URL remains PRIMARY provenance."
+    },
+    {
+      "authority_id": "prc-anti-monopoly-law",
+      "version_id": "effective-2022-08-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_f0fae9eb3a684fc39e84d89eabfc2caa.html",
+      "supplemental_source_ref": {
+        "name": "国家市场监督管理总局：中华人民共和国反垄断法（2022年修正完整文本）",
+        "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_f0fae9eb3a684fc39e84d89eabfc2caa.html",
+        "role": "TEXT"
+      },
+      "expected_article_count": 70,
+      "verification_note": "National Laws and Regulations Database remains the normative PRIMARY identity. SAMR provides a stable official republished full text through Article 70. Article 70 retains the original 2008-08-01 commencement text, while the current amended Authority/Version effective_date is 2022-08-01 under the 2022 NPC amendment decision."
+    },
+    {
+      "authority_id": "prc-data-security-law",
+      "version_id": "effective-2021-09-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cac.gov.cn/2021-06/11/c_1624994566919140.htm",
+      "supplemental_source_ref": {
+        "name": "中央网信办：中华人民共和国数据安全法（完整文本）",
+        "url": "https://www.cac.gov.cn/2021-06/11/c_1624994566919140.htm",
+        "role": "TEXT"
+      },
+      "expected_article_count": 55,
+      "verification_note": "NPC remains the normative PRIMARY publication. CAC provides a stable official full-text carrier through Article 55; Article 55 states the law took effect on 2021-09-01. CAC is TEXT-only and cannot replace PRIMARY provenance."
+    },
+    {
+      "authority_id": "prc-personal-information-protection-law",
+      "version_id": "effective-2021-11-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cac.gov.cn/2021-08/20/c_1631050028355286.htm",
+      "supplemental_source_ref": {
+        "name": "中央网信办：中华人民共和国个人信息保护法（完整文本）",
+        "url": "https://www.cac.gov.cn/2021-08/20/c_1631050028355286.htm",
+        "role": "TEXT"
+      },
+      "expected_article_count": 74,
+      "verification_note": "NPC remains the normative PRIMARY publication. CAC republishes the complete text and identifies China NPC as its source; Article 74 states the law took effect on 2021-11-01. CAC is TEXT-only and cannot replace PRIMARY provenance."
+    },
+    {
+      "authority_id": "prc-cybersecurity-law",
+      "version_id": "effective-2026-01-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cac.gov.cn/2025-12/29/c_1768735112911946.htm",
+      "supplemental_source_ref": {
+        "name": "中央网信办：中华人民共和国网络安全法（2025年修正后完整文本）",
+        "url": "https://www.cac.gov.cn/2025-12/29/c_1768735112911946.htm",
+        "role": "TEXT"
+      },
+      "expected_article_count": 81,
+      "verification_note": "NPC supplies the normative amendment decision and presidential-order provenance. CAC carries the official republished full text sourced from NPC; the amended law runs contiguously through Article 81. CAC is TEXT-only and cannot replace PRIMARY provenance."
+    }
+  ]
+}

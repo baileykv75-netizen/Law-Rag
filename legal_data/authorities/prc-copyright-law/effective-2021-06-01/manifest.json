@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-copyright-law",
+        "title": "中华人民共和国著作权法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第六十二号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-06-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2020-11-11",
+      "effective_date": "2021-06-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 67 contiguous articles (1-67) were frozen from the National Copyright Administration complete 2020 third-amendment text while NPC remains the normative PRIMARY provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国著作权法（2020年修正后文本）",
+          "url": "https://www.npc.gov.cn/c2/c30834/202011/t20201119_308796.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第六十二号",
+          "url": "https://www.npc.gov.cn/c2/c30834/202011/t20201111_308668.html",
+          "role": "METADATA"
+        },
+        {
+          "name": "国家版权局：中华人民共和国著作权法（2020年第三次修正完整文本）",
+          "url": "https://www.ncac.gov.cn/xxfb/flfg/flfg_532/202103/t20210309_50530.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "427d53ac76a646e7d443f2ef8ae2ef092cf8471733c9538baa21db6eb1244871",
+      "expected_article_count": 67,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "2020年第三次修正，自2021年6月1日起施行。Stage 15.2B保留中国人大网作为PRIMARY法源，并以国家版权局完整官方转载文本冻结FULL_TEXT快照。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-text extraction from National Copyright Administration official page https://www.ncac.gov.cn/xxfb/flfg/flfg_532/202103/t20210309_50530.html; the page identifies the 2020 third amendment and publishes the complete text through Article 67. NPC full text and Presidential Order No. 62 remain PRIMARY/METADATA provenance. Parsed contiguous Article 1 through Article 67. Normalized UTF-8 SHA-256 427d53ac76a646e7d443f2ef8ae2ef092cf8471733c9538baa21db6eb1244871."
+    }
+  ]
+}

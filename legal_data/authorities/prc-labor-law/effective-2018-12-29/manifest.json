@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-labor-law",
+        "title": "中华人民共和国劳动法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2018-12-29",
+      "status": "EFFECTIVE",
+      "publication_date": "2018-12-29",
+      "effective_date": "2018-12-29",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 107 contiguous articles (1-107) were frozen from the SAMR official 2018 second-amendment text while the National Laws and Regulations Database and NPC remain normative provenance.",
+      "source_refs": [
+        {
+          "name": "国家法律法规数据库：中华人民共和国劳动法",
+          "url": "https://flk.npc.gov.cn/detail?id=ff8080816f135f46016f20f16ee11737&title=中华人民共和国劳动法",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国劳动法（2018年第二次修正）",
+          "url": "https://www.npc.gov.cn/c2/c30834/201905/t20190521_296651.html",
+          "role": "TEXT"
+        },
+        {
+          "name": "国家市场监督管理总局：中华人民共和国劳动法（2018年第二次修正完整文本）",
+          "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_d9aa750028b14b99a776cb93726a360d.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "fb7d92fb342ec6a3df28401ba32f4dfe8640cc5e2f13d5904a963f6dceccded6",
+      "expected_article_count": 107,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "劳动用工与劳动争议领域的基础性现行法律；2018年12月29日第二次修正版本纳入首批劳动核心语料。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the SAMR official 2018 second-amendment text. Parsed contiguous Article 1 through Article 107 with normalized UTF-8 SHA-256 fb7d92fb342ec6a3df28401ba32f4dfe8640cc5e2f13d5904a963f6dceccded6. Article 94 contains the 2018-amended market-supervision wording. Article 107 retains the original law's 1995-01-01 commencement sentence; that historical sentence does not override this Authority/Version effective_date=2018-12-29 established by the 2018 amendment provenance."
+    }
+  ]
+}

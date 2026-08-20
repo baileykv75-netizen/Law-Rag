@@ -1,0 +1,63 @@
+{
+  "snapshot_targets_schema_version": "1.0.0",
+  "target_set_id": "cn-intellectual-property-core-2026-08-20",
+  "pack_id": "cn-intellectual-property-core",
+  "verified_on": "2026-08-20",
+  "targets": [
+    {
+      "authority_id": "prc-patent-law",
+      "version_id": "effective-2021-06-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cnipa.gov.cn/art/2020/11/23/art_2197_155169.html",
+      "expected_article_count": 82,
+      "verification_note": "CNIPA publishes the complete 2020-amended text; the republished law runs contiguously through Article 82. Primary enactment provenance remains the NPC amendment decision recorded in the catalog."
+    },
+    {
+      "authority_id": "prc-copyright-law",
+      "version_id": "effective-2021-06-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.ncac.gov.cn/xxfb/flfg/flfg_532/202103/t20210309_50530.html",
+      "supplemental_source_ref": {
+        "name": "国家版权局：中华人民共和国著作权法（2020年第三次修正完整文本）",
+        "url": "https://www.ncac.gov.cn/xxfb/flfg/flfg_532/202103/t20210309_50530.html",
+        "role": "TEXT"
+      },
+      "expected_article_count": 67,
+      "verification_note": "The National Copyright Administration publishes the complete 2020 third-amendment text through Article 67. NPC remains the PRIMARY enactment provenance in the Stage 15.2A catalog; NCAC is a supplemental TEXT-only carrier."
+    },
+    {
+      "authority_id": "prc-trademark-law",
+      "version_id": "effective-2019-11-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html",
+      "supplemental_source_ref": {
+        "name": "国家知识产权局：中华人民共和国商标法（2019年修正完整文本）",
+        "url": "https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html",
+        "role": "TEXT"
+      },
+      "expected_article_count": 73,
+      "verification_note": "The CNIPA URL already vetted as CROSS_CHECK in Stage 15.2A is confirmed in 15.2B to publish the complete 2019-amended text through Article 73. This supplemental TEXT role confirmation does not replace the NPC PRIMARY source. The version ends immediately before 2027-01-01."
+    },
+    {
+      "authority_id": "prc-trademark-law",
+      "version_id": "effective-2027-01-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cnipa.gov.cn/art/2026/6/26/art_3686_206940.html",
+      "expected_article_count": 87,
+      "verification_note": "CNIPA publishes the complete 2026 revised text sourced from NPC; Article 87 states the law takes effect on 2027-01-01, so the catalog status remains NOT_YET_EFFECTIVE on 2026-08-20."
+    },
+    {
+      "authority_id": "prc-anti-unfair-competition-law",
+      "version_id": "effective-2025-10-15",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cnipa.gov.cn/art/2026/5/20/art_104_206437.html",
+      "supplemental_source_ref": {
+        "name": "国家知识产权局：中华人民共和国反不正当竞争法（2025年修订完整文本）",
+        "url": "https://www.cnipa.gov.cn/art/2026/5/20/art_104_206437.html",
+        "role": "TEXT"
+      },
+      "expected_article_count": 41,
+      "verification_note": "CNIPA publishes the complete 2025 second-revision text through Article 41 and labels China NPC as its source. The NPC official full-text URL remains the PRIMARY normative provenance in the Stage 15.2A catalog. This single Authority/Version is shared with the enterprise-compliance pack."
+    }
+  ]
+}

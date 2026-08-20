@@ -42,7 +42,7 @@ def test_checked_in_source_registry_and_catalog_validate() -> None:
     assert sum(item.catalog_state == CatalogEntryState.BLOCKED for item in catalog.entries) == 1
 
 
-def test_inventory_represents_exactly_three_stage15_packs_but_keeps_them_draft() -> None:
+def test_inventory_represents_exactly_three_stage15_populated_ready_packs() -> None:
     _, catalog = _load_checked_in_catalog()
     expected = {
         "cn-intellectual-property-core",
@@ -53,8 +53,21 @@ def test_inventory_represents_exactly_three_stage15_packs_but_keeps_them_draft()
 
     packs = discover_corpus_packs(_repo_root() / "legal_data")
     assert {item.manifest.pack_id for item in packs} == expected
-    assert all(item.manifest.status == CorpusPackStatus.DRAFT for item in packs)
-    assert all(item.members == [] for item in packs)
+    assert all(item.manifest.status == CorpusPackStatus.READY for item in packs)
+
+    by_id = {item.manifest.pack_id: item for item in packs}
+    ip = by_id["cn-intellectual-property-core"]
+    assert ip.manifest.pack_version == "0.2.0"
+    assert len(ip.members) == 5
+    assert {(item.authority_id, item.version_id) for item in ip.members} == {
+        ("prc-patent-law", "effective-2021-06-01"),
+        ("prc-copyright-law", "effective-2021-06-01"),
+        ("prc-trademark-law", "effective-2019-11-01"),
+        ("prc-trademark-law", "effective-2027-01-01"),
+        ("prc-anti-unfair-competition-law", "effective-2025-10-15"),
+    }
+    assert len(by_id["cn-enterprise-compliance-core"].members) == 6
+    assert len(by_id["cn-labor-dispute-core"].members) == 5
 
 
 def test_shared_anti_unfair_competition_law_is_one_identity_in_two_packs() -> None:
@@ -86,6 +99,9 @@ def test_trademark_transition_tracks_current_and_promulgated_future_versions() -
     assert future.status == VersionStatus.NOT_YET_EFFECTIVE
     assert future.catalog_state == CatalogEntryState.PROMULGATED_NOT_YET_EFFECTIVE
     assert str(future.effective_date) == "2027-01-01"
+    assert current.authority.document_number is None
+    assert future.authority.document_number is None
+    assert any("第七十七号" in source.name for source in future.source_refs)
 
 
 def test_cybersecurity_catalog_uses_2026_effective_revision_not_stale_2016_text() -> None:

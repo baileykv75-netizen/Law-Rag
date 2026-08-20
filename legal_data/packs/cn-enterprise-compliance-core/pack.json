@@ -1,13 +1,20 @@
 {
   "pack_schema_version": "1.0.0",
   "pack_id": "cn-enterprise-compliance-core",
-  "pack_version": "0.1.0",
+  "pack_version": "0.2.0",
   "display_name": "中国企业合规核心法规",
   "jurisdiction": "中华人民共和国",
-  "description": "企业基础经营与合规核心规范的 Stage 15 Corpus Pack。Stage 15.1 仅冻结包结构，官方法律内容在 Stage 15.2 填充。",
+  "description": "企业基础经营与合规核心规范的 Stage 15 Corpus Pack。Stage 15.2B 已冻结并确定性验证 6 个共享/独立 Authority/Version 全文快照；仓库级 Stage 15 CI 已通过 DRAFT 候选验证，Pack 进入 READY。",
   "domain_tags": [
     "enterprise-compliance"
   ],
-  "status": "DRAFT",
-  "authority_manifest_paths": []
+  "status": "READY",
+  "authority_manifest_paths": [
+    "authorities/prc-company-law/effective-2024-07-01/manifest.json",
+    "authorities/prc-anti-unfair-competition-law/effective-2025-10-15/manifest.json",
+    "authorities/prc-anti-monopoly-law/effective-2022-08-01/manifest.json",
+    "authorities/prc-data-security-law/effective-2021-09-01/manifest.json",
+    "authorities/prc-personal-information-protection-law/effective-2021-11-01/manifest.json",
+    "authorities/prc-cybersecurity-law/effective-2026-01-01/manifest.json"
+  ]
 }

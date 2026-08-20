@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-social-insurance-law",
+        "title": "中华人民共和国社会保险法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2018-12-29",
+      "status": "EFFECTIVE",
+      "publication_date": "2018-12-29",
+      "effective_date": "2018-12-29",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 98 contiguous articles (1-98) were frozen from the SAMR official 2018-amended text while NPC publication and amendment materials remain normative provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国社会保险法（2018年修正后文本）",
+          "url": "https://www.npc.gov.cn/zgrdw/npc/xinwen/2019-01/07/content_2070267.htm",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：关于修改《中华人民共和国社会保险法》的决定",
+          "url": "https://www.npc.gov.cn/zgrdw/npc/xinwen/2018-12/29/content_2069931.htm",
+          "role": "METADATA"
+        },
+        {
+          "name": "国家市场监督管理总局：中华人民共和国社会保险法（2018年修正完整文本）",
+          "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_e81d115419b4463ebb59ec46467fb136.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "2367530c1919c74512b3c855a478c0a59b2830c17135bd4e148d2e671e901ea4",
+      "expected_article_count": 98,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "劳动用工争议中的社会保险基础规范；2018年修改决定自公布之日起施行并重新公布现行文本。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the SAMR official 2018-amended text. Parsed contiguous Article 1 through Article 98 with normalized UTF-8 SHA-256 2367530c1919c74512b3c855a478c0a59b2830c17135bd4e148d2e671e901ea4. Article 98 retains the original law's sentence '本法自2011年7月1日起施行'; that historical sentence remains part of the republished legal text but must not override this Authority/Version effective_date=2018-12-29 established by the 2018 NPC amendment decision."
+    }
+  ]
+}

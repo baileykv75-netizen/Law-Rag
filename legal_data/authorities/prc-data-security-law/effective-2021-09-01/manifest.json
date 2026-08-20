@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-data-security-law",
+        "title": "中华人民共和国数据安全法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-09-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2021-06-10",
+      "effective_date": "2021-09-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 55 contiguous articles (1-55) were frozen from the CAC official full-text carrier while the NPC publication remains PRIMARY provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国数据安全法",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202106/t20210610_311888.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中央网信办：中华人民共和国数据安全法（完整文本）",
+          "url": "https://www.cac.gov.cn/2021-06/11/c_1624994566919140.htm",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "a1a7bacbfa57343b79e1f621328d85a670ee79b0620d847d60b1f6baa1b4674f",
+      "expected_article_count": 55,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "数据处理活动和数据安全义务的基础性法律，自2021年9月1日起施行。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the CAC official full-text publication. Parsed contiguous Article 1 through Article 55; Article 55 states the law took effect on 2021-09-01. Normalized UTF-8 SHA-256 a1a7bacbfa57343b79e1f621328d85a670ee79b0620d847d60b1f6baa1b4674f. NPC remains the normative PRIMARY source."
+    }
+  ]
+}

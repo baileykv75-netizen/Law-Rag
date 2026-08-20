@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-trademark-law",
+        "title": "中华人民共和国商标法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2019-11-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2019-04-23",
+      "effective_date": "2019-11-01",
+      "end_date_exclusive": "2027-01-01",
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": "effective-2027-01-01",
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 73 contiguous articles (1-73) were frozen from the CNIPA complete 2019-amended text while NPC remains the normative PRIMARY provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国商标法（2019年修正）",
+          "url": "https://www.npc.gov.cn/c2/c30834/201906/t20190608_298036.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "国家知识产权局：中华人民共和国商标法（2019年修正完整文本）",
+          "url": "https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "b2576f43a4093b9a6f1738dcc6c67f49cc18b3d29d87c21924bb673b9076669b",
+      "expected_article_count": 73,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "2019年第四次修正，自2019年11月1日起施行；2026年修订法将于2027年1月1日起施行，因此本版本适用区间在2027年1月1日之前结束。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-text extraction from CNIPA official page https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html and cross-checked against the NPC official full-text publication. NPC remains PRIMARY provenance; CNIPA is confirmed as a TEXT carrier for the same vetted URL. Parsed contiguous Article 1 through Article 73. Normalized UTF-8 SHA-256 b2576f43a4093b9a6f1738dcc6c67f49cc18b3d29d87c21924bb673b9076669b. This version ends exclusively on 2027-01-01, when the 2026 revised Trademark Law becomes effective."
+    }
+  ]
+}

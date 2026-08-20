@@ -17,9 +17,16 @@ from .models import (
     LegalVersion,
     ManifestImportReport,
     ManifestRecord,
+    SourceRole,
     ValidationIssue,
 )
 from .parser import LegalParseError, normalize_snapshot_text, parse_chinese_articles, sha256_text
+from .source_registry import (
+    LegalSourceRegistry,
+    LegalSourceRegistryError,
+    load_source_registry,
+    validate_official_source_ref,
+)
 from .store import connect, initialize_schema
 
 OFFICIAL_HOSTS = {
@@ -50,14 +57,52 @@ class PreparedRecord:
     validation: ImportValidationReport
 
 
-def _recognized_sources(record: ManifestRecord, allow_non_official_sources: bool) -> bool:
+def _source_validation(
+    record: ManifestRecord,
+    *,
+    allow_non_official_sources: bool,
+    source_registry: LegalSourceRegistry | None,
+) -> tuple[bool, list[ValidationIssue]]:
     if allow_non_official_sources:
-        return True
+        return True, []
+
+    if source_registry is not None:
+        issues: list[ValidationIssue] = []
+        if not any(source.role == SourceRole.PRIMARY for source in record.source_refs):
+            issues.append(
+                ValidationIssue(
+                    code="MISSING_PRIMARY_OFFICIAL_SOURCE",
+                    message="Registry-aware imports require at least one PRIMARY official source reference.",
+                    critical=True,
+                )
+            )
+        for source in record.source_refs:
+            try:
+                validate_official_source_ref(source, source_registry)
+            except LegalSourceRegistryError as exc:
+                issues.append(
+                    ValidationIssue(
+                        code="INVALID_OFFICIAL_SOURCE_REF",
+                        message=str(exc),
+                        critical=True,
+                    )
+                )
+        return not issues, issues
+
     for source in record.source_refs:
         hostname = (urlparse(str(source.url)).hostname or "").lower()
         if hostname not in OFFICIAL_HOSTS:
-            return False
-    return True
+            return (
+                False,
+                [
+                    ValidationIssue(
+                        code="UNRECOGNIZED_SOURCE_HOST",
+                        message="All source references must use the Stage 6 authoritative-source allowlist.",
+                        critical=True,
+                    )
+                ],
+            )
+    return True, []
 
 
 def _load_manifest(manifest_path: Path) -> LegalManifest:
@@ -66,6 +111,15 @@ def _load_manifest(manifest_path: Path) -> LegalManifest:
         return LegalManifest.model_validate(payload)
     except (OSError, json.JSONDecodeError, ValidationError) as exc:
         raise LegalImportError(f"Malformed legal manifest: {exc}") from exc
+
+
+def _load_optional_source_registry(path: Path | None) -> LegalSourceRegistry | None:
+    if path is None:
+        return None
+    try:
+        return load_source_registry(path.resolve())
+    except LegalSourceRegistryError as exc:
+        raise LegalImportError(f"Malformed legal source registry: {exc}") from exc
 
 
 def _snapshot_path(manifest_path: Path, configured: str) -> Path:
@@ -80,17 +134,14 @@ def _prepare_record(
     record: ManifestRecord,
     *,
     allow_non_official_sources: bool,
+    source_registry: LegalSourceRegistry | None,
 ) -> PreparedRecord:
-    issues: list[ValidationIssue] = []
-    recognized = _recognized_sources(record, allow_non_official_sources)
-    if not recognized:
-        issues.append(
-            ValidationIssue(
-                code="UNRECOGNIZED_SOURCE_HOST",
-                message="All source references must use the Stage 6 authoritative-source allowlist.",
-                critical=True,
-            )
-        )
+    recognized, source_issues = _source_validation(
+        record,
+        allow_non_official_sources=allow_non_official_sources,
+        source_registry=source_registry,
+    )
+    issues: list[ValidationIssue] = list(source_issues)
 
     source_path = _snapshot_path(manifest_path, record.snapshot_path)
     try:
@@ -405,11 +456,13 @@ def import_manifest(
     *,
     rebuild: bool = False,
     allow_non_official_sources: bool = False,
+    source_registry_path: Path | None = None,
     report_path: Path | None = None,
 ) -> ManifestImportReport:
     manifest_path = manifest_path.resolve()
     db_path = db_path.resolve()
     manifest = _load_manifest(manifest_path)
+    source_registry = _load_optional_source_registry(source_registry_path)
 
     identity_pairs = [(item.authority.authority_id, item.version_id) for item in manifest.records]
     duplicate_pairs = sorted({pair for pair in identity_pairs if identity_pairs.count(pair) > 1})
@@ -421,6 +474,7 @@ def import_manifest(
             manifest_path,
             item,
             allow_non_official_sources=allow_non_official_sources,
+            source_registry=source_registry,
         )
         for item in manifest.records
     ]
