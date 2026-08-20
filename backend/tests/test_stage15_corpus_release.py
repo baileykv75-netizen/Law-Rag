@@ -4,9 +4,12 @@ import json
 from copy import deepcopy
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import app.legal.corpus_release as corpus_release_module
+from app.legal.corpus_packs import CorpusPackStatus
 from app.legal.corpus_release import (
     CorpusReleaseError,
     _digest,
@@ -60,6 +63,7 @@ def _release(
     *,
     released_on: str = "2026-08-20",
     parent: str | None = None,
+    pack_version: str = "0.1.0",
 ) -> dict:
     payload = {
         "release_schema_version": "1.0.0",
@@ -69,7 +73,7 @@ def _release(
         "parent_corpus_version": parent,
         "packs": [{
             "pack_id": "fictional-pack",
-            "pack_version": "0.1.0",
+            "pack_version": pack_version,
             "domain_tags": ["fictional"],
             "authority_manifest_paths": sorted({item["manifest_path"] for item in versions}),
         }],
@@ -87,17 +91,24 @@ def _release(
 
 def test_checked_in_ready_corpus_builds_release_and_rebuilds_database(tmp_path: Path) -> None:
     root = _repo_root()
+    pack_ids = [
+        "cn-enterprise-compliance-core",
+        "cn-intellectual-property-core",
+        "cn-labor-dispute-core",
+    ]
     first = build_corpus_release(
         root / "legal_data",
         corpus_id="three-domain-core",
         corpus_version="1.0.0",
         released_on=date(2026, 8, 20),
+        pack_ids=pack_ids,
     )
     second = build_corpus_release(
         root / "legal_data",
         corpus_id="three-domain-core",
         corpus_version="1.0.0",
         released_on=date(2026, 8, 20),
+        pack_ids=pack_ids,
     )
     assert first == second
     assert first["summary"] == {
@@ -123,8 +134,43 @@ def test_checked_in_ready_corpus_builds_release_and_rebuilds_database(tmp_path: 
     assert result["corpus_version"] == "1.0.0"
     summary = get_summary(db)
     assert (summary.authority_count, summary.version_count, summary.article_count) == (14, 15, 1274)
-    assert resolve_version(db, "prc-trademark-law", date(2026, 12, 31)).version.version_id == "effective-2019-11-01"
-    assert resolve_version(db, "prc-trademark-law", date(2027, 1, 1)).version.version_id == "effective-2027-01-01"
+    assert (
+        resolve_version(db, "prc-trademark-law", date(2026, 12, 31)).version.version_id
+        == "effective-2019-11-01"
+    )
+    assert (
+        resolve_version(db, "prc-trademark-law", date(2027, 1, 1)).version.version_id
+        == "effective-2027-01-01"
+    )
+
+
+def test_unrelated_draft_pack_does_not_block_default_release(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _repo_root()
+    original = corpus_release_module.discover_corpus_packs
+
+    def with_draft(corpus_root: Path):
+        return [
+            *original(corpus_root),
+            SimpleNamespace(
+                manifest=SimpleNamespace(
+                    pack_id="future-draft-pack",
+                    status=CorpusPackStatus.DRAFT,
+                )
+            ),
+        ]
+
+    monkeypatch.setattr(corpus_release_module, "discover_corpus_packs", with_draft)
+    release = build_corpus_release(
+        root / "legal_data",
+        corpus_id="three-domain-core",
+        corpus_version="1.0.0",
+        released_on=date(2026, 8, 20),
+    )
+    assert [item["pack_id"] for item in release["packs"]] == [
+        "cn-enterprise-compliance-core",
+        "cn-intellectual-property-core",
+        "cn-labor-dispute-core",
+    ]
 
 
 def test_release_file_is_idempotent_and_digest_fails_closed(tmp_path: Path) -> None:
@@ -139,6 +185,42 @@ def test_release_file_is_idempotent_and_digest_fails_closed(tmp_path: Path) -> N
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(CorpusReleaseError, match="digest mismatch"):
         load_corpus_release(path)
+
+
+@pytest.mark.parametrize("bad_version", ["1..0", ".1", "1.", "v1.0", "1.a"])
+def test_release_rejects_malformed_corpus_version(tmp_path: Path, bad_version: str) -> None:
+    release = _release(bad_version, [_version()])
+    with pytest.raises(CorpusReleaseError, match="numeric dotted"):
+        write_corpus_release(release, tmp_path / "release.json")
+
+
+def test_release_requires_nonempty_pack_and_version_sets(tmp_path: Path) -> None:
+    empty = {
+        "release_schema_version": "1.0.0",
+        "corpus_id": "fictional-corpus",
+        "corpus_version": "1.0.0",
+        "released_on": "2026-08-20",
+        "parent_corpus_version": None,
+        "packs": [],
+        "versions": [],
+        "summary": {
+            "pack_count": 0,
+            "authority_count": 0,
+            "version_count": 0,
+            "article_count": 0,
+        },
+    }
+    empty["release_digest"] = _digest(empty)
+    with pytest.raises(CorpusReleaseError, match="at least one pack"):
+        write_corpus_release(empty, tmp_path / "release.json")
+
+
+def test_release_manifest_path_must_belong_to_every_named_pack(tmp_path: Path) -> None:
+    release = _release("1.0.0", [_version()])
+    release["versions"][0]["manifest_path"] = "authorities/other/manifest.json"
+    release["release_digest"] = _digest(release)
+    with pytest.raises(CorpusReleaseError, match="not a member"):
+        write_corpus_release(release, tmp_path / "release.json")
 
 
 def test_update_plan_detects_amendment_and_preserves_old_version() -> None:
@@ -157,12 +239,46 @@ def test_update_plan_detects_amendment_and_preserves_old_version() -> None:
         supersedes=old["version_id"],
         source_hash="2" * 64,
     )
-    candidate = _release("1.1.0", [closed, amended], released_on="2028-01-01", parent="1.0.0")
+    candidate = _release(
+        "1.1.0",
+        [closed, amended],
+        released_on="2028-01-01",
+        parent="1.0.0",
+        pack_version="0.2.0",
+    )
     plan = plan_corpus_update(current, candidate)
     assert plan["disposition"] == "SAFE_FORWARD"
-    assert {"SUPERSESSION_RECORDED", "AMENDMENT_VERSION_ADDED"} <= {
+    assert {"PACK_VERSION_UPDATED", "SUPERSESSION_RECORDED", "AMENDMENT_VERSION_ADDED"} <= {
         item["kind"] for item in plan["changes"]
     }
+
+
+def test_update_plan_blocks_pack_membership_change_without_pack_version_bump() -> None:
+    old = _version()
+    current = _release("1.0.0", [old])
+    closed = deepcopy(old)
+    closed.update({
+        "status": "SUPERSEDED",
+        "end_date_exclusive": "2028-01-01",
+        "superseded_by_version_id": "effective-2028-01-01",
+    })
+    amended = _version(
+        "effective-2028-01-01",
+        effective="2028-01-01",
+        publication="2027-10-01",
+        supersedes=old["version_id"],
+        source_hash="2" * 64,
+    )
+    candidate = _release(
+        "1.1.0",
+        [closed, amended],
+        released_on="2028-01-01",
+        parent="1.0.0",
+        pack_version="0.1.0",
+    )
+    plan = plan_corpus_update(current, candidate)
+    assert plan["disposition"] == "BLOCKED"
+    assert "PACK_VERSION_NOT_ADVANCED" in {item["kind"] for item in plan["changes"]}
 
 
 def test_update_plan_blocks_snapshot_mutation_and_historical_removal() -> None:
@@ -189,7 +305,12 @@ def test_update_plan_blocks_snapshot_mutation_and_historical_removal() -> None:
     historical = _release("2.0.0", [old, newer])
     missing_old = deepcopy(newer)
     missing_old["supersedes_version_id"] = None
-    candidate_without_history = _release("2.1.0", [missing_old], parent="2.0.0")
+    candidate_without_history = _release(
+        "2.1.0",
+        [missing_old],
+        parent="2.0.0",
+        pack_version="0.2.0",
+    )
     removal = plan_corpus_update(historical, candidate_without_history)
     assert removal["disposition"] == "BLOCKED"
     assert "VERSION_REMOVED" in {item["kind"] for item in removal["changes"]}
@@ -234,6 +355,14 @@ def test_update_plan_requires_parent_and_monotonic_corpus_version() -> None:
     }
 
 
+def test_update_plan_blocks_empty_release_version_bump() -> None:
+    current = _release("1.0.0", [_version()])
+    candidate = _release("1.1.0", [_version()], parent="1.0.0")
+    plan = plan_corpus_update(current, candidate)
+    assert plan["disposition"] == "BLOCKED"
+    assert [item["kind"] for item in plan["changes"]] == ["EMPTY_RELEASE_UPDATE"]
+
+
 def test_failed_release_rebuild_never_replaces_existing_database(tmp_path: Path) -> None:
     root = _repo_root()
     release = build_corpus_release(
@@ -244,8 +373,10 @@ def test_failed_release_rebuild_never_replaces_existing_database(tmp_path: Path)
     )
     broken = deepcopy(release)
     broken["versions"][0]["manifest_path"] = "authorities/not-present/manifest.json"
-    broken["packs"][0]["authority_manifest_paths"].append("authorities/not-present/manifest.json")
-    broken["packs"][0]["authority_manifest_paths"].sort()
+    target_pack = broken["versions"][0]["pack_ids"][0]
+    pack = next(item for item in broken["packs"] if item["pack_id"] == target_pack)
+    pack["authority_manifest_paths"].append("authorities/not-present/manifest.json")
+    pack["authority_manifest_paths"].sort()
     broken["release_digest"] = _digest(broken)
 
     db = tmp_path / "legal.db"
