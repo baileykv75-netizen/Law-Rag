@@ -78,6 +78,35 @@ def _normalize_url(value: str) -> str:
     return value.rstrip("/")
 
 
+def _validate_supplemental_text_ref(
+    *,
+    target: FullTextSnapshotTarget,
+    source_url: str,
+    existing_ref: OfficialSourceRef | None,
+) -> OfficialSourceRef:
+    source_ref = target.supplemental_source_ref
+    if source_ref is None:
+        raise SnapshotTargetsError(
+            f"Snapshot source for {target.authority_id}:{target.version_id} must match a catalog PRIMARY/TEXT "
+            "source_ref or declare one supplemental TEXT source_ref"
+        )
+    if _normalize_url(str(source_ref.url)) != source_url:
+        raise SnapshotTargetsError(
+            f"Supplemental source URL for {target.authority_id}:{target.version_id} must equal snapshot_source_url"
+        )
+    if source_ref.role != SourceRole.TEXT:
+        raise SnapshotTargetsError(
+            f"Supplemental source for {target.authority_id}:{target.version_id} must use TEXT role; "
+            "new PRIMARY provenance must be vetted in the catalog first"
+        )
+    if existing_ref is not None and existing_ref.role in {SourceRole.PRIMARY, SourceRole.TEXT}:
+        raise SnapshotTargetsError(
+            f"Snapshot source for {target.authority_id}:{target.version_id} is already a catalog "
+            f"{existing_ref.role.value} source and must not be supplemented"
+        )
+    return source_ref
+
+
 def load_snapshot_targets(
     path: Path,
     *,
@@ -126,28 +155,22 @@ def load_snapshot_targets(
             raise SnapshotTargetsError(
                 f"Snapshot source for {target.authority_id}:{target.version_id} matches duplicate catalog source_refs"
             )
-        if matching_refs:
-            if target.supplemental_source_ref is not None:
-                raise SnapshotTargetsError(
-                    f"Snapshot source for {target.authority_id}:{target.version_id} is already in the catalog and must not be supplemented"
-                )
-            source_ref = matching_refs[0]
+
+        existing_ref = matching_refs[0] if matching_refs else None
+        if existing_ref is not None and target.supplemental_source_ref is None:
+            source_ref = existing_ref
+        elif target.supplemental_source_ref is not None:
+            source_ref = _validate_supplemental_text_ref(
+                target=target,
+                source_url=source_url,
+                existing_ref=existing_ref,
+            )
         else:
-            source_ref = target.supplemental_source_ref
-            if source_ref is None:
-                raise SnapshotTargetsError(
-                    f"Snapshot source for {target.authority_id}:{target.version_id} must match a catalog source_ref "
-                    "or declare one supplemental TEXT source_ref"
-                )
-            if _normalize_url(str(source_ref.url)) != source_url:
-                raise SnapshotTargetsError(
-                    f"Supplemental source URL for {target.authority_id}:{target.version_id} must equal snapshot_source_url"
-                )
-            if source_ref.role != SourceRole.TEXT:
-                raise SnapshotTargetsError(
-                    f"Supplemental source for {target.authority_id}:{target.version_id} must use TEXT role; "
-                    "new PRIMARY provenance must be vetted in the catalog first"
-                )
+            source_ref = _validate_supplemental_text_ref(
+                target=target,
+                source_url=source_url,
+                existing_ref=None,
+            )
 
         if source_ref.role not in {SourceRole.PRIMARY, SourceRole.TEXT}:
             raise SnapshotTargetsError(
