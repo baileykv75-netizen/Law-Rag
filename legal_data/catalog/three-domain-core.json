@@ -106,7 +106,7 @@
         "title": "中华人民共和国商标法",
         "authority_type": "LAW",
         "issuing_body": "全国人民代表大会常务委员会",
-        "document_number": "中华人民共和国主席令第七十七号",
+        "document_number": null,
         "jurisdiction": "中华人民共和国"
       },
       "version_id": "effective-2027-01-01",
@@ -130,7 +130,7 @@
       "target_coverage": "FULL_TEXT",
       "catalog_state": "PROMULGATED_NOT_YET_EFFECTIVE",
       "priority": "CORE",
-      "notes": "2026年6月26日修订通过并公布，但截至目录核验日尚未生效；不得在2026年的审计中当作现行版本。"
+      "notes": "2026年6月26日修订通过并公布，但截至目录核验日尚未生效；不得在2026年的审计中当作现行版本。主席令第七十七号保留为版本级发布来源，不进入跨版本共享的Authority元数据。"
     },
     {
       "authority": {
