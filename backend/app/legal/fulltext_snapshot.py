@@ -32,6 +32,24 @@ def _validate_snapshot_path(snapshot_path: str) -> str:
     return path.as_posix()
 
 
+def _validate_supplemental_source(
+    supplemental_source_ref: OfficialSourceRef,
+    *,
+    target_url: str,
+    existing_ref: OfficialSourceRef | None,
+) -> None:
+    if _normalize_url(str(supplemental_source_ref.url)) != target_url:
+        raise FullTextSnapshotError("supplemental source URL must equal snapshot_source_url")
+    if supplemental_source_ref.role != SourceRole.TEXT:
+        raise FullTextSnapshotError(
+            "Supplemental full-text sources may use TEXT only; new PRIMARY provenance must be vetted in the catalog first."
+        )
+    if existing_ref is not None and existing_ref.role in FULL_TEXT_SOURCE_ROLES:
+        raise FullTextSnapshotError(
+            f"Catalog source is already {existing_ref.role.value}; it must not also declare a supplemental source_ref"
+        )
+
+
 def _snapshot_source_ref(
     entry: PlannedLegalVersion,
     snapshot_source_url: str,
@@ -41,27 +59,34 @@ def _snapshot_source_ref(
     matching_refs = [ref for ref in entry.source_refs if _normalize_url(str(ref.url)) == target]
     if len(matching_refs) > 1:
         raise FullTextSnapshotError("snapshot_source_url matches duplicate catalog source_refs")
-    if matching_refs:
-        if supplemental_source_ref is not None:
-            raise FullTextSnapshotError("Catalog snapshot sources must not also declare a supplemental source_ref")
-        source_ref = matching_refs[0]
-        if source_ref.role not in FULL_TEXT_SOURCE_ROLES:
+
+    existing_ref = matching_refs[0] if matching_refs else None
+    if existing_ref is not None and supplemental_source_ref is None:
+        if existing_ref.role not in FULL_TEXT_SOURCE_ROLES:
             raise FullTextSnapshotError(
-                f"Snapshot source role {source_ref.role.value} cannot supply normative full text; use PRIMARY or TEXT."
+                f"Snapshot source role {existing_ref.role.value} cannot supply normative full text; "
+                "provide an explicit supplemental TEXT role confirmation for this vetted URL."
             )
-        return source_ref, list(entry.source_refs)
+        return existing_ref, list(entry.source_refs)
 
     if supplemental_source_ref is None:
         raise FullTextSnapshotError(
-            "snapshot_source_url must match a vetted catalog source_ref or provide a supplemental TEXT source_ref"
+            "snapshot_source_url must match a vetted catalog PRIMARY/TEXT source_ref or provide a supplemental TEXT source_ref"
         )
-    if _normalize_url(str(supplemental_source_ref.url)) != target:
-        raise FullTextSnapshotError("supplemental source URL must equal snapshot_source_url")
-    if supplemental_source_ref.role != SourceRole.TEXT:
-        raise FullTextSnapshotError(
-            "Supplemental full-text sources may use TEXT only; new PRIMARY provenance must be vetted in the catalog first."
-        )
-    return supplemental_source_ref, [*entry.source_refs, supplemental_source_ref]
+
+    _validate_supplemental_source(
+        supplemental_source_ref,
+        target_url=target,
+        existing_ref=existing_ref,
+    )
+
+    if existing_ref is None:
+        return supplemental_source_ref, [*entry.source_refs, supplemental_source_ref]
+
+    manifest_source_refs = [
+        supplemental_source_ref if ref is existing_ref else ref for ref in entry.source_refs
+    ]
+    return supplemental_source_ref, manifest_source_refs
 
 
 def _validate_registry(entry: PlannedLegalVersion, registry: LegalSourceRegistry) -> None:
@@ -130,8 +155,9 @@ def build_full_text_manifest_record(
     the Stage 15 registry and article ordinals form the complete sequence 1..N.
 
     A Stage 15.2B snapshot target may add one registry-approved TEXT carrier that was
-    discovered after the 15.2A Authority/Version inventory. Supplemental sources can
-    never create or replace PRIMARY provenance.
+    discovered after the 15.2A Authority/Version inventory. It may also confirm that a
+    URL already vetted as METADATA/CROSS_CHECK is in fact a complete TEXT carrier.
+    Supplemental sources can never create or replace PRIMARY provenance.
     """
 
     if entry.catalog_state == CatalogEntryState.BLOCKED:
