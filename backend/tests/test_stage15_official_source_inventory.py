@@ -42,7 +42,7 @@ def test_checked_in_source_registry_and_catalog_validate() -> None:
     assert sum(item.catalog_state == CatalogEntryState.BLOCKED for item in catalog.entries) == 1
 
 
-def test_inventory_represents_exactly_three_stage15_packs_with_only_ip_populated_so_far() -> None:
+def test_inventory_represents_exactly_three_stage15_populated_draft_packs() -> None:
     _, catalog = _load_checked_in_catalog()
     expected = {
         "cn-intellectual-property-core",
@@ -66,8 +66,8 @@ def test_inventory_represents_exactly_three_stage15_packs_with_only_ip_populated
         ("prc-trademark-law", "effective-2027-01-01"),
         ("prc-anti-unfair-competition-law", "effective-2025-10-15"),
     }
-    assert by_id["cn-enterprise-compliance-core"].members == []
-    assert by_id["cn-labor-dispute-core"].members == []
+    assert len(by_id["cn-enterprise-compliance-core"].members) == 6
+    assert len(by_id["cn-labor-dispute-core"].members) == 5
 
 
 def test_shared_anti_unfair_competition_law_is_one_identity_in_two_packs() -> None:
