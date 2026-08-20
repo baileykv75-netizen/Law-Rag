@@ -92,7 +92,7 @@ def test_freeze_refuses_to_overwrite_changed_snapshot_under_same_identity(tmp_pa
         )
 
 
-def test_freeze_carries_supplemental_mohrss_text_source_into_manifest(tmp_path: Path) -> None:
+def test_freeze_carries_supplemental_samr_text_source_into_manifest(tmp_path: Path) -> None:
     result = _freeze(
         tmp_path,
         target_set_name="cn-labor-dispute-core.snapshot-targets.json",
@@ -105,7 +105,7 @@ def test_freeze_carries_supplemental_mohrss_text_source_into_manifest(tmp_path: 
     payload = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
     refs = payload["records"][0]["source_refs"]
     assert [item["role"] for item in refs] == ["PRIMARY", "TEXT"]
-    assert refs[-1]["url"].startswith("https://www.mohrss.gov.cn/")
+    assert refs[-1]["url"].startswith("https://www.samr.gov.cn/")
 
 
 def test_freeze_derives_trademark_version_links_from_touching_catalog_intervals(tmp_path: Path) -> None:
