@@ -64,6 +64,38 @@ def _entry() -> PlannedLegalVersion:
     )
 
 
+def _entry_with_vetted_cross_check() -> PlannedLegalVersion:
+    return PlannedLegalVersion(
+        authority=LegalAuthority(
+            authority_id="same-url-role-fixture",
+            title="同URL角色确认测试法",
+            authority_type="LAW",
+            issuing_body="全国人民代表大会常务委员会",
+            document_number="TEST-SAME-URL",
+        ),
+        version_id="effective-2026-01-01",
+        status=VersionStatus.EFFECTIVE,
+        publication_date=date(2025, 12, 31),
+        effective_date=date(2026, 1, 1),
+        pack_ids=["cn-intellectual-property-core"],
+        source_refs=[
+            OfficialSourceRef(
+                name="人大规范性来源",
+                url="https://www.npc.gov.cn/c2/c30834/source.html",
+                role=SourceRole.PRIMARY,
+            ),
+            OfficialSourceRef(
+                name="国家知识产权局交叉核验页",
+                url="https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html",
+                role=SourceRole.CROSS_CHECK,
+            ),
+        ],
+        target_coverage=CoverageType.FULL_TEXT,
+        catalog_state=CatalogEntryState.VETTED_FOR_SNAPSHOT,
+        notes="Synthetic same-URL role-confirmation fixture.",
+    )
+
+
 def test_manifest_record_keeps_primary_and_adds_supplemental_text_carrier() -> None:
     supplemental = OfficialSourceRef(
         name="中央网信办全文承载",
@@ -83,6 +115,30 @@ def test_manifest_record_keeps_primary_and_adds_supplemental_text_carrier() -> N
 
     assert [ref.role for ref in record.source_refs] == [SourceRole.PRIMARY, SourceRole.TEXT]
     assert str(record.source_refs[-1].url) == str(supplemental.url)
+
+
+def test_same_vetted_url_can_be_confirmed_as_text_without_duplicate_source() -> None:
+    url = "https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html"
+    supplemental = OfficialSourceRef(
+        name="国家知识产权局完整正文",
+        url=url,
+        role=SourceRole.TEXT,
+    )
+    record = build_full_text_manifest_record(
+        _entry_with_vetted_cross_check(),
+        snapshot_text="第一条　甲。\n第二条　乙。\n",
+        snapshot_path="snapshot.txt",
+        snapshot_source_url=url,
+        supplemental_source_ref=supplemental,
+        expected_article_count=2,
+        registry=_registry(),
+        verified_on=date(2026, 8, 20),
+    )
+
+    matching = [ref for ref in record.source_refs if str(ref.url) == url]
+    assert len(matching) == 1
+    assert matching[0].role == SourceRole.TEXT
+    assert any(ref.role == SourceRole.PRIMARY for ref in record.source_refs)
 
 
 def test_manifest_record_rejects_supplemental_primary_even_on_registered_host() -> None:
