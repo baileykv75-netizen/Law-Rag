@@ -5,7 +5,12 @@ import json
 import os
 from pathlib import Path
 
-from .corpus_inventory import load_official_corpus_catalog
+from .corpus_inventory import (
+    CatalogEntryState,
+    OfficialCorpusCatalog,
+    PlannedLegalVersion,
+    load_official_corpus_catalog,
+)
 from .fulltext_snapshot import FullTextSnapshotError, build_full_text_manifest_record
 from .models import LegalManifest
 from .parser import normalize_snapshot_text
@@ -46,6 +51,50 @@ def _write_utf8_atomic(path: Path, content: str) -> None:
     temporary = path.with_name(f".{path.name}.tmp")
     temporary.write_text(content, encoding="utf-8", newline="\n")
     os.replace(temporary, path)
+
+
+def _version_links(
+    catalog: OfficialCorpusCatalog,
+    entry: PlannedLegalVersion,
+) -> tuple[str | None, str | None]:
+    """Derive adjacent version links only when effective intervals touch exactly.
+
+    Stage 15 catalog ordering is the provenance source for version transitions. A gap
+    must not be silently represented as a supersession relationship, and BLOCKED
+    versions are excluded because they are not uniformly representable Authority
+    Versions in the current legal store.
+    """
+
+    versions = sorted(
+        (
+            item
+            for item in catalog.entries
+            if item.authority.authority_id == entry.authority.authority_id
+            and item.catalog_state != CatalogEntryState.BLOCKED
+        ),
+        key=lambda item: (item.effective_date, item.version_id),
+    )
+    matches = [index for index, item in enumerate(versions) if item.version_id == entry.version_id]
+    if len(matches) != 1:
+        raise FullTextSnapshotFreezeError(
+            f"Catalog version timeline could not resolve {entry.authority.authority_id}:{entry.version_id} exactly once."
+        )
+
+    index = matches[0]
+    supersedes_version_id: str | None = None
+    superseded_by_version_id: str | None = None
+
+    if index > 0:
+        previous = versions[index - 1]
+        if previous.end_date_exclusive == entry.effective_date:
+            supersedes_version_id = previous.version_id
+
+    if index + 1 < len(versions):
+        following = versions[index + 1]
+        if entry.end_date_exclusive == following.effective_date:
+            superseded_by_version_id = following.version_id
+
+    return supersedes_version_id, superseded_by_version_id
 
 
 def freeze_full_text_snapshot(
@@ -127,6 +176,14 @@ def freeze_full_text_snapshot(
         )
     except FullTextSnapshotError as exc:
         raise FullTextSnapshotFreezeError(str(exc)) from exc
+
+    supersedes_version_id, superseded_by_version_id = _version_links(catalog, entry)
+    record = record.model_copy(
+        update={
+            "supersedes_version_id": supersedes_version_id,
+            "superseded_by_version_id": superseded_by_version_id,
+        }
+    )
 
     normalized_snapshot = normalize_snapshot_text(source_text)
     manifest = LegalManifest(records=[record])

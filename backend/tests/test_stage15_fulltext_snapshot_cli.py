@@ -108,6 +108,39 @@ def test_freeze_carries_supplemental_mohrss_text_source_into_manifest(tmp_path: 
     assert refs[-1]["url"].startswith("https://www.mohrss.gov.cn/")
 
 
+def test_freeze_derives_trademark_version_links_from_touching_catalog_intervals(tmp_path: Path) -> None:
+    current_dir = tmp_path / "current"
+    future_dir = tmp_path / "future"
+    current_dir.mkdir()
+    future_dir.mkdir()
+
+    current = _freeze(
+        current_dir,
+        target_set_name="cn-intellectual-property-core.snapshot-targets.json",
+        authority_id="prc-trademark-law",
+        version_id="effective-2019-11-01",
+        article_count=73,
+    )
+    future = _freeze(
+        future_dir,
+        target_set_name="cn-intellectual-property-core.snapshot-targets.json",
+        authority_id="prc-trademark-law",
+        version_id="effective-2027-01-01",
+        article_count=87,
+    )
+
+    current_record = json.loads(Path(current["manifest_path"]).read_text(encoding="utf-8"))["records"][0]
+    future_record = json.loads(Path(future["manifest_path"]).read_text(encoding="utf-8"))["records"][0]
+
+    assert current_record["supersedes_version_id"] is None
+    assert current_record["superseded_by_version_id"] == "effective-2027-01-01"
+    assert current_record["end_date_exclusive"] == "2027-01-01"
+    assert future_record["supersedes_version_id"] == "effective-2019-11-01"
+    assert future_record["superseded_by_version_id"] is None
+    assert future_record["status"] == "NOT_YET_EFFECTIVE"
+    assert future_record["effective_date"] == "2027-01-01"
+
+
 def test_freeze_rejects_noncontiguous_article_sequence(tmp_path: Path) -> None:
     root = _repo_root()
     source = tmp_path / "bad.txt"
