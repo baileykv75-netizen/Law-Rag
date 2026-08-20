@@ -56,8 +56,8 @@ Implemented on `stage15-1-corpus-pack-architecture`:
 - canonical legal identity remains `Authority -> Version -> Article / Legal Evidence`;
 - Corpus Pack is a grouping/distribution layer, not a second legal identity;
 - pack membership is many-to-many, so one Authority/Version may belong to several domains without duplicating source text;
-- `domain_tags` are open validated lowercase slugs, not a closed Python enum;
-- pack authority references are corpus-root-relative POSIX paths and fail closed on absolute/traversal/backslash paths;
+- `domain_tags` are open validated lowercase ASCII slugs, not a closed Python enum;
+- pack authority references are corpus-root-relative POSIX paths and fail closed on absolute/drive-qualified/traversal/backslash paths;
 - duplicate authority/version identity inside one pack is rejected;
 - `DRAFT` packs may be structurally defined before content exists; `READY` packs require at least one authority manifest;
 - existing Stage 6 `LegalManifest` and `legal_data/seed/manifest.json` remain valid without DB/schema migration;
@@ -75,16 +75,16 @@ These skeletons do **not** claim legal coverage. Official authorities are popula
 
 ### 15.1 validation
 
-Law-Rag CI #758 (`32322954275`):
+Authoritative code + decision head CI: Law-Rag CI #762 (`32323430473`):
 
 ```text
-backend pytest                      329 passed, 5 skipped, 1 third-party warning
+backend pytest                      333 passed, 5 skipped, 1 third-party warning
 public deterministic quality gates PASS
 frontend production build          PASS
 Windows exact OCR dependency smoke PASS
 ```
 
-The new regression verifies future-domain extensibility, safe pack paths, READY/DRAFT semantics, many-to-many shared Authority/Version membership, duplicate identity rejection and legacy Stage 6 seed rebuild compatibility.
+The new regression verifies future-domain extensibility, strict ASCII domain slugs, safe POSIX pack paths including Windows drive-path rejection, READY/DRAFT semantics, many-to-many shared Authority/Version membership, duplicate identity rejection and legacy Stage 6 seed rebuild compatibility.
 
 The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
 
