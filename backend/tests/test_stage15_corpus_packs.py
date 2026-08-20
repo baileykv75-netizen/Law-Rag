@@ -111,6 +111,17 @@ def test_future_domain_slug_does_not_require_a_python_enum_change(tmp_path: Path
     assert loaded.manifest.status == CorpusPackStatus.DRAFT
 
 
+@pytest.mark.parametrize("domain_tag", ["Construction", "知识产权", "δοκιμή"])
+def test_domain_slug_is_lowercase_ascii_and_fail_closed(tmp_path: Path, domain_tag: str) -> None:
+    pack_path = _write_pack(
+        tmp_path,
+        "cn-invalid-domain",
+        domain_tag=domain_tag,
+    )
+    with pytest.raises(CorpusPackError, match="lowercase ASCII slugs"):
+        load_corpus_pack(pack_path, tmp_path)
+
+
 def test_ready_pack_requires_at_least_one_authority_manifest(tmp_path: Path) -> None:
     pack_path = _write_pack(
         tmp_path,
@@ -124,7 +135,12 @@ def test_ready_pack_requires_at_least_one_authority_manifest(tmp_path: Path) -> 
 
 @pytest.mark.parametrize(
     "configured_path",
-    ["../outside/manifest.json", "/absolute/manifest.json", "authorities\\bad\\manifest.json"],
+    [
+        "../outside/manifest.json",
+        "/absolute/manifest.json",
+        "C:/absolute/manifest.json",
+        "authorities\\bad\\manifest.json",
+    ],
 )
 def test_pack_rejects_unsafe_authority_manifest_paths(tmp_path: Path, configured_path: str) -> None:
     pack_path = _write_pack(
