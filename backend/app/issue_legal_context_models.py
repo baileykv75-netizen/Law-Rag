@@ -63,6 +63,7 @@ class IssueLegalContextArtifact(BaseModel):
     contract_content_fingerprint: str
     legal_source_fingerprint: str
     retrieval_index_fingerprint: str
+    domain_routing_fingerprint: str | None = None
     retrieval_schema_version: str | None = None
     lexical_tokenizer: str | None = None
     lexical_index_version: str | None = None
