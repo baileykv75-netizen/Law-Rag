@@ -57,6 +57,15 @@
       "notes": "国家知识产权局官网。用于专利法、商标法等知识产权法律的官方转载和业务口径交叉核验；法律本身仍优先以全国人大、国家法律法规数据库或中国政府网的正式发布作为 PRIMARY。"
     },
     {
+      "source_id": "samr-official-site",
+      "organization": "国家市场监督管理总局",
+      "hosts": ["www.samr.gov.cn", "samr.gov.cn"],
+      "trust_tier": "OFFICIAL_CROSS_CHECK",
+      "allowed_roles": ["TEXT", "METADATA", "CROSS_CHECK"],
+      "primary_normative_source_allowed": false,
+      "notes": "国家市场监督管理总局官网。可承载公司法等市场监管领域法律的官方完整转载文本及实施口径交叉核验；法律规范性 PRIMARY 仍以全国人大、国家法律法规数据库或中国政府网等立法权威来源为准。"
+    },
+    {
       "source_id": "cac-official-site",
       "organization": "中央网络安全和信息化委员会办公室（国家互联网信息办公室）",
       "hosts": ["www.cac.gov.cn", "cac.gov.cn"],
