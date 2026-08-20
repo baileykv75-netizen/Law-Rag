@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from enum import Enum
 from pathlib import Path
 
@@ -112,6 +114,25 @@ def _ready_packs(corpus_root: Path) -> dict[str, LoadedCorpusPack]:
     if not ready:
         raise DomainRoutingError("Domain-aware retrieval requires at least one READY Corpus Pack.")
     return ready
+
+
+def routing_catalog_fingerprint(corpus_root: Path = DEFAULT_CORPUS_ROOT) -> str:
+    ready = _ready_packs(corpus_root)
+    payload = []
+    for pack_id in sorted(ready):
+        pack = ready[pack_id]
+        payload.append(
+            {
+                "pack_id": pack.manifest.pack_id,
+                "pack_version": pack.manifest.pack_version,
+                "domain_tags": sorted(pack.manifest.domain_tags),
+                "members": sorted(
+                    f"{member.authority_id}:{member.version_id}" for member in pack.members
+                ),
+            }
+        )
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _pack_authorities(packs: list[LoadedCorpusPack]) -> list[str]:
