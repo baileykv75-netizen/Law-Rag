@@ -7,10 +7,11 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from .audit_plan_models import AuditPlanSource, ReviewPriority
+from .legal.domain_routing import IssueDomainRoute
 from .legal.retrieval_models import RetrievalCandidate, RetrievalResponse
 
 ISSUE_LEGAL_CONTEXT_SCHEMA_VERSION = "1.0.0"
-ISSUE_LEGAL_CONTEXT_BUILDER_VERSION = "stage13d-1.0.0"
+ISSUE_LEGAL_CONTEXT_BUILDER_VERSION = "stage15.4-1.0.0"
 
 
 class IssueLegalSupportState(str, Enum):
@@ -41,6 +42,7 @@ class IssueLegalEvidencePackage(BaseModel):
     questions: list[str] = Field(default_factory=list)
     contract_object_ids: list[str] = Field(default_factory=list)
     contract_evidence_ids: list[str] = Field(default_factory=list)
+    domain_route: IssueDomainRoute | None = None
     retrieval_runs: list[IssueRetrievalRun] = Field(min_length=1)
     legal_evidence: list[IssueLegalEvidenceHit] = Field(default_factory=list)
     support_state: IssueLegalSupportState
