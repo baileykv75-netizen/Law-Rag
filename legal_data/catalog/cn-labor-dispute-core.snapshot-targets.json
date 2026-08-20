@@ -8,14 +8,14 @@
       "authority_id": "prc-labor-law",
       "version_id": "effective-2018-12-29",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394625.html",
+      "snapshot_source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_d9aa750028b14b99a776cb93726a360d.html",
       "supplemental_source_ref": {
-        "name": "人力资源社会保障部：中华人民共和国劳动法（2018年第二次修正完整文本）",
-        "url": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394625.html",
+        "name": "国家市场监督管理总局：中华人民共和国劳动法（2018年第二次修正完整文本）",
+        "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_d9aa750028b14b99a776cb93726a360d.html",
         "role": "TEXT"
       },
       "expected_article_count": 107,
-      "verification_note": "NPC remains the normative PRIMARY publication. MOHRSS marks the 2018-12-29 second-amendment text as effective and carries the complete law through Article 107. MOHRSS is TEXT-only and cannot replace PRIMARY provenance."
+      "verification_note": "National Laws and Regulations Database remains the normative PRIMARY identity and NPC remains official text provenance. SAMR publishes the complete 2018 second-amendment text from Article 1 through Article 107. Article 94 contains the 2018-amended market-supervision wording; Article 107 retains the original 1995-01-01 commencement sentence, while the current amended Authority/Version effective_date is 2018-12-29. SAMR is TEXT-only."
     },
     {
       "authority_id": "prc-labor-contract-law",
