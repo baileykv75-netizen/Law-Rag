@@ -5,19 +5,22 @@
 ## Status
 
 ```text
-Stage 11A–11E  COMPLETE / validated release foundations
-Stage 12A–12F  COMPLETE / RC2 VALIDATED
-Stage 13A–13G  COMPLETE / ISSUE_V1 production migration validated
+Stage 11A–11E   COMPLETE / validated release foundations
+Stage 12A–12F   COMPLETE / RC2 VALIDATED
+Stage 13A–13G   COMPLETE / ISSUE_V1 production migration validated
 Stage 14.1–14.7 COMPLETE / OCR distribution + DOCX + packaged Windows validation
 
-Stage 15       NEXT — official legal corpus expansion + update/versioning + retrieval tuning
+Stage 15        IN PROGRESS
+                 15.1 Corpus Pack architecture COMPLETE
+                 15.2 three-domain official corpus NEXT
+                 15.3 corpus update + version management PENDING
+                 15.4 domain-aware RAG PENDING
+                 15.5 Windows baseline corpus packaging + final regression PENDING
 ```
 
-Stage 13 audit topology and Stage 14 source/distribution architecture are closed. Do not reopen them without new evidence. Stage 15 may improve the official legal corpus, version management and retrieval quality, but must not silently change the proven `ISSUE_V1` reasoning topology or the Stage 14 source-format/OCR distribution boundary.
+Stage 13 audit topology and Stage 14 source/distribution architecture are closed. Stage 15 may improve legal corpus coverage, legal-version management and retrieval quality, but must not silently change the proven `ISSUE_V1` reasoning topology or the Stage 14 input/OCR boundary.
 
 ## Production baseline
-
-New jobs use:
 
 ```text
 Source file
@@ -37,72 +40,96 @@ Historical completed RC2 jobs remain readable as `LEGACY_RC2`; provenance confli
 
 ## Stage 14 — COMPLETE
 
-Stage 14 delivered and validated:
+Stage 14 delivered cross-format PDF/image/DOCX Evidence, local fixed Paddle OCR runtime/models, DOCX Pipeline integration and validated Windows onedir/portable RC distribution. Do not reopen that architecture in Stage 15 without new evidence.
 
-- cross-format Evidence identities with typed PDF/image/DOCX source anchors;
-- safe modern DOCX OOXML ingestion without synthetic page numbers;
-- logical DOCX Source Viewer navigation to exact paragraphs/table cells;
-- Home/intake support for PDF, DOCX, JPG/JPEG and PNG;
-- source warnings preserved through Home/Workspace;
-- source-format-aware Pipeline loading for historical `PageEvidence[]` and DOCX `SourceEvidenceArtifact`;
-- bundled Windows PaddlePaddle/PaddleOCR/PaddleX runtime;
-- fixed local `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec` assets with archive/file SHA-256 verification;
-- no runtime OCR model download/fallback;
-- real frozen Windows OCR inference with outbound network unavailable;
-- native DOCX real local STRUCTURE + RULES execution with `REQUIRE_APPROVAL` still blocking before the first Planner provider call;
-- deterministic portable Windows RC ZIP + manifest + fresh-extraction user-flow smoke.
+Authoritative Stage 14 packaged Windows validation: `32245812422`.
+Final Stage 14 closeout CI: Law-Rag CI #757 (`32249531744`) — SUCCESS.
 
-### Stage 14 final validation
+## Stage 15 plan
 
-Authoritative normal CI on the Stage 14.7 validated head:
+Stage 15 is intentionally limited to five slices.
+
+### 15.1 — Corpus Pack architecture — COMPLETE
+
+Implemented on `stage15-1-corpus-pack-architecture`:
+
+- canonical legal identity remains `Authority -> Version -> Article / Legal Evidence`;
+- Corpus Pack is a grouping/distribution layer, not a second legal identity;
+- pack membership is many-to-many, so one Authority/Version may belong to several domains without duplicating source text;
+- `domain_tags` are open validated lowercase slugs, not a closed Python enum;
+- pack authority references are corpus-root-relative POSIX paths and fail closed on absolute/traversal/backslash paths;
+- duplicate authority/version identity inside one pack is rejected;
+- `DRAFT` packs may be structurally defined before content exists; `READY` packs require at least one authority manifest;
+- existing Stage 6 `LegalManifest` and `legal_data/seed/manifest.json` remain valid without DB/schema migration;
+- no `legal.db` schema or retrieval behavior changed in 15.1.
+
+Checked-in DRAFT pack skeletons:
 
 ```text
-Law-Rag CI #755 (32245812433)
-backend pytest                      320 passed, 5 skipped, 1 third-party warning
+cn-intellectual-property-core
+cn-enterprise-compliance-core
+cn-labor-dispute-core
+```
+
+These skeletons do **not** claim legal coverage. Official authorities are populated only in 15.2.
+
+### 15.1 validation
+
+Law-Rag CI #758 (`32322954275`):
+
+```text
+backend pytest                      329 passed, 5 skipped, 1 third-party warning
 public deterministic quality gates PASS
 frontend production build          PASS
 Windows exact OCR dependency smoke PASS
 ```
 
-Authoritative packaged Windows validation:
+The new regression verifies future-domain extensibility, safe pack paths, READY/DRAFT semantics, many-to-many shared Authority/Version membership, duplicate identity rejection and legacy Stage 6 seed rebuild compatibility.
+
+The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
+
+## 15.2 — NEXT: three-domain official corpus
+
+Populate the first production Corpus Packs using authoritative public sources only:
 
 ```text
-Stage 14.7 final Windows release validation (32245812422)
-clean Windows onedir + exact runtime/models      PASS
-frozen OCR model integrity, network unavailable  PASS
-packaged PDF/OCR/UI/privacy smoke                 PASS
-packaged DOCX Pipeline + image OCR API smoke      PASS
-deterministic portable RC ZIP + manifest          PASS
-fresh-extracted final RC complete user-flow smoke PASS
-model payload absent from Git                     PASS
-onedir + RC artifact upload                       PASS
+知识产权       cn-intellectual-property-core
+企业合规       cn-enterprise-compliance-core
+劳动用工与争议 cn-labor-dispute-core
 ```
 
-Artifacts from the authoritative run:
+15.2 must:
+
+1. define an authoritative source registry suitable for the actual official domains used by these three packs;
+2. add verified official Authority/Version source snapshots/manifests with URL, effective metadata, article count and SHA-256;
+3. avoid duplicating shared laws across packs — shared Authority/Version manifests are referenced by multiple packs;
+4. distinguish normative legal sources from reference-only material such as example contracts/cases;
+5. keep incomplete coverage explicit and avoid claiming that absence from the selected corpus means no applicable law exists;
+6. add deterministic import/identity tests before marking any pack READY.
+
+Do not start update delivery, domain-aware retrieval or Windows corpus packaging in 15.2.
+
+## Remaining Stage 15 boundaries
+
+### 15.3 — Corpus update + version management
+
+Preserve historical versions; detect additions/amendments/repeals deterministically; maintain a corpus version independent of the Law-Rag app version.
+
+### 15.4 — Domain-aware RAG
 
 ```text
-law-rag-windows-onedir-stage14-7
-law-rag-windows-x64-stage14-7
+AuditPlan Issue
+ -> domain / eligible Corpus Packs
+ -> applicable Authority Version
+ -> Exact Citation + BM25 + local BGE
+ -> deterministic fusion
 ```
 
-The remaining pytest warning is the existing Starlette TestClient/httpx deprecation warning.
+Expanded corpus must be benchmarked so more data does not silently reduce retrieval quality.
 
-## Stage 15 — NEXT
+### 15.5 — Windows baseline corpus packaging + final regression
 
-Stage 15 owns **official legal corpus expansion + update/versioning + retrieval tuning**.
-
-Target scope:
-
-1. expand the checked-in/public legal corpus only from authoritative public sources with explicit provenance;
-2. preserve canonical authority -> version -> article / Legal Evidence identity;
-3. make source updates/version transitions deterministic and reviewable rather than overwriting history;
-4. improve coverage metadata so `CURATED_EXCERPT`, full-text and missing/ambiguous states stay explicit;
-5. tune lexical/exact/semantic retrieval against an expanded public regression set;
-6. preserve applicability semantics and fail-closed behavior for version ambiguity/no applicable version;
-7. add deterministic corpus/retrieval regression evidence before claiming quality improvement;
-8. keep private contracts, private benchmarks, model caches and secrets out of Git.
-
-Stage 15 must **not** fold in Stage 16 expert benchmark/real-provider UAT, Stage 17 tray/history, Stage 18 encryption/report export or Stage 19 installer/signing/update infrastructure.
+Ship a verified baseline snapshot of the three READY packs with the Windows product so legal retrieval works offline immediately, while preserving an independent future corpus-update path.
 
 ## Deferred after Stage 15
 
@@ -115,4 +142,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 14 is complete. Stage 15 is the only next implementation scope.**
+**Stage 15.1 is complete. Stage 15.2 — three-domain official corpus — is the only next implementation scope.**
