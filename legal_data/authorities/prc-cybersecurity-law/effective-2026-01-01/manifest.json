@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-cybersecurity-law",
+        "title": "中华人民共和国网络安全法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第六十一号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2026-01-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-10-28",
+      "effective_date": "2026-01-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 81 contiguous articles (1-81) were frozen from the CAC official republished 2025-amended text while NPC amendment materials remain PRIMARY/version provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：关于修改《中华人民共和国网络安全法》的决定",
+          "url": "https://www.npc.gov.cn/npc/c1773/c1848/c21114/wlaqfxz/wlaqfxz002/202511/t20251103_449242.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第六十一号",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202510/t20251028_449031.html",
+          "role": "METADATA"
+        },
+        {
+          "name": "中央网信办：中华人民共和国网络安全法（2025年修正后完整文本）",
+          "url": "https://www.cac.gov.cn/2025-12/29/c_1768735112911946.htm",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "a0160d99f2b04c997fa2afcf31cab91353c26739feb250d2ffdd444036c8a819",
+      "expected_article_count": 81,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "2025年修改决定自2026年1月1日起施行；以中央网信办发布的修正后完整文本冻结当前版本，并保留全国人大修改决定和主席令作为规范性版本依据。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the CAC official republication, parsed as contiguous Article 1 through Article 81 with normalized UTF-8 SHA-256 a0160d99f2b04c997fa2afcf31cab91353c26739feb250d2ffdd444036c8a819. Article 81 retains the original law's historical text '本法自2017年6月1日起施行'; that sentence is part of the republished legal text and must not override this Authority/Version effective_date=2026-01-01, which is established by the 2025 NPC amendment decision."
+    }
+  ]
+}
