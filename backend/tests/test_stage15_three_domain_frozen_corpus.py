@@ -24,7 +24,7 @@ def _pack_manifest_paths(root: Path, pack_id: str) -> list[Path]:
     pack = json.loads(
         (root / "legal_data" / "packs" / pack_id / "pack.json").read_text(encoding="utf-8")
     )
-    assert pack["status"] == "DRAFT"
+    assert pack["status"] == "READY"
     return [root / "legal_data" / relative for relative in pack["authority_manifest_paths"]]
 
 
