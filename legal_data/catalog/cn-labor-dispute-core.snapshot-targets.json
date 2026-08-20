@@ -47,9 +47,14 @@
       "authority_id": "prc-social-insurance-law",
       "version_id": "effective-2018-12-29",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://www.npc.gov.cn/zgrdw/npc/xinwen/2019-01/07/content_2070267.htm",
+      "snapshot_source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_e81d115419b4463ebb59ec46467fb136.html",
+      "supplemental_source_ref": {
+        "name": "国家市场监督管理总局：中华人民共和国社会保险法（2018年修正完整文本）",
+        "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_e81d115419b4463ebb59ec46467fb136.html",
+        "role": "TEXT"
+      },
       "expected_article_count": 98,
-      "verification_note": "NPC publishes the complete 2018-amended text and Article 98 is the terminal article."
+      "verification_note": "NPC remains the normative PRIMARY publication and the 2018 amendment decision defines the current version. SAMR carries the complete 2018-amended text through Article 98. The terminal article still contains the original law's 2011-07-01 commencement sentence, so version applicability must remain effective-2018-12-29 from amendment provenance rather than being inferred from Article 98."
     },
     {
       "authority_id": "spc-labor-dispute-interpretation-2",
