@@ -1,0 +1,13 @@
+{
+  "pack_schema_version": "1.0.0",
+  "pack_id": "cn-labor-dispute-core",
+  "pack_version": "0.1.0",
+  "display_name": "中国劳动用工与争议核心法规",
+  "jurisdiction": "中华人民共和国",
+  "description": "劳动用工、劳动仲裁与劳动争议核心规范的 Stage 15 Corpus Pack。Stage 15.1 仅冻结包结构，官方法律内容在 Stage 15.2 填充。",
+  "domain_tags": [
+    "labor-dispute"
+  ],
+  "status": "DRAFT",
+  "authority_manifest_paths": []
+}

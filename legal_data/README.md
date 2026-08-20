@@ -1,6 +1,6 @@
 # Law-Rag legal data
 
-This directory contains checked-in schemas, deterministic import inputs, and carefully curated public legal seed material. Generated databases, downloaded live snapshots, indexes, and import reports belong under ignored `runtime/legal/` paths instead.
+This directory contains checked-in schemas, deterministic import inputs, and carefully curated public legal material. Generated databases, downloaded live snapshots, indexes, and import reports belong under ignored `runtime/legal/` paths instead.
 
 ## Trust model
 
@@ -17,6 +17,26 @@ Legal evidence is not an anonymous text chunk. Every usable article must retain:
 - schema/importer provenance.
 
 If source/version identity is uncertain, Law-Rag should reject or expose ambiguity instead of guessing.
+
+## Corpus Packs
+
+Stage 15 adds `legal_data/packs/<pack-id>/pack.json` as a classification/distribution layer above canonical Authority/Version identity.
+
+A Corpus Pack references ordinary Law-Rag authority manifests; it does not duplicate legal text or create a second Legal Evidence identity. The same Authority/Version may be referenced by multiple packs when it belongs to multiple legal domains.
+
+Initial Stage 15 packs are:
+
+```text
+cn-intellectual-property-core
+cn-enterprise-compliance-core
+cn-labor-dispute-core
+```
+
+They are checked in as `DRAFT` during Stage 15.1 and intentionally contain no claimed legal coverage. Stage 15.2 populates verified official sources before any pack may be marked `READY`.
+
+Domain tags are open lowercase ASCII slugs rather than a closed code enum, so future packs such as construction, finance or consumer law can be added without changing canonical legal identity.
+
+See `docs/CORPUS_PACKS.md` for pack schema, path-safety and membership rules.
 
 ## Stage 6 seed scope
 
@@ -35,7 +55,7 @@ Stage 7 retrieval results must keep coverage metadata visible so a partial corpu
 
 ## Official-source policy
 
-Real seed records may use only verified authoritative public sources. The Stage 6 manifest records source URLs, effective dates, verification notes, expected source hashes, and expected article counts. Search-result snippets, commercial law databases, blogs, copied legal sites, and model memory are not sources of record.
+Real records may use only verified authoritative public sources. Manifests record source URLs, effective dates, verification notes, expected source hashes, and expected article counts. Search-result snippets, commercial law databases, blogs, copied legal sites, and model memory are not sources of record.
 
 ## Rebuild
 
