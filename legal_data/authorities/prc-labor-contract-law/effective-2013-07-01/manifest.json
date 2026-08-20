@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-labor-contract-law",
+        "title": "中华人民共和国劳动合同法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2013-07-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2012-12-28",
+      "effective_date": "2013-07-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 98 contiguous articles (1-98) were frozen from the SAMR official 2012-amended text while the NPC amendment decision remains normative version provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：关于修改《中华人民共和国劳动合同法》的决定",
+          "url": "https://www.npc.gov.cn/WZWSREL3pncmR3L25wYy94aW53ZW4vMjAxMi0xMi8yOS9jb250ZW50XzE3NDk1MjcuaHRt",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "国家市场监督管理总局：中华人民共和国劳动合同法（2012年修正后完整文本）",
+          "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2023/art_0abfdd261c03417b949df19d869add8d.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "1c437f33760e12cf633fad993c1d044b7f12ffae3d4e67862f0c8332a9cf8130",
+      "expected_article_count": 98,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "劳动关系与劳动合同争议的基础性现行法律；2012年修改决定自2013年7月1日起施行并要求重新公布劳动合同法。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the SAMR official 2012-amended text. Parsed contiguous Article 1 through Article 98 with normalized UTF-8 SHA-256 1c437f33760e12cf633fad993c1d044b7f12ffae3d4e67862f0c8332a9cf8130. Amended Articles 57, 63, 66 and 92 are present. Article 98 retains the original law's 2008-01-01 commencement sentence; that historical sentence does not override this Authority/Version effective_date=2013-07-01 established by the 2012 NPC amendment decision."
+    }
+  ]
+}
