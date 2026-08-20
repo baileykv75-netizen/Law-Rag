@@ -29,9 +29,14 @@
       "authority_id": "prc-labor-dispute-mediation-arbitration-law",
       "version_id": "effective-2008-05-01",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://www.npc.gov.cn/c2986/c4488/201905/t20190523_48437.html",
+      "snapshot_source_url": "https://chinajob.mohrss.gov.cn/h5/c/2022-07-15/356212.shtml",
+      "supplemental_source_ref": {
+        "name": "中国就业网（人力资源社会保障部）：中华人民共和国劳动争议调解仲裁法（完整文本）",
+        "url": "https://chinajob.mohrss.gov.cn/h5/c/2022-07-15/356212.shtml",
+        "role": "TEXT"
+      },
       "expected_article_count": 54,
-      "verification_note": "NPC publishes the complete enacted text and Article 54 is the terminal article."
+      "verification_note": "NPC remains the normative PRIMARY publication and Presidential Order No. 80 remains version metadata. ChinaJob under MOHRSS carries the complete enacted text from Article 1 through Article 54; Article 54 states the law took effect on 2008-05-01. The MOHRSS carrier is TEXT-only and cannot replace PRIMARY provenance."
     },
     {
       "authority_id": "prc-social-insurance-law",
