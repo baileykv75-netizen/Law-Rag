@@ -29,9 +29,14 @@
       "authority_id": "prc-trademark-law",
       "version_id": "effective-2019-11-01",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://www.npc.gov.cn/c2/c30834/201906/t20190608_298036.html",
+      "snapshot_source_url": "https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html",
+      "supplemental_source_ref": {
+        "name": "国家知识产权局：中华人民共和国商标法（2019年修正完整文本）",
+        "url": "https://www.cnipa.gov.cn/art/2019/7/30/art_95_28179.html",
+        "role": "TEXT"
+      },
       "expected_article_count": 73,
-      "verification_note": "NPC publishes the complete 2019-amended text and Article 73 is the terminal article; this version ends immediately before 2027-01-01."
+      "verification_note": "The CNIPA URL already vetted as CROSS_CHECK in Stage 15.2A is confirmed in 15.2B to publish the complete 2019-amended text through Article 73. This supplemental TEXT role confirmation does not replace the NPC PRIMARY source. The version ends immediately before 2027-01-01."
     },
     {
       "authority_id": "prc-trademark-law",
