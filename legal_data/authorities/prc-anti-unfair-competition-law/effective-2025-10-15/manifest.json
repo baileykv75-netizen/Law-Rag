@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-anti-unfair-competition-law",
+        "title": "中华人民共和国反不正当竞争法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2025-10-15",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-06-27",
+      "effective_date": "2025-10-15",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 41 contiguous articles (1-41) were frozen from the CNIPA complete 2025 second-revision text while the NPC official publication remains normative PRIMARY provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国反不正当竞争法（2025年第二次修订）",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202506/t20250627_446247.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "国家知识产权局：中华人民共和国反不正当竞争法（2025年修订完整文本）",
+          "url": "https://www.cnipa.gov.cn/art/2026/5/20/art_104_206437.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "42fd07a55f6fa042c769d99d3c1b2db27301672d1f5b909bef9ac8133bd07ce6",
+      "expected_article_count": 41,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "2025年6月27日第十四届全国人大常委会第十六次会议第二次修订，自2025年10月15日起施行；该单一Authority/Version由知识产权Pack和企业合规Pack共享引用。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-text extraction from CNIPA official page https://www.cnipa.gov.cn/art/2026/5/20/art_104_206437.html, which labels China NPC as its source. NPC remains PRIMARY provenance. Parsed contiguous Article 1 through Article 41; Article 41 states the effective date is 2025-10-15. Normalized UTF-8 SHA-256 42fd07a55f6fa042c769d99d3c1b2db27301672d1f5b909bef9ac8133bd07ce6. This one canonical Authority/Version is shared by the intellectual-property and enterprise-compliance packs."
+    }
+  ]
+}
