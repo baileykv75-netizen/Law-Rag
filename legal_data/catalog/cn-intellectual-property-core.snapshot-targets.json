@@ -50,9 +50,14 @@
       "authority_id": "prc-anti-unfair-competition-law",
       "version_id": "effective-2025-10-15",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://www.npc.gov.cn/npc/c2/c30834/202506/t20250627_446247.html",
+      "snapshot_source_url": "https://www.cnipa.gov.cn/art/2026/5/20/art_104_206437.html",
+      "supplemental_source_ref": {
+        "name": "国家知识产权局：中华人民共和国反不正当竞争法（2025年修订完整文本）",
+        "url": "https://www.cnipa.gov.cn/art/2026/5/20/art_104_206437.html",
+        "role": "TEXT"
+      },
       "expected_article_count": 41,
-      "verification_note": "NPC publishes the complete 2025 second-revision text and Article 41 is the terminal article. This single Authority/Version is shared with the enterprise-compliance pack."
+      "verification_note": "CNIPA publishes the complete 2025 second-revision text through Article 41 and labels China NPC as its source. The NPC official full-text URL remains the PRIMARY normative provenance in the Stage 15.2A catalog. This single Authority/Version is shared with the enterprise-compliance pack."
     }
   ]
 }
