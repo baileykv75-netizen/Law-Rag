@@ -29,6 +29,8 @@ class IssueDomainRoute(BaseModel):
     domain: LegalDomain
     eligible_pack_ids: list[str] = Field(min_length=1)
     eligible_authority_ids: list[str] = Field(min_length=1)
+    retrieval_authority_ids: list[str] = Field(default_factory=list)
+    scope_applied: bool = True
     matched_signals: list[str] = Field(default_factory=list)
     fallback_all_ready_packs: bool = False
     reason: str
@@ -196,6 +198,8 @@ def route_issue_to_corpus_packs(
         domain=domain,
         eligible_pack_ids=eligible_pack_ids,
         eligible_authority_ids=eligible_authority_ids,
+        retrieval_authority_ids=eligible_authority_ids,
+        scope_applied=True,
         matched_signals=matched_signals,
         fallback_all_ready_packs=fallback,
         reason=reason,
