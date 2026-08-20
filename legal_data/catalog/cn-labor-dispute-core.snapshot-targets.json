@@ -45,9 +45,14 @@
       "authority_id": "spc-labor-dispute-interpretation-2",
       "version_id": "effective-2025-09-01",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://gongbao.court.gov.cn/Details/bb72019c45453f84d920bd6375573e.html",
+      "snapshot_source_url": "https://www.court.gov.cn/zixun/xiangqing/472691.html",
+      "supplemental_source_ref": {
+        "name": "最高人民法院：发布劳动争议司法解释（二）和典型案例（完整解释正文）",
+        "url": "https://www.court.gov.cn/zixun/xiangqing/472691.html",
+        "role": "TEXT"
+      },
       "expected_article_count": 21,
-      "verification_note": "The Supreme People's Court Gazette publishes the complete 法释〔2025〕12号 text; Article 21 is terminal and expressly repeals paragraph 1 of Article 32 of Interpretation (I)."
+      "verification_note": "The Supreme People's Court Gazette remains PRIMARY. The Supreme People's Court official release page carries the complete 法释〔2025〕12号 text from Article 1 through Article 21 and is frozen as a same-body TEXT source. Article 21 takes effect on 2025-09-01 and expressly repeals only paragraph 1 of Article 32 of Interpretation (I)."
     }
   ]
 }
