@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-personal-information-protection-law",
+        "title": "中华人民共和国个人信息保护法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第九十一号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-11-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2021-08-20",
+      "effective_date": "2021-11-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 74 contiguous articles (1-74) were frozen from the CAC official full-text carrier while the NPC law publication and presidential order remain PRIMARY/version provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国个人信息保护法",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202108/t20210820_313088.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第九十一号",
+          "url": "https://www.npc.gov.cn/c2/c30834/202108/t20210820_313045.html",
+          "role": "METADATA"
+        },
+        {
+          "name": "中央网信办：中华人民共和国个人信息保护法（完整文本）",
+          "url": "https://www.cac.gov.cn/2021-08/20/c_1631050028355286.htm",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "b1a9b3d1d9c6dfe9e8537d5231a66637750acd43451e320b2d2f271d4d39e560",
+      "expected_article_count": 74,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "个人信息处理合规的基础性法律，自2021年11月1日起施行。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the CAC official publication, which explicitly identifies China NPC as its source. Parsed contiguous Article 1 through Article 74; Article 74 states the law took effect on 2021-11-01. Normalized UTF-8 SHA-256 b1a9b3d1d9c6dfe9e8537d5231a66637750acd43451e320b2d2f271d4d39e560. NPC remains the normative PRIMARY source and Presidential Order No. 91 remains explicit version metadata."
+    }
+  ]
+}
