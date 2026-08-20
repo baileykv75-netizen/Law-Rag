@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-anti-monopoly-law",
+        "title": "中华人民共和国反垄断法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第一一六号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2022-08-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2022-06-24",
+      "effective_date": "2022-08-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 70 contiguous articles (1-70) were frozen from the SAMR official republished 2022-amended text while the National Laws and Regulations Database remains PRIMARY identity and the NPC amendment decision remains version provenance.",
+      "source_refs": [
+        {
+          "name": "国家法律法规数据库：中华人民共和国反垄断法",
+          "url": "https://flk.npc.gov.cn/detail?id=ff8081818234ccb501829f46c6ac2a5a&title=中华人民共和国反垄断法",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：关于修改《中华人民共和国反垄断法》的决定",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202206/t20220624_318281.html",
+          "role": "METADATA"
+        },
+        {
+          "name": "国家市场监督管理总局：中华人民共和国反垄断法（2022年修正完整文本）",
+          "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_f0fae9eb3a684fc39e84d89eabfc2caa.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "f948920c2b049a7a4a144b776002e580a417b3dbb6e9303442d2a4dbe0e02cef",
+      "expected_article_count": 70,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "2022年修改版本自2022年8月1日起施行；国家法律法规数据库保留规范性PRIMARY身份，SAMR用于冻结完整重公布正文。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the SAMR official republication, parsed as contiguous Article 1 through Article 70 with normalized UTF-8 SHA-256 f948920c2b049a7a4a144b776002e580a417b3dbb6e9303442d2a4dbe0e02cef. Article 70 retains the original law's historical text '本法自2008年8月1日起施行'; that sentence remains part of the republished legal text and must not override this Authority/Version effective_date=2022-08-01, which is established by the 2022 NPC amendment decision."
+    }
+  ]
+}
