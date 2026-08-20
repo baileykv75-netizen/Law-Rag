@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-trademark-law",
+        "title": "中华人民共和国商标法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第七十七号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2027-01-01",
+      "status": "NOT_YET_EFFECTIVE",
+      "publication_date": "2026-06-26",
+      "effective_date": "2027-01-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": "effective-2019-11-01",
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 87 contiguous articles (1-87) were frozen from the CNIPA complete 2026 revised text. This promulgated version remains NOT_YET_EFFECTIVE until 2027-01-01.",
+      "source_refs": [
+        {
+          "name": "中国政府网：中华人民共和国主席令第七十七号",
+          "url": "https://www.gov.cn/yaowen/liebiao/202606/content_7073450.htm",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "国家知识产权局：中华人民共和国商标法（2026年修订）",
+          "url": "https://www.cnipa.gov.cn/art/2026/6/26/art_3686_206940.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "25d02fc504d607b776122f3c83385846f0daf334ac33d8e5faf2b583a2d87796",
+      "expected_article_count": 87,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "2026年6月26日第十四届全国人大常委会第二十三次会议修订通过并公布，自2027年1月1日起施行；截至2026年8月20日属于已公布但尚未生效版本。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-text extraction from CNIPA official page https://www.cnipa.gov.cn/art/2026/6/26/art_3686_206940.html, which identifies China NPC as the information source. Parsed contiguous Article 1 through Article 87. Article 87 states the effective date is 2027-01-01. Normalized UTF-8 SHA-256 25d02fc504d607b776122f3c83385846f0daf334ac33d8e5faf2b583a2d87796. Freezing the text does not change status NOT_YET_EFFECTIVE before 2027-01-01."
+    }
+  ]
+}
