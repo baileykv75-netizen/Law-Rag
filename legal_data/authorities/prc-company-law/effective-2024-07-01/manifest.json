@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-company-law",
+        "title": "中华人民共和国公司法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": "中华人民共和国主席令第十五号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2024-07-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2023-12-29",
+      "effective_date": "2024-07-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 266 contiguous articles (1-266) were frozen from the SAMR official republication whose information source is the National Laws and Regulations Database, while NPC publication and Presidential Order No. 15 remain normative/version provenance.",
+      "source_refs": [
+        {
+          "name": "中国人大网：中华人民共和国公司法（2023年修订）",
+          "url": "https://www.npc.gov.cn/c2/c30834/202312/t20231229_433999.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国主席令第十五号",
+          "url": "https://www.npc.gov.cn/npc/c2/c30834/202312/t20231229_433967.html",
+          "role": "METADATA"
+        },
+        {
+          "name": "国家市场监督管理总局：中华人民共和国公司法（2023年第二次修订完整文本，信息来源全国人大法律法规数据库）",
+          "url": "https://www.samr.gov.cn/xyjgs/flfg/art/2024/art_d4e84936a8a744f8928ac7aec7594345.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "024f5c615de2be34afd324a6a444a9ce90feaa6262ba1c8173fce9547e42882a",
+      "expected_article_count": 266,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "2023年第二次修订的现行公司法，共266条，自2024年7月1日起施行，是企业合规核心公司治理规范。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the SAMR official republication, which identifies the National Laws and Regulations Database as its information source. Parsed contiguous Article 1 through Article 266. Article 266 states the law took effect on 2024-07-01. Normalized UTF-8 SHA-256 024f5c615de2be34afd324a6a444a9ce90feaa6262ba1c8173fce9547e42882a. NPC remains PRIMARY provenance and Presidential Order No. 15 remains METADATA provenance."
+    }
+  ]
+}
