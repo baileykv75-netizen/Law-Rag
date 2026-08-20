@@ -12,14 +12,14 @@ Stage 14.1–14.7 COMPLETE / OCR distribution + DOCX + packaged Windows validati
 
 Stage 15        IN PROGRESS
                  15.1 Corpus Pack architecture COMPLETE
-                 15.2 three-domain official corpus IN PROGRESS
+                 15.2 three-domain official corpus COMPLETE
                    15.2A official source registry + vetted Authority/Version inventory COMPLETE
-                   15.2B corpus data + deterministic validation IMPLEMENTED
+                   15.2B official full-text snapshots + hashes + manifests COMPLETE
                          15/15 non-BLOCKED Authority/Version snapshots FROZEN
                          14 Authorities / 15 Versions / 1274 unique Articles
-                         three Pack manifest sets POPULATED / status remains DRAFT
-                         authoritative final Stage 15 CI evidence STILL REQUIRED
-                 15.3 corpus update + version management PENDING
+                         three Pack manifest sets POPULATED / READY
+                         authoritative Stage 15 CI PASS: run 32357240734
+                 15.3 corpus update + version management NEXT
                  15.4 domain-aware RAG PENDING
                  15.5 Windows baseline corpus packaging + final regression PENDING
 ```
@@ -90,7 +90,7 @@ frontend production build          PASS
 Windows exact OCR dependency smoke PASS
 ```
 
-## 15.2B — FINAL VALIDATION PENDING
+## 15.2B — COMPLETE
 
 ### Implemented infrastructure
 
@@ -101,6 +101,7 @@ Windows exact OCR dependency smoke PASS
 - Freeze output is deterministic and changed content cannot silently overwrite an existing Authority/Version snapshot.
 - Touching version intervals derive deterministic supersedes/superseded-by links.
 - Authority metadata stays stable across versions; version-specific promulgation instruments remain version provenance rather than splitting one law into multiple Authority identities.
+- Stage 15 CI now supports `push`, `pull_request` and manual dispatch so PR-triggered validation is observable through the connected GitHub tooling.
 
 ### Frozen corpus — COMPLETE
 
@@ -155,11 +156,11 @@ Three-pack union after deduplicating the shared Anti-Unfair Competition Authorit
 0 excerpt-only versions
 ```
 
-All 15 non-BLOCKED versions now have checked-in `snapshot.txt` + `manifest.json` with official provenance, expected article count and expected SHA-256.
+All 15 non-BLOCKED versions have checked-in `snapshot.txt` + `manifest.json` with official provenance, expected article count and pinned SHA-256.
 
-### Deterministic validation checked in
+### Deterministic validation — COMPLETE
 
-Stage 15 tests now cover:
+Stage 15 tests cover:
 
 - actual manifest import/rebuild for the frozen corpus;
 - repeat import -> `NO_CHANGE` identity stability;
@@ -169,36 +170,46 @@ Stage 15 tests now cover:
 - Anti-Monopoly 2022 amendment effective 2022-08-01 even though Article 70 retains the original 2008 commencement sentence;
 - Labor Contract, Labor and Social Insurance current amended-version dates independent of historical commencement text retained in terminal articles;
 - Labor Dispute Interpretation (I) remains BLOCKED and is not imported;
-- three-pack union deduplicates the shared Anti-Unfair Competition manifest and expects `14 Authorities / 15 Versions / 1274 Articles`.
+- three-pack union deduplicates the shared Anti-Unfair Competition manifest and expects `14 Authorities / 15 Versions / 1274 Articles`;
+- checked-in Pack status is `READY` only after repository-level CI validation.
 
-Pack manifest references are populated:
+Pack manifest references and release status:
 
 ```text
-cn-intellectual-property-core   5 manifests / DRAFT
-cn-enterprise-compliance-core   6 manifests / DRAFT
-cn-labor-dispute-core           5 manifests / DRAFT
+cn-intellectual-property-core   5 manifests / READY
+cn-enterprise-compliance-core   6 manifests / READY
+cn-labor-dispute-core           5 manifests / READY
 ```
 
-Do not mark a pack READY merely because its files exist. READY requires final authoritative repository-level validation.
+### Authoritative Stage 15.2B validation
 
-### Only remaining 15.2B closeout gate
+Validation PR: Draft PR #11, `stage15-2b-fulltext-snapshots` -> `stage15-2a-official-source-inventory`.
+The PR exists only to expose PR-triggered CI evidence and must not be merged as part of Stage 15.2B closeout without separate authorization.
 
-1. Obtain authoritative Stage 15 CI evidence for the final candidate head.
-2. CI must prove backend full pytest, public deterministic quality gates and frontend production build all PASS.
-3. If CI exposes any failure, fix the failure and rerun validation; do not weaken snapshot/source/version assertions to get green.
-4. Only after the final CI is green:
-   - change all three Pack statuses from `DRAFT` to `READY`;
-   - update the three-domain pack test to expect READY rather than DRAFT;
-   - record the authoritative CI run ID/results here;
-   - mark Stage 15.2B COMPLETE.
+DRAFT-candidate validation: Stage 15 CI run #52 (`32356799261`) — SUCCESS.
 
-The Stage 15 workflow is `.github/workflows/stage15-ci.yml` and is configured for pushes to `stage15-*` branches plus manual dispatch.
+```text
+backend pytest                      391 passed, 5 skipped, 1 third-party warning
+public deterministic quality gates PASS
+frontend production build          PASS
+```
+
+Final READY-candidate validation: Stage 15 CI run #63 (`32357240734`) — SUCCESS.
+
+```text
+backend pytest                      391 passed, 5 skipped, 1 third-party warning
+public deterministic quality gates PASS
+frontend production build          PASS
+```
+
+Run #63 validates the three Pack files in `READY` state, complete three-domain import/re-import behavior, the 1274-Article deduplicated union, version applicability rules, source-role policy, and the existing public deterministic regression gates.
 
 ## Remaining Stage 15 boundaries
 
-### 15.3 — Corpus update + version management — PENDING
+### 15.3 — Corpus update + version management — NEXT
 
 Preserve historical versions; detect additions/amendments/repeals deterministically; maintain corpus version independent of application version.
+Do not begin implementation until Stage 15.3 is explicitly started as the next bounded stage.
 
 ### 15.4 — Domain-aware RAG — PENDING
 
@@ -227,4 +238,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 15.2B corpus data and deterministic validation are implemented. All 15 non-BLOCKED full-text snapshots/manifests are checked in and all three Pack manifest sets are populated, but the Packs must remain DRAFT until authoritative final Stage 15 CI evidence is recorded. Do not begin Stage 15.3/15.4/15.5 before that closeout.**
+**Stage 15.2B is COMPLETE. The three official Corpus Packs are READY with 15 non-BLOCKED full-text Authority/Version snapshots, 14 canonical Authorities, 15 Versions and 1274 deduplicated Articles. Stage 15.3 is the next bounded stage; do not begin 15.3/15.4/15.5 work without explicitly advancing the stage. Draft PR #11 remains open only as validation evidence and is not authorized for merge.**
