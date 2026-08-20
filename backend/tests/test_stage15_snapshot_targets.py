@@ -111,7 +111,7 @@ def test_snapshot_target_source_requires_catalog_ref_or_explicit_text_supplement
     bad = tmp_path / "targets.json"
     bad.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-    with pytest.raises(SnapshotTargetsError, match="catalog source_ref or declare one supplemental TEXT"):
+    with pytest.raises(SnapshotTargetsError, match="must match a catalog PRIMARY/TEXT source_ref"):
         load_snapshot_targets(bad, catalog=catalog, registry=registry)
 
 
