@@ -373,3 +373,22 @@ Pipeline readers must discriminate the source representation from trusted persis
 After this source boundary, supported formats converge again through common document metadata, deterministic STRUCTURE/RULES and the existing `ISSUE_V1` Pipeline. Planner, Legal RAG, DeepSeek, Kimi, deterministic comparison and Human Review must not branch on source format.
 
 A native DOCX job with no OCR-required content skips OCR without initializing PaddleOCR. Source identity conflicts or malformed DOCX Evidence fail closed. User-facing Home/Workspace surfaces must preserve source warnings and must describe structural DOCX Evidence without presenting `page_count=0` as an error.
+
+## D-039 — Corpus Packs group canonical Authority Versions; they do not create new legal identity
+
+**Date:** 2026-08-20  
+**Status:** accepted
+
+Stage 15.1 introduces Corpus Packs only as a classification, distribution and later retrieval-routing layer above the existing canonical legal identity:
+
+```text
+authority -> authority version -> article / Legal Evidence ID
+```
+
+Pack membership is many-to-many. One Authority/Version may belong to several legal-domain packs, and those packs must reference the same canonical source manifest rather than copy the legal text into multiple domain folders. A pack therefore cannot create an alternative Authority/Version/Article identity or different article hash for the same source version.
+
+Domain names are open validated lowercase ASCII slugs rather than a closed Python enum. Adding a future domain such as construction, finance or consumer law must be possible through a new pack manifest without changing the legal identity schema merely to recognize the new category.
+
+Pack authority references are corpus-root-relative POSIX paths and fail closed on path traversal, absolute/drive-qualified paths, malformed manifests, duplicate references and duplicate Authority/Version identities inside one pack. `DRAFT` packs may exist before official content is populated; `READY` packs require at least one valid authority manifest. A DRAFT pack must never be presented as complete legal coverage.
+
+The existing Stage 6 `LegalManifest`, `legal_data/seed/manifest.json`, `legal.db` schema and Authority/Version applicability semantics remain unchanged in Stage 15.1. Domain-aware retrieval and Windows corpus packaging are later Stage 15 work.
