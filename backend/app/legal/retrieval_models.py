@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 RETRIEVAL_SCHEMA_VERSION = "1.0.0"
 RETRIEVAL_ENGINE_VERSION = "stage7-1.0.0"
@@ -33,6 +33,17 @@ class RetrievalRequest(BaseModel):
     article_token_hint: str | None = None
     legal_evidence_id_hint: str | None = None
     use_semantic: bool = True
+    authority_ids_allowlist: list[str] = Field(default_factory=list)
+
+    @field_validator("authority_ids_allowlist")
+    @classmethod
+    def validate_authority_scope(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("authority_ids_allowlist may not contain blank Authority IDs.")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("authority_ids_allowlist may not contain duplicate Authority IDs.")
+        return normalized
 
 
 class ChannelScore(BaseModel):
