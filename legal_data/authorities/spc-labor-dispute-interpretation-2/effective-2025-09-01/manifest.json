@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "spc-labor-dispute-interpretation-2",
+        "title": "最高人民法院关于审理劳动争议案件适用法律问题的解释（二）",
+        "authority_type": "JUDICIAL_INTERPRETATION",
+        "issuing_body": "最高人民法院",
+        "document_number": "法释〔2025〕12号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2025-09-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2025-07-31",
+      "effective_date": "2025-09-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "Stage 15.2B verified official full-text snapshot; 21 contiguous articles (1-21) were frozen from the Supreme People's Court official release page while the Supreme People's Court Gazette remains PRIMARY provenance.",
+      "source_refs": [
+        {
+          "name": "最高人民法院公报：劳动争议司法解释（二）",
+          "url": "https://gongbao.court.gov.cn/Details/bb72019c45453f84d920bd6375573e.html",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "最高人民法院：发布劳动争议司法解释（二）和典型案例（完整解释正文）",
+          "url": "https://www.court.gov.cn/zixun/xiangqing/472691.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "6021a750c2173172922eabe45dfd3374a09278d3c1adbd308ac0441e118c4400",
+      "expected_article_count": 21,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "法释〔2025〕12号自2025年9月1日起施行；第二十一条仅同时废止劳动争议解释（一）第三十二条第一款，不将解释（一）整体扁平化为失效版本。",
+      "verified_on": "2026-08-20",
+      "verification_note": "Canonical legal-body extraction from the Supreme People's Court official release page. Parsed contiguous Article 1 through Article 21 with normalized UTF-8 SHA-256 6021a750c2173172922eabe45dfd3374a09278d3c1adbd308ac0441e118c4400. Article 21 states the interpretation takes effect on 2025-09-01 and expressly repeals only paragraph 1 of Article 32 of Interpretation (I); that partial repeal is preserved as provenance and does not convert Interpretation (I) into a uniformly repealed Authority Version."
+    }
+  ]
+}
