@@ -34,9 +34,14 @@
       "authority_id": "prc-anti-monopoly-law",
       "version_id": "effective-2022-08-01",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://flk.npc.gov.cn/detail?id=ff8081818234ccb501829f46c6ac2a5a&title=中华人民共和国反垄断法",
+      "snapshot_source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_f0fae9eb3a684fc39e84d89eabfc2caa.html",
+      "supplemental_source_ref": {
+        "name": "国家市场监督管理总局：中华人民共和国反垄断法（2022年修正完整文本）",
+        "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_f0fae9eb3a684fc39e84d89eabfc2caa.html",
+        "role": "TEXT"
+      },
       "expected_article_count": 70,
-      "verification_note": "National Laws and Regulations Database identifies the 2022-06-24 effective text and provides the authoritative law document; the republished law terminates at Article 70."
+      "verification_note": "National Laws and Regulations Database remains the normative PRIMARY identity. SAMR provides a stable official republished full text through Article 70. Article 70 retains the original 2008-08-01 commencement text, while the current amended Authority/Version effective_date is 2022-08-01 under the 2022 NPC amendment decision."
     },
     {
       "authority_id": "prc-data-security-law",
