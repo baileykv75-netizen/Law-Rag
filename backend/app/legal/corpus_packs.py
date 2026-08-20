@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from enum import Enum
 from pathlib import Path, PurePosixPath
 
@@ -9,6 +10,8 @@ from pydantic import BaseModel, Field, ValidationError, field_validator, model_v
 from .models import LegalManifest
 
 CORPUS_PACK_SCHEMA_VERSION = "1.0.0"
+_DOMAIN_TAG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 
 class CorpusPackError(RuntimeError):
@@ -46,12 +49,9 @@ class CorpusPackManifest(BaseModel):
         normalized: list[str] = []
         for value in values:
             tag = value.strip()
-            if not tag or not tag[0].isalnum() or any(
-                not (character.islower() or character.isdigit() or character in ".-_")
-                for character in tag
-            ):
+            if not _DOMAIN_TAG_RE.fullmatch(tag):
                 raise ValueError(
-                    "domain_tags must be lowercase extensible slugs containing only a-z, 0-9, '.', '_' or '-'."
+                    "domain_tags must be lowercase ASCII slugs containing only a-z, 0-9, '.', '_' or '-'."
                 )
             normalized.append(tag)
         if len(set(normalized)) != len(normalized):
@@ -65,8 +65,16 @@ class CorpusPackManifest(BaseModel):
             if not value or value.strip() != value or "\\" in value:
                 raise ValueError("authority_manifest_paths must use non-empty corpus-root-relative POSIX paths.")
             path = PurePosixPath(value)
-            if path.is_absolute() or ".." in path.parts or "." in path.parts:
-                raise ValueError("authority_manifest_paths may not be absolute or contain traversal segments.")
+            first_part = path.parts[0] if path.parts else ""
+            if (
+                path.is_absolute()
+                or _WINDOWS_DRIVE_RE.match(first_part)
+                or ".." in path.parts
+                or "." in path.parts
+            ):
+                raise ValueError(
+                    "authority_manifest_paths may not be absolute, drive-qualified or contain traversal segments."
+                )
         if len(set(values)) != len(values):
             raise ValueError("authority_manifest_paths must not contain duplicate paths.")
         return values
