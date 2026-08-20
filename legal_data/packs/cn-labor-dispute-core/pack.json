@@ -1,13 +1,19 @@
 {
   "pack_schema_version": "1.0.0",
   "pack_id": "cn-labor-dispute-core",
-  "pack_version": "0.1.0",
+  "pack_version": "0.2.0",
   "display_name": "中国劳动用工与争议核心法规",
   "jurisdiction": "中华人民共和国",
-  "description": "劳动用工、劳动仲裁与劳动争议核心规范的 Stage 15 Corpus Pack。Stage 15.1 仅冻结包结构，官方法律内容在 Stage 15.2 填充。",
+  "description": "劳动用工、劳动仲裁与劳动争议核心规范的 Stage 15 Corpus Pack。Stage 15.2B 已冻结 5 个可统一表达的 Authority/Version 全文快照；劳动争议司法解释（一）因条款级部分废止继续 BLOCKED，不进入本 Pack。Pack 在仓库级确定性验证和 CI 权威通过前保持 DRAFT。",
   "domain_tags": [
     "labor-dispute"
   ],
   "status": "DRAFT",
-  "authority_manifest_paths": []
+  "authority_manifest_paths": [
+    "authorities/prc-labor-law/effective-2018-12-29/manifest.json",
+    "authorities/prc-labor-contract-law/effective-2013-07-01/manifest.json",
+    "authorities/prc-labor-dispute-mediation-arbitration-law/effective-2008-05-01/manifest.json",
+    "authorities/prc-social-insurance-law/effective-2018-12-29/manifest.json",
+    "authorities/spc-labor-dispute-interpretation-2/effective-2025-09-01/manifest.json"
+  ]
 }
