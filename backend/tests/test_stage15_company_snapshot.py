@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from app.legal.importer import import_manifest
+import pytest
+
+from app.legal.importer import LegalImportError, import_manifest
 from app.legal.store import get_evidence, get_summary, resolve_version
 
 
@@ -23,12 +25,17 @@ def test_checked_in_company_law_snapshot_imports_as_complete_current_version(tmp
     )
     db = tmp_path / "legal.db"
 
-    report = import_manifest(
-        manifest,
-        db,
-        rebuild=True,
-        source_registry_path=root / "legal_data" / "source_registry.json",
-    )
+    try:
+        report = import_manifest(
+            manifest,
+            db,
+            rebuild=True,
+            source_registry_path=root / "legal_data" / "source_registry.json",
+        )
+    except LegalImportError as exc:
+        details = exc.report.model_dump_json(indent=2) if exc.report is not None else str(exc)
+        pytest.fail(f"Company Law checked-in manifest failed deterministic validation:\n{details}")
+
     assert report.rejected_records == 0
     assert report.imported_records == 1
 
