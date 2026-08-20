@@ -26,6 +26,15 @@ def _parser() -> argparse.ArgumentParser:
             action="store_true",
             help="Testing only. Allows fictional fixture hosts outside the official-source allowlist.",
         )
+        command.add_argument(
+            "--source-registry",
+            type=Path,
+            default=None,
+            help=(
+                "Optional Stage 15 official-source registry. When supplied, source host/role validation "
+                "uses the registry instead of the legacy Stage 6 hostname allowlist."
+            ),
+        )
 
     summary = sub.add_parser("summary")
     summary.add_argument("--db", type=Path, default=None)
@@ -46,6 +55,7 @@ def main() -> int:
             db,
             rebuild=args.command == "rebuild",
             allow_non_official_sources=args.allow_non_official_sources,
+            source_registry_path=args.source_registry,
             report_path=legal_last_import_report_path(),
         )
     except LegalImportError as exc:
