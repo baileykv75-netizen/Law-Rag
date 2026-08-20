@@ -24,6 +24,7 @@ def _registry():
     [
         "https://www.cac.gov.cn/2025-12/29/c_1768735112911946.htm",
         "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394622.html",
+        "https://www.ncac.gov.cn/xxfb/flfg/flfg_532/202103/t20210309_50530.html",
     ],
 )
 def test_new_official_text_carriers_are_text_allowed_but_primary_forbidden(url: str) -> None:
