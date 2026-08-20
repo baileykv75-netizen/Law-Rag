@@ -242,9 +242,14 @@ def _normalize_title(value: str) -> str:
 
 
 def _recognize_authority_id(legal_db_path: Path, request: RetrievalRequest) -> str | None:
+    allowed = set(request.authority_ids_allowlist)
     if request.authority_id_hint:
+        if allowed and request.authority_id_hint not in allowed:
+            return None
         return request.authority_id_hint
     authorities = list_authorities(legal_db_path)
+    if allowed:
+        authorities = [item for item in authorities if item.authority.authority_id in allowed]
     if request.authority_title_hint:
         hint = _normalize_title(request.authority_title_hint)
         matches = [item.authority.authority_id for item in authorities if _normalize_title(item.authority.title) == hint]
@@ -297,21 +302,34 @@ def _lexical_query_text(query: str) -> str | None:
     return " OR ".join(f'"{gram.replace(chr(34), chr(34) * 2)}"' for gram in grams)
 
 
-def _lexical_hits(index_path: Path, query: str, limit: int) -> list[tuple[str, float]]:
+def _lexical_hits(
+    index_path: Path,
+    query: str,
+    limit: int,
+    authority_ids: set[str] | None = None,
+) -> list[tuple[str, float]]:
     fts_query = _lexical_query_text(query)
     if not fts_query:
         return []
+    params: list[object] = [fts_query]
+    authority_clause = ""
+    if authority_ids:
+        ordered = sorted(authority_ids)
+        placeholders = ", ".join("?" for _ in ordered)
+        authority_clause = f" AND authority_id IN ({placeholders})"
+        params.extend(ordered)
+    params.append(limit)
     with _connect_index(index_path) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT legal_evidence_id,
                    bm25(legal_fts, 0.0, 0.0, 0.0, 4.0, 6.0, 2.0, 1.0) AS score
             FROM legal_fts
-            WHERE legal_fts MATCH ?
+            WHERE legal_fts MATCH ?{authority_clause}
             ORDER BY score ASC, legal_evidence_id ASC
             LIMIT ?
             """,
-            (fts_query, limit),
+            params,
         ).fetchall()
     return [(row["legal_evidence_id"], float(row["score"])) for row in rows]
 
@@ -322,11 +340,25 @@ def _load_vector(blob: bytes) -> list[float]:
     return list(values)
 
 
+def _allowed_evidence_ids(legal_db_path: Path, authority_ids: set[str] | None) -> set[str] | None:
+    if not authority_ids:
+        return None
+    ordered = sorted(authority_ids)
+    placeholders = ", ".join("?" for _ in ordered)
+    with connect_legal(legal_db_path) as connection:
+        rows = connection.execute(
+            f"SELECT legal_evidence_id FROM legal_articles WHERE authority_id IN ({placeholders})",
+            ordered,
+        ).fetchall()
+    return {row["legal_evidence_id"] for row in rows}
+
+
 def _semantic_hits(
     index_path: Path,
     query: str,
     limit: int,
     provider: EmbeddingProvider,
+    allowed_evidence_ids: set[str] | None = None,
 ) -> list[tuple[str, float]]:
     query_vector = provider.encode([query], is_query=True)[0]
     with _connect_index(index_path) as connection:
@@ -337,6 +369,7 @@ def _semantic_hits(
     scored = [
         (row["legal_evidence_id"], cosine_similarity(query_vector, _load_vector(row["vector_blob"])))
         for row in rows
+        if allowed_evidence_ids is None or row["legal_evidence_id"] in allowed_evidence_ids
     ]
     scored.sort(key=lambda item: (-item[1], item[0]))
     return scored[:limit]
@@ -382,16 +415,25 @@ def retrieve_legal_evidence(
     warnings: list[str] = []
     resolution_cache: dict[str, AuthorityResolutionNote] = {}
     explicit_target_missing = False
+    allowed_authorities = set(request.authority_ids_allowlist) or None
+    allowed_evidence_ids = _allowed_evidence_ids(legal_db_path, allowed_authorities)
 
     exact_ids: list[str] = []
     if request.legal_evidence_id_hint:
         try:
             evidence = get_evidence(legal_db_path, request.legal_evidence_id_hint)
-            if _applicable(legal_db_path, evidence, request.as_of, resolution_cache):
+            if allowed_authorities and evidence.authority.authority_id not in allowed_authorities:
+                explicit_target_missing = True
+                warnings.append("The supplied Legal Evidence ID is outside the eligible Authority scope for this retrieval.")
+            elif _applicable(legal_db_path, evidence, request.as_of, resolution_cache):
                 exact_ids.append(evidence.article.legal_evidence_id)
         except FileNotFoundError:
             explicit_target_missing = True
             warnings.append("The supplied Legal Evidence ID does not exist in the local corpus.")
+
+    if request.authority_id_hint and allowed_authorities and request.authority_id_hint not in allowed_authorities:
+        explicit_target_missing = True
+        warnings.append("The supplied Authority hint is outside the eligible Authority scope for this retrieval.")
 
     authority_id = _recognize_authority_id(legal_db_path, request)
     article_ordinal = _query_article_ordinal(request)
@@ -411,7 +453,12 @@ def retrieve_legal_evidence(
         rankings[RetrievalChannel.EXACT] = [(item, None) for item in dict.fromkeys(exact_ids)]
 
     if index_summary.ready and index_summary.lexical_ready:
-        lexical = _lexical_hits(index_path, request.query, max(request.top_k * 6, 30))
+        lexical = _lexical_hits(
+            index_path,
+            request.query,
+            max(request.top_k * 6, 30),
+            allowed_authorities,
+        )
         rankings[RetrievalChannel.LEXICAL] = [(evidence_id, score) for evidence_id, score in lexical]
     elif not exact_ids:
         warnings.append("Retrieval index is not ready; only deterministic exact lookup is available.")
@@ -428,7 +475,13 @@ def retrieve_legal_evidence(
             ):
                 warnings.append("Semantic index/provider metadata do not match; semantic channel was skipped.")
             else:
-                semantic = _semantic_hits(index_path, request.query, max(request.top_k * 6, 30), provider)
+                semantic = _semantic_hits(
+                    index_path,
+                    request.query,
+                    max(request.top_k * 6, 30),
+                    provider,
+                    allowed_evidence_ids,
+                )
                 rankings[RetrievalChannel.SEMANTIC] = [(evidence_id, score) for evidence_id, score in semantic]
                 semantic_provider_name = provider.provider_name
                 semantic_model_name = provider.model_name
@@ -458,6 +511,8 @@ def retrieve_legal_evidence(
             evidence = get_evidence(legal_db_path, evidence_id)
         except FileNotFoundError:
             warnings.append(f"Index references missing legal evidence {evidence_id}; rebuild the retrieval index.")
+            continue
+        if allowed_authorities and evidence.authority.authority_id not in allowed_authorities:
             continue
         if not _applicable(legal_db_path, evidence, request.as_of, resolution_cache):
             continue
@@ -519,6 +574,8 @@ def retrieve_legal_evidence(
         warnings.append(
             "The local corpus contains CURATED_EXCERPT versions. No-hit results cannot be interpreted as absence of a legal rule."
         )
+    if allowed_authorities and not candidates:
+        warnings.append("No applicable candidate matched the eligible Authority scope for this retrieval.")
 
     return RetrievalResponse(
         query=request.query,
