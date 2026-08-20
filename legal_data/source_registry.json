@@ -73,6 +73,15 @@
       "allowed_roles": ["TEXT", "METADATA", "CROSS_CHECK"],
       "primary_normative_source_allowed": false,
       "notes": "人力资源社会保障部官网。可承载劳动法、劳动合同法等劳动领域法律的官方完整转载文本及有效状态交叉核验；法律规范性 PRIMARY 仍以全国人大、国家法律法规数据库等立法权威来源为准。"
+    },
+    {
+      "source_id": "ncac-official-site",
+      "organization": "国家版权局",
+      "hosts": ["www.ncac.gov.cn", "ncac.gov.cn"],
+      "trust_tier": "OFFICIAL_CROSS_CHECK",
+      "allowed_roles": ["TEXT", "METADATA", "CROSS_CHECK"],
+      "primary_normative_source_allowed": false,
+      "notes": "国家版权局官网。可承载著作权法等版权领域法律的官方完整转载文本和业务口径交叉核验；法律规范性 PRIMARY 仍以全国人大、国家法律法规数据库或中国政府网等立法权威来源为准。"
     }
   ]
 }
