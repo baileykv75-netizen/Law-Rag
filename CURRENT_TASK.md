@@ -14,8 +14,9 @@ Stage 15        IN PROGRESS
                  15.1 Corpus Pack architecture COMPLETE
                  15.2 three-domain official corpus IN PROGRESS
                    15.2A official source registry + vetted Authority/Version inventory COMPLETE
-                   15.2B source targeting + deterministic freeze tooling COMPLETE;
+                   15.2B source targeting + freeze tooling COMPLETE
                          exact official snapshots + hashes + manifests IN PROGRESS
+                         prc-patent-law/effective-2021-06-01 FROZEN / 82 articles
                  15.3 corpus update + version management PENDING
                  15.4 domain-aware RAG PENDING
                  15.5 Windows baseline corpus packaging + final regression PENDING
@@ -62,7 +63,7 @@ Implemented on `stage15-1-corpus-pack-architecture`:
 - `domain_tags` are open validated lowercase ASCII slugs, not a closed Python enum;
 - pack authority references are corpus-root-relative POSIX paths and fail closed on absolute/drive-qualified/traversal/backslash paths;
 - duplicate authority/version identity inside one pack is rejected;
-- `DRAFT` packs may be structurally defined before content exists; `READY` packs require at least one authority manifest;
+- `DRAFT` packs may be structurally defined before content exists; `READY` packs require at least one valid authority manifest;
 - existing Stage 6 `LegalManifest` and `legal_data/seed/manifest.json` remain valid without DB/schema migration;
 - no `legal.db` schema or retrieval behavior changed in 15.1.
 
@@ -133,57 +134,42 @@ frontend production build          PASS
 Windows exact OCR dependency smoke PASS
 ```
 
-New deterministic regression covers official source host/role policy, future-version transition semantics, shared Authority/Version membership, current Cybersecurity Law identity, explicit labor partial-repeal blocking, unknown-pack rejection, non-official-source rejection and Stage 6 identity non-duplication.
-
 The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
 
 ### 15.2B — IN PROGRESS: official full-text snapshots + hashes + manifests
 
-Implemented on `stage15-2b-fulltext-snapshots` so far:
+Preparation completed on `stage15-2b-fulltext-snapshots`:
 
-- Stage 6 importer has an optional registry-aware source-validation path; legacy Stage 6 seed behavior remains unchanged when no registry is supplied;
-- registry-aware imports validate source host, role and PRIMARY eligibility before database mutation;
-- `app.legal.fulltext_snapshot` adds a fail-closed FULL_TEXT gate that requires contiguous article ordinals `1..N`, safe relative snapshot paths, vetted source roles and pinned normalized SHA-256;
-- three checked-in snapshot-target sets map every non-blocked Authority/Version to one exact full-text source and expected article count;
-- CNIPA, CAC and MOHRSS may serve as official `TEXT` carriers under explicit registry policy but may not create or replace `PRIMARY` normative provenance;
-- supplemental Stage 15.2B sources are restricted to `TEXT`; a new PRIMARY source must be vetted through the Authority/Version inventory first;
-- Cybersecurity Law 2025 amendment uses NPC PRIMARY provenance plus CAC full-text carriage, expected 81 articles;
-- Labor Contract Law 2012 amendment uses NPC PRIMARY provenance plus MOHRSS consolidated full-text carriage, expected 98 articles;
-- all 15 non-blocked Authority/Version targets are now `READY_FOR_FREEZE` at the source-selection layer;
-- Labor Dispute Interpretation (I) remains outside the snapshot target sets because its paragraph-level partial repeal remains a legal-version modeling block;
-- `app.legal.fulltext_snapshot_cli` freezes an already-obtained exact official UTF-8 text into normalized `snapshot.txt` + one-record Stage 6 `manifest.json`;
-- the freezer is idempotent for identical normalized input and refuses to overwrite a different frozen snapshot/manifest under the same target directory;
-- deterministic regression tests cover importer source policy, target completeness, supplemental TEXT restrictions, contiguous article validation, Stage 6 manifest generation and freeze idempotency;
-- `docs/STAGE15_FULLTEXT_SNAPSHOTS.md` documents the trust chain and offline freeze workflow.
+- Stage 15 registry-aware source validation is wired into the Stage 6 importer without changing legacy seed behavior;
+- `FULL_TEXT` freezing validates a complete contiguous Article 1..N sequence before a manifest may claim complete coverage;
+- all 15 non-blocked Authority/Version targets now have explicit `READY_FOR_FREEZE` source selection and expected article counts;
+- supplemental official `TEXT` carriers are allowed only when registry-approved and can never replace/create PRIMARY provenance;
+- CAC and MOHRSS are registered as TEXT/METADATA/CROSS_CHECK-only carriers for the Cybersecurity Law and Labor Contract Law respectively;
+- the offline freeze command writes deterministic `snapshot.txt` + one-record Stage 6 `manifest.json`, refuses changed overwrite, and preserves the original Authority/Version identity;
+- the partially repealed Labor Dispute Interpretation (I) remains outside the snapshot target sets.
 
-Current snapshot-target counts:
+Actually frozen production corpus data so far:
 
 ```text
-IP pack          5 targets READY_FOR_FREEZE
-Enterprise pack  6 targets READY_FOR_FREEZE
-Labor pack       5 non-blocked targets READY_FOR_FREEZE
-                 1 catalog entry BLOCKED and intentionally excluded
-
-Unique non-blocked Authority/Version identities across all packs: 15
+legal_data/authorities/prc-patent-law/effective-2021-06-01/
+  snapshot.txt   canonical official legal-text extraction, 82 contiguous articles
+  manifest.json  FULL_TEXT, expected_article_count=82,
+                 expected_source_sha256=3fd787a8394ee5af31040f5366ac696c6dae725850148699d06a9c3f725baf2d
 ```
 
-The shared 2025 Anti-Unfair Competition Law appears in both IP and enterprise target sets but remains one canonical Authority/Version identity.
+The Patent Law snapshot is extracted from the complete CNIPA 2020-amended text whose page identifies China NPC as the information source. The catalog retains the NPC amendment decision as PRIMARY provenance and CNIPA as TEXT provenance.
 
-#### Still required before 15.2B can be complete
+Still required before 15.2B can be called complete:
 
-For each of the 15 non-blocked identities:
+1. freeze the remaining 14 non-blocked official Authority/Version snapshots;
+2. run registry-aware import/rebuild over the actual frozen corpus;
+3. repeat import and prove Authority/Version/Article identities and Legal Evidence IDs are stable;
+4. confirm the 2026 Trademark Law remains `NOT_YET_EFFECTIVE` before 2027-01-01;
+5. populate pack `authority_manifest_paths` only from validated frozen manifests;
+6. mark packs READY only after complete pack-level deterministic validation;
+7. record authoritative CI evidence for the final 15.2B head.
 
-1. obtain the exact official full-text UTF-8 source outside model/search-snippet reconstruction;
-2. run the deterministic freezer and check in `snapshot.txt` + `manifest.json`;
-3. verify pinned source SHA-256 and expected article count;
-4. import the complete manifest set through the registry-aware Stage 6 importer;
-5. repeat the import/rebuild and prove Authority/Version/Article identities remain deterministic and non-duplicated;
-6. verify the 2026 Trademark Law remains `NOT_YET_EFFECTIVE` before 2027-01-01;
-7. only after those checks populate Pack `authority_manifest_paths` and consider each Pack for `READY`.
-
-No exact official full-text snapshot files have been claimed as frozen on this branch yet. Search snippets, model-reconstructed text and amendment decisions must not be substituted for the exact consolidated source bytes.
-
-There is not yet a new authoritative full-branch CI result recorded for the current 15.2B head; do not treat the newly added regression tests as passed merely because they are checked in.
+No source whose exact complete current text or applicability cannot be proven may be fabricated as `FULL_TEXT`.
 
 ## Remaining Stage 15 boundaries
 
@@ -218,4 +204,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 15.2B remains the only implementation scope. Source targeting, source-role hardening and deterministic freeze tooling are in place; exact official snapshots, hashes, manifests, repeat-import proof and Pack READY transition are still pending.**
+**Stage 15.2B is still in progress. One of 15 non-blocked Authority/Version full-text snapshots is frozen. Continue only with exact official full-text snapshots, hashes, manifests, deterministic import validation and pack population; do not begin Stage 15.3/15.4/15.5 yet.**
