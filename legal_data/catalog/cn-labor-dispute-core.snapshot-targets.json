@@ -15,11 +15,15 @@
     {
       "authority_id": "prc-labor-contract-law",
       "version_id": "effective-2013-07-01",
-      "state": "SOURCE_POLICY_BLOCKED",
-      "snapshot_source_url": null,
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394622.html",
+      "supplemental_source_ref": {
+        "name": "人力资源社会保障部：中华人民共和国劳动合同法（2012年修正后文本）",
+        "url": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394622.html",
+        "role": "TEXT"
+      },
       "expected_article_count": 98,
-      "verification_note": "The NPC amendment decision requires the Labor Contract Law to be republished and the current consolidated official text reaches Article 98, but the vetted catalog does not yet contain a registry-approved full-text source_ref for that consolidated version.",
-      "blocking_issue": "The complete 2012-amended text is available from an official labor authority, but that host is not registered by Stage 15.2A and the catalog currently records only the NPC amendment decision. Do not freeze the amendment decision as FULL_TEXT."
+      "verification_note": "NPC supplies the normative 2012 amendment decision and requires republication. MOHRSS marks the consolidated amended law as effective and carries the complete text through Article 98. MOHRSS is TEXT-only and cannot replace PRIMARY provenance."
     },
     {
       "authority_id": "prc-labor-dispute-mediation-arbitration-law",

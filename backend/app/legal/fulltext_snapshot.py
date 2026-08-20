@@ -32,18 +32,36 @@ def _validate_snapshot_path(snapshot_path: str) -> str:
     return path.as_posix()
 
 
-def _snapshot_source_ref(entry: PlannedLegalVersion, snapshot_source_url: str) -> OfficialSourceRef:
+def _snapshot_source_ref(
+    entry: PlannedLegalVersion,
+    snapshot_source_url: str,
+    supplemental_source_ref: OfficialSourceRef | None,
+) -> tuple[OfficialSourceRef, list[OfficialSourceRef]]:
     target = _normalize_url(snapshot_source_url)
-    for ref in entry.source_refs:
-        if _normalize_url(str(ref.url)) == target:
-            if ref.role not in FULL_TEXT_SOURCE_ROLES:
-                raise FullTextSnapshotError(
-                    f"Snapshot source role {ref.role.value} cannot supply normative full text; use PRIMARY or TEXT."
-                )
-            return ref
-    raise FullTextSnapshotError(
-        "snapshot_source_url must exactly match a PRIMARY or TEXT source_ref on the vetted catalog entry"
-    )
+    matching_refs = [ref for ref in entry.source_refs if _normalize_url(str(ref.url)) == target]
+    if len(matching_refs) > 1:
+        raise FullTextSnapshotError("snapshot_source_url matches duplicate catalog source_refs")
+    if matching_refs:
+        if supplemental_source_ref is not None:
+            raise FullTextSnapshotError("Catalog snapshot sources must not also declare a supplemental source_ref")
+        source_ref = matching_refs[0]
+        if source_ref.role not in FULL_TEXT_SOURCE_ROLES:
+            raise FullTextSnapshotError(
+                f"Snapshot source role {source_ref.role.value} cannot supply normative full text; use PRIMARY or TEXT."
+            )
+        return source_ref, list(entry.source_refs)
+
+    if supplemental_source_ref is None:
+        raise FullTextSnapshotError(
+            "snapshot_source_url must match a vetted catalog source_ref or provide a supplemental TEXT source_ref"
+        )
+    if _normalize_url(str(supplemental_source_ref.url)) != target:
+        raise FullTextSnapshotError("supplemental source URL must equal snapshot_source_url")
+    if supplemental_source_ref.role != SourceRole.TEXT:
+        raise FullTextSnapshotError(
+            "Supplemental full-text sources may use TEXT only; new PRIMARY provenance must be vetted in the catalog first."
+        )
+    return supplemental_source_ref, [*entry.source_refs, supplemental_source_ref]
 
 
 def _validate_registry(entry: PlannedLegalVersion, registry: LegalSourceRegistry) -> None:
@@ -103,12 +121,17 @@ def build_full_text_manifest_record(
     expected_article_count: int,
     registry: LegalSourceRegistry,
     verified_on: date,
+    supplemental_source_ref: OfficialSourceRef | None = None,
 ) -> ManifestRecord:
     """Build one Stage 6-compatible manifest record after strict FULL_TEXT validation.
 
     This function performs no network access. The caller must first obtain the exact
     official source text. A record is emitted only when the source remains valid under
     the Stage 15 registry and article ordinals form the complete sequence 1..N.
+
+    A Stage 15.2B snapshot target may add one registry-approved TEXT carrier that was
+    discovered after the 15.2A Authority/Version inventory. Supplemental sources can
+    never create or replace PRIMARY provenance.
     """
 
     if entry.catalog_state == CatalogEntryState.BLOCKED:
@@ -117,7 +140,17 @@ def build_full_text_manifest_record(
         raise FullTextSnapshotError("Stage 15.2B full-text freezing requires target_coverage=FULL_TEXT")
 
     _validate_registry(entry, registry)
-    source_ref = _snapshot_source_ref(entry, snapshot_source_url)
+    source_ref, manifest_source_refs = _snapshot_source_ref(
+        entry,
+        snapshot_source_url,
+        supplemental_source_ref,
+    )
+    if supplemental_source_ref is not None:
+        try:
+            validate_official_source_ref(supplemental_source_ref, registry)
+        except LegalSourceRegistryError as exc:
+            raise FullTextSnapshotError(f"Supplemental source policy does not validate: {exc}") from exc
+
     safe_snapshot_path = _validate_snapshot_path(snapshot_path)
     normalized, parsed_count = _validate_full_text_articles(
         snapshot_text,
@@ -142,7 +175,7 @@ def build_full_text_manifest_record(
             "Stage 15.2B verified official full-text snapshot; "
             f"{parsed_count} contiguous articles (1-{parsed_count}) were frozen from {source_ref.name}."
         ),
-        source_refs=entry.source_refs,
+        source_refs=manifest_source_refs,
         snapshot_path=safe_snapshot_path,
         expected_source_sha256=source_hash,
         expected_article_count=parsed_count,

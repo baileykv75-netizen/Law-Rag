@@ -63,21 +63,20 @@ def test_future_trademark_snapshot_target_does_not_change_version_status() -> No
     assert str(future.effective_date) == "2027-01-01"
 
 
-def test_enterprise_targets_expose_cybersecurity_source_policy_block() -> None:
+def test_enterprise_targets_are_all_ready_with_cybersecurity_text_carrier_explicit() -> None:
     root, registry, catalog = _inputs()
     targets = load_snapshot_targets(
         root / "legal_data" / "catalog" / "cn-enterprise-compliance-core.snapshot-targets.json",
         catalog=catalog,
         registry=registry,
     )
-    ready = [item for item in targets.targets if item.state == SnapshotTargetState.READY_FOR_FREEZE]
-    blocked = [item for item in targets.targets if item.state == SnapshotTargetState.SOURCE_POLICY_BLOCKED]
-    assert len(ready) == 5
-    assert len(blocked) == 1
-    assert blocked[0].authority_id == "prc-cybersecurity-law"
-    assert blocked[0].snapshot_source_url is None
-    assert blocked[0].expected_article_count == 81
-    assert blocked[0].blocking_issue
+    assert len(targets.targets) == 6
+    assert all(item.state == SnapshotTargetState.READY_FOR_FREEZE for item in targets.targets)
+    cyber = next(item for item in targets.targets if item.authority_id == "prc-cybersecurity-law")
+    assert cyber.expected_article_count == 81
+    assert str(cyber.snapshot_source_url) == "https://www.cac.gov.cn/2025-12/29/c_1768735112911946.htm"
+    assert cyber.supplemental_source_ref is not None
+    assert cyber.supplemental_source_ref.role.value == "TEXT"
 
 
 def test_shared_anti_unfair_target_is_same_canonical_identity_and_count() -> None:
@@ -104,7 +103,7 @@ def test_shared_anti_unfair_target_is_same_canonical_identity_and_count() -> Non
     assert str(ip_target.snapshot_source_url) == str(enterprise_target.snapshot_source_url)
 
 
-def test_snapshot_target_source_must_already_be_vetted_in_catalog(tmp_path: Path) -> None:
+def test_snapshot_target_source_requires_catalog_ref_or_explicit_text_supplement(tmp_path: Path) -> None:
     root, registry, catalog = _inputs()
     source = root / "legal_data" / "catalog" / "cn-intellectual-property-core.snapshot-targets.json"
     payload = json.loads(source.read_text(encoding="utf-8"))
@@ -112,7 +111,7 @@ def test_snapshot_target_source_must_already_be_vetted_in_catalog(tmp_path: Path
     bad = tmp_path / "targets.json"
     bad.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-    with pytest.raises(SnapshotTargetsError, match="match exactly one catalog source_ref"):
+    with pytest.raises(SnapshotTargetsError, match="catalog source_ref or declare one supplemental TEXT"):
         load_snapshot_targets(bad, catalog=catalog, registry=registry)
 
 
@@ -128,14 +127,14 @@ def test_snapshot_target_set_cannot_silently_drop_one_pack_member(tmp_path: Path
         load_snapshot_targets(bad, catalog=catalog, registry=registry)
 
 
-def test_non_ready_target_cannot_pin_source_url_as_if_approved(tmp_path: Path) -> None:
+def test_supplemental_snapshot_source_cannot_be_promoted_to_primary(tmp_path: Path) -> None:
     root, registry, catalog = _inputs()
     source = root / "legal_data" / "catalog" / "cn-enterprise-compliance-core.snapshot-targets.json"
     payload = json.loads(source.read_text(encoding="utf-8"))
     cyber = next(item for item in payload["targets"] if item["authority_id"] == "prc-cybersecurity-law")
-    cyber["snapshot_source_url"] = "https://www.npc.gov.cn/npc/c1773/c1848/c21114/wlaqfxz/wlaqfxz002/202511/t20251103_449242.html"
+    cyber["supplemental_source_ref"]["role"] = "PRIMARY"
     bad = tmp_path / "targets.json"
     bad.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-    with pytest.raises(SnapshotTargetsError, match="Non-ready snapshot targets"):
+    with pytest.raises(SnapshotTargetsError, match="must use TEXT role"):
         load_snapshot_targets(bad, catalog=catalog, registry=registry)

@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator, model_validator
 
 from .corpus_inventory import CatalogEntryState, OfficialCorpusCatalog
-from .models import SourceRole
+from .models import OfficialSourceRef, SourceRole
 from .source_registry import LegalSourceRegistry, LegalSourceRegistryError, validate_official_source_ref
 
 SNAPSHOT_TARGETS_SCHEMA_VERSION = "1.0.0"
@@ -29,6 +29,7 @@ class FullTextSnapshotTarget(BaseModel):
     version_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{1,127}$")
     state: SnapshotTargetState
     snapshot_source_url: HttpUrl | None = None
+    supplemental_source_ref: OfficialSourceRef | None = None
     expected_article_count: int | None = Field(default=None, ge=1)
     verification_note: str = Field(min_length=1)
     blocking_issue: str | None = None
@@ -41,8 +42,8 @@ class FullTextSnapshotTarget(BaseModel):
             if self.blocking_issue:
                 raise ValueError("READY_FOR_FREEZE must not set blocking_issue")
         else:
-            if self.snapshot_source_url is not None:
-                raise ValueError("Non-ready snapshot targets must not pin a source URL as if freezing were approved")
+            if self.snapshot_source_url is not None or self.supplemental_source_ref is not None:
+                raise ValueError("Non-ready snapshot targets must not pin a source as if freezing were approved")
             if not self.blocking_issue:
                 raise ValueError("Non-ready snapshot targets require blocking_issue")
         return self
@@ -120,11 +121,34 @@ def load_snapshot_targets(
         matching_refs = [
             ref for ref in entry.source_refs if _normalize_url(str(ref.url)) == source_url
         ]
-        if len(matching_refs) != 1:
+
+        if len(matching_refs) > 1:
             raise SnapshotTargetsError(
-                f"Snapshot source for {target.authority_id}:{target.version_id} must match exactly one catalog source_ref"
+                f"Snapshot source for {target.authority_id}:{target.version_id} matches duplicate catalog source_refs"
             )
-        source_ref = matching_refs[0]
+        if matching_refs:
+            if target.supplemental_source_ref is not None:
+                raise SnapshotTargetsError(
+                    f"Snapshot source for {target.authority_id}:{target.version_id} is already in the catalog and must not be supplemented"
+                )
+            source_ref = matching_refs[0]
+        else:
+            source_ref = target.supplemental_source_ref
+            if source_ref is None:
+                raise SnapshotTargetsError(
+                    f"Snapshot source for {target.authority_id}:{target.version_id} must match a catalog source_ref "
+                    "or declare one supplemental TEXT source_ref"
+                )
+            if _normalize_url(str(source_ref.url)) != source_url:
+                raise SnapshotTargetsError(
+                    f"Supplemental source URL for {target.authority_id}:{target.version_id} must equal snapshot_source_url"
+                )
+            if source_ref.role != SourceRole.TEXT:
+                raise SnapshotTargetsError(
+                    f"Supplemental source for {target.authority_id}:{target.version_id} must use TEXT role; "
+                    "new PRIMARY provenance must be vetted in the catalog first"
+                )
+
         if source_ref.role not in {SourceRole.PRIMARY, SourceRole.TEXT}:
             raise SnapshotTargetsError(
                 f"Snapshot source for {target.authority_id}:{target.version_id} has role {source_ref.role.value}; "

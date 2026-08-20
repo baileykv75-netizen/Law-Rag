@@ -47,11 +47,15 @@
     {
       "authority_id": "prc-cybersecurity-law",
       "version_id": "effective-2026-01-01",
-      "state": "SOURCE_POLICY_BLOCKED",
-      "snapshot_source_url": null,
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.cac.gov.cn/2025-12/29/c_1768735112911946.htm",
+      "supplemental_source_ref": {
+        "name": "中央网信办：中华人民共和国网络安全法（2025年修正后完整文本）",
+        "url": "https://www.cac.gov.cn/2025-12/29/c_1768735112911946.htm",
+        "role": "TEXT"
+      },
       "expected_article_count": 81,
-      "verification_note": "The 2025 amendment decision requires the law to be republished and is effective 2026-01-01; a complete amended text reaching Article 81 is publicly available on CAC, but that host is not approved by the Stage 15.2A source registry.",
-      "blocking_issue": "The vetted catalog currently contains only the NPC amendment decision and presidential-order metadata, not a registry-approved consolidated FULL_TEXT source. Do not freeze the amendment decision as if it were the complete law."
+      "verification_note": "NPC supplies the normative amendment decision and presidential-order provenance. CAC carries the official republished full text sourced from NPC; the amended law runs contiguously through Article 81. CAC is TEXT-only and cannot replace PRIMARY provenance."
     }
   ]
 }

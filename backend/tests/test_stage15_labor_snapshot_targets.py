@@ -11,7 +11,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def test_checked_in_labor_targets_are_explicit_about_full_text_blocks() -> None:
+def test_checked_in_labor_targets_are_all_ready_for_exact_full_text_freeze() -> None:
     root = _repo_root()
     registry = load_source_registry(root / "legal_data" / "source_registry.json")
     catalog = load_official_corpus_catalog(
@@ -33,6 +33,7 @@ def test_checked_in_labor_targets_are_explicit_about_full_text_blocks() -> None:
         ("prc-social-insurance-law", "effective-2018-12-29"),
         ("spc-labor-dispute-interpretation-2", "effective-2025-09-01"),
     }
+    assert all(item.state == SnapshotTargetState.READY_FOR_FREEZE for item in targets.targets)
 
     assert by_identity[("prc-labor-law", "effective-2018-12-29")].expected_article_count == 107
     assert by_identity[("prc-labor-dispute-mediation-arbitration-law", "effective-2008-05-01")].expected_article_count == 54
@@ -40,10 +41,12 @@ def test_checked_in_labor_targets_are_explicit_about_full_text_blocks() -> None:
     assert by_identity[("spc-labor-dispute-interpretation-2", "effective-2025-09-01")].expected_article_count == 21
 
     labor_contract = by_identity[("prc-labor-contract-law", "effective-2013-07-01")]
-    assert labor_contract.state == SnapshotTargetState.SOURCE_POLICY_BLOCKED
     assert labor_contract.expected_article_count == 98
-    assert labor_contract.snapshot_source_url is None
-    assert labor_contract.blocking_issue
+    assert str(labor_contract.snapshot_source_url) == (
+        "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394622.html"
+    )
+    assert labor_contract.supplemental_source_ref is not None
+    assert labor_contract.supplemental_source_ref.role.value == "TEXT"
 
 
 def test_partially_repealed_interpretation_one_stays_outside_snapshot_targets() -> None:
