@@ -1,0 +1,49 @@
+{
+  "snapshot_targets_schema_version": "1.0.0",
+  "target_set_id": "cn-labor-dispute-core-2026-08-20",
+  "pack_id": "cn-labor-dispute-core",
+  "verified_on": "2026-08-20",
+  "targets": [
+    {
+      "authority_id": "prc-labor-law",
+      "version_id": "effective-2018-12-29",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.npc.gov.cn/c2/c30834/201905/t20190521_296651.html",
+      "expected_article_count": 107,
+      "verification_note": "NPC publishes the complete 2018 second-amendment text and Article 107 is the terminal article."
+    },
+    {
+      "authority_id": "prc-labor-contract-law",
+      "version_id": "effective-2013-07-01",
+      "state": "SOURCE_POLICY_BLOCKED",
+      "snapshot_source_url": null,
+      "expected_article_count": 98,
+      "verification_note": "The NPC amendment decision requires the Labor Contract Law to be republished and the current consolidated official text reaches Article 98, but the vetted catalog does not yet contain a registry-approved full-text source_ref for that consolidated version.",
+      "blocking_issue": "The complete 2012-amended text is available from an official labor authority, but that host is not registered by Stage 15.2A and the catalog currently records only the NPC amendment decision. Do not freeze the amendment decision as FULL_TEXT."
+    },
+    {
+      "authority_id": "prc-labor-dispute-mediation-arbitration-law",
+      "version_id": "effective-2008-05-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.npc.gov.cn/c2986/c4488/201905/t20190523_48437.html",
+      "expected_article_count": 54,
+      "verification_note": "NPC publishes the complete enacted text and Article 54 is the terminal article."
+    },
+    {
+      "authority_id": "prc-social-insurance-law",
+      "version_id": "effective-2018-12-29",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://www.npc.gov.cn/zgrdw/npc/xinwen/2019-01/07/content_2070267.htm",
+      "expected_article_count": 98,
+      "verification_note": "NPC publishes the complete 2018-amended text and Article 98 is the terminal article."
+    },
+    {
+      "authority_id": "spc-labor-dispute-interpretation-2",
+      "version_id": "effective-2025-09-01",
+      "state": "READY_FOR_FREEZE",
+      "snapshot_source_url": "https://gongbao.court.gov.cn/Details/bb72019c45453f84d920bd6375573e.html",
+      "expected_article_count": 21,
+      "verification_note": "The Supreme People's Court Gazette publishes the complete 法释〔2025〕12号 text; Article 21 is terminal and expressly repeals paragraph 1 of Article 32 of Interpretation (I)."
+    }
+  ]
+}
