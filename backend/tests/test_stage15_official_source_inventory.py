@@ -42,7 +42,7 @@ def test_checked_in_source_registry_and_catalog_validate() -> None:
     assert sum(item.catalog_state == CatalogEntryState.BLOCKED for item in catalog.entries) == 1
 
 
-def test_inventory_represents_exactly_three_stage15_populated_draft_packs() -> None:
+def test_inventory_represents_exactly_three_stage15_populated_ready_packs() -> None:
     _, catalog = _load_checked_in_catalog()
     expected = {
         "cn-intellectual-property-core",
@@ -53,7 +53,7 @@ def test_inventory_represents_exactly_three_stage15_populated_draft_packs() -> N
 
     packs = discover_corpus_packs(_repo_root() / "legal_data")
     assert {item.manifest.pack_id for item in packs} == expected
-    assert all(item.manifest.status == CorpusPackStatus.DRAFT for item in packs)
+    assert all(item.manifest.status == CorpusPackStatus.READY for item in packs)
 
     by_id = {item.manifest.pack_id: item for item in packs}
     ip = by_id["cn-intellectual-property-core"]
