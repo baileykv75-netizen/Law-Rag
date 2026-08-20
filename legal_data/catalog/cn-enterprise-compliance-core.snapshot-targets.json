@@ -42,17 +42,27 @@
       "authority_id": "prc-data-security-law",
       "version_id": "effective-2021-09-01",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://www.npc.gov.cn/npc/c2/c30834/202106/t20210610_311888.html",
+      "snapshot_source_url": "https://www.cac.gov.cn/2021-06/11/c_1624994566919140.htm",
+      "supplemental_source_ref": {
+        "name": "中央网信办：中华人民共和国数据安全法（完整文本）",
+        "url": "https://www.cac.gov.cn/2021-06/11/c_1624994566919140.htm",
+        "role": "TEXT"
+      },
       "expected_article_count": 55,
-      "verification_note": "NPC publishes the complete enacted text and Article 55 is the terminal article."
+      "verification_note": "NPC remains the normative PRIMARY publication. CAC provides a stable official full-text carrier through Article 55; Article 55 states the law took effect on 2021-09-01. CAC is TEXT-only and cannot replace PRIMARY provenance."
     },
     {
       "authority_id": "prc-personal-information-protection-law",
       "version_id": "effective-2021-11-01",
       "state": "READY_FOR_FREEZE",
-      "snapshot_source_url": "https://www.npc.gov.cn/npc/c2/c30834/202108/t20210820_313088.html",
+      "snapshot_source_url": "https://www.cac.gov.cn/2021-08/20/c_1631050028355286.htm",
+      "supplemental_source_ref": {
+        "name": "中央网信办：中华人民共和国个人信息保护法（完整文本）",
+        "url": "https://www.cac.gov.cn/2021-08/20/c_1631050028355286.htm",
+        "role": "TEXT"
+      },
       "expected_article_count": 74,
-      "verification_note": "NPC publishes the complete enacted text and Article 74 is the terminal article."
+      "verification_note": "NPC remains the normative PRIMARY publication. CAC republishes the complete text and identifies China NPC as its source; Article 74 states the law took effect on 2021-11-01. CAC is TEXT-only and cannot replace PRIMARY provenance."
     },
     {
       "authority_id": "prc-cybersecurity-law",
