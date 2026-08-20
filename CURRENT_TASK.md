@@ -14,9 +14,11 @@ Stage 15        IN PROGRESS
                  15.1 Corpus Pack architecture COMPLETE
                  15.2 three-domain official corpus IN PROGRESS
                    15.2A official source registry + vetted Authority/Version inventory COMPLETE
-                   15.2B source targeting + freeze tooling COMPLETE
-                         exact official snapshots + hashes + manifests IN PROGRESS
-                         prc-patent-law/effective-2021-06-01 FROZEN / 82 articles
+                   15.2B corpus data + deterministic validation IMPLEMENTED
+                         15/15 non-BLOCKED Authority/Version snapshots FROZEN
+                         14 Authorities / 15 Versions / 1274 unique Articles
+                         three Pack manifest sets POPULATED / status remains DRAFT
+                         authoritative final Stage 15 CI evidence STILL REQUIRED
                  15.3 corpus update + version management PENDING
                  15.4 domain-aware RAG PENDING
                  15.5 Windows baseline corpus packaging + final regression PENDING
@@ -44,40 +46,21 @@ Historical completed RC2 jobs remain readable as `LEGACY_RC2`; provenance confli
 
 ## Stage 14 — COMPLETE
 
-Stage 14 delivered cross-format PDF/image/DOCX Evidence, local fixed Paddle OCR runtime/models, DOCX Pipeline integration and validated Windows onedir/portable RC distribution. Do not reopen that architecture in Stage 15 without new evidence.
-
 Authoritative Stage 14 packaged Windows validation: `32245812422`.
 Final Stage 14 closeout CI: Law-Rag CI #757 (`32249531744`) — SUCCESS.
+Do not reopen Stage 14 architecture in Stage 15 without new evidence.
 
-## Stage 15 plan
+## 15.1 — Corpus Pack architecture — COMPLETE
 
-Stage 15 is intentionally limited to five top-level slices.
-
-### 15.1 — Corpus Pack architecture — COMPLETE
-
-Implemented on `stage15-1-corpus-pack-architecture`:
-
-- canonical legal identity remains `Authority -> Version -> Article / Legal Evidence`;
-- Corpus Pack is a grouping/distribution layer, not a second legal identity;
-- pack membership is many-to-many, so one Authority/Version may belong to several domains without duplicating source text;
-- `domain_tags` are open validated lowercase ASCII slugs, not a closed Python enum;
-- pack authority references are corpus-root-relative POSIX paths and fail closed on absolute/drive-qualified/traversal/backslash paths;
-- duplicate authority/version identity inside one pack is rejected;
-- `DRAFT` packs may be structurally defined before content exists; `READY` packs require at least one valid authority manifest;
-- existing Stage 6 `LegalManifest` and `legal_data/seed/manifest.json` remain valid without DB/schema migration;
-- no `legal.db` schema or retrieval behavior changed in 15.1.
-
-Checked-in DRAFT pack skeletons:
+Canonical legal identity remains:
 
 ```text
-cn-intellectual-property-core
-cn-enterprise-compliance-core
-cn-labor-dispute-core
+Authority -> Version -> Article / Legal Evidence
 ```
 
-### 15.1 validation
+Corpus Pack is only a grouping/distribution layer. Membership is many-to-many, shared Authority/Version text is not duplicated, pack paths are corpus-root-relative POSIX paths, duplicate identity in one pack is rejected, and Stage 6 `LegalManifest` / `legal.db` compatibility is preserved.
 
-Authoritative code + decision head CI: Law-Rag CI #762 (`32323430473`):
+Authoritative validation: Law-Rag CI #762 (`32323430473`):
 
 ```text
 backend pytest                      333 passed, 5 skipped, 1 third-party warning
@@ -86,46 +69,19 @@ frontend production build          PASS
 Windows exact OCR dependency smoke PASS
 ```
 
-## 15.2 — Three-domain official corpus — IN PROGRESS
+## 15.2A — Official source registry + vetted Authority/Version inventory — COMPLETE
 
-Target packs:
+- `legal_data/source_registry.json` is the explicit official-source allowlist and role policy.
+- NPC/National Laws Database, China Government and SPC/SPC Gazette may serve authoritative provenance under their registered roles.
+- CNIPA, CAC, MOHRSS, NCAC and SAMR may serve official TEXT/METADATA/CROSS_CHECK roles where registered, but may not be silently promoted to normative PRIMARY.
+- 16 catalog entries were verified on 2026-08-20.
+- 15 entries are representable as complete Authority/Version snapshots.
+- Labor Dispute Interpretation (I) remains `BLOCKED` because paragraph-level partial repeal cannot be safely flattened into the current version-level validity model.
+- 2025 Anti-Unfair Competition Law is one shared Authority/Version for the IP and enterprise-compliance packs.
+- Trademark Law has two versions: 2019 current through 2026-12-31; the 2026 revision is frozen but remains `NOT_YET_EFFECTIVE` until 2027-01-01.
+- Cybersecurity Law current corpus version is the 2025-amended text effective 2026-01-01.
 
-```text
-知识产权       cn-intellectual-property-core
-企业合规       cn-enterprise-compliance-core
-劳动用工与争议 cn-labor-dispute-core
-```
-
-15.2 must:
-
-1. use authoritative public sources only;
-2. add verified Authority/Version source snapshots/manifests with URL, effective metadata, article count and SHA-256;
-3. avoid duplicating shared laws across packs;
-4. distinguish normative legal sources from reference-only/cross-check material;
-5. keep incomplete or partially representable coverage explicit;
-6. add deterministic import/identity tests before marking any pack READY.
-
-Do not start update delivery, domain-aware retrieval or Windows corpus packaging in 15.2.
-
-### 15.2A — Official source registry + vetted Authority/Version inventory — COMPLETE
-
-Implemented on `stage15-2a-official-source-inventory`:
-
-- `legal_data/source_registry.json` defines an explicit official-source allowlist and allowed source roles;
-- NPC/National Laws Database, China Government, SPC/SPC Gazette are eligible authoritative sources under explicit role policy;
-- CNIPA is registered for official text/metadata cross-checking but cannot be silently promoted to PRIMARY normative source;
-- `legal_data/catalog/three-domain-core.json` records 16 Authority/Version entries verified on 2026-08-20;
-- 15 entries are non-blocked candidates for the full-text snapshot step;
-- one entry — Labor Dispute Interpretation (I) — is explicitly `BLOCKED` because a paragraph-level partial repeal cannot be safely flattened into the current version-level validity model;
-- the 2025 Anti-Unfair Competition Law is one shared Authority/Version identity assigned to both IP and enterprise-compliance packs;
-- the current 2019 Trademark Law ends at 2027-01-01 and the promulgated 2026 revision is explicitly `NOT_YET_EFFECTIVE` until that date;
-- the Cybersecurity Law catalog uses the 2025 amendment effective 2026-01-01 rather than treating the original 2016 text as the current 2026 version;
-- amendment decisions are provenance/version evidence, not substitutes for a republished full-text snapshot when `FULL_TEXT` coverage is claimed;
-- all three Corpus Packs remain `DRAFT` and empty in 15.2A.
-
-### 15.2A validation
-
-Authoritative code head CI: Law-Rag CI #765 (`32325118255`):
+Authoritative validation: Law-Rag CI #765 (`32325118255`):
 
 ```text
 backend pytest                      344 passed, 5 skipped, 1 third-party warning
@@ -134,50 +90,117 @@ frontend production build          PASS
 Windows exact OCR dependency smoke PASS
 ```
 
-The remaining warning is the existing Starlette TestClient/httpx deprecation warning.
+## 15.2B — FINAL VALIDATION PENDING
 
-### 15.2B — IN PROGRESS: official full-text snapshots + hashes + manifests
+### Implemented infrastructure
 
-Preparation completed on `stage15-2b-fulltext-snapshots`:
+- Stage 15 registry-aware validation is wired into the Stage 6 importer without changing legacy seed behavior.
+- FULL_TEXT freezing requires an exact contiguous Article 1..N sequence.
+- Snapshot SHA-256 is pinned over normalized UTF-8 canonical legal text.
+- Supplemental official TEXT carriers must be registry-approved and cannot create/replace PRIMARY provenance.
+- Freeze output is deterministic and changed content cannot silently overwrite an existing Authority/Version snapshot.
+- Touching version intervals derive deterministic supersedes/superseded-by links.
+- Authority metadata stays stable across versions; version-specific promulgation instruments remain version provenance rather than splitting one law into multiple Authority identities.
 
-- Stage 15 registry-aware source validation is wired into the Stage 6 importer without changing legacy seed behavior;
-- `FULL_TEXT` freezing validates a complete contiguous Article 1..N sequence before a manifest may claim complete coverage;
-- all 15 non-blocked Authority/Version targets now have explicit `READY_FOR_FREEZE` source selection and expected article counts;
-- supplemental official `TEXT` carriers are allowed only when registry-approved and can never replace/create PRIMARY provenance;
-- CAC and MOHRSS are registered as TEXT/METADATA/CROSS_CHECK-only carriers for the Cybersecurity Law and Labor Contract Law respectively;
-- the offline freeze command writes deterministic `snapshot.txt` + one-record Stage 6 `manifest.json`, refuses changed overwrite, and preserves the original Authority/Version identity;
-- the partially repealed Labor Dispute Interpretation (I) remains outside the snapshot target sets.
+### Frozen corpus — COMPLETE
 
-Actually frozen production corpus data so far:
+Knowledge-property pack:
 
 ```text
-legal_data/authorities/prc-patent-law/effective-2021-06-01/
-  snapshot.txt   canonical official legal-text extraction, 82 contiguous articles
-  manifest.json  FULL_TEXT, expected_article_count=82,
-                 expected_source_sha256=3fd787a8394ee5af31040f5366ac696c6dae725850148699d06a9c3f725baf2d
+Patent Law                         82
+Copyright Law                      67
+Trademark Law 2019                 73
+Trademark Law 2026/2027            87  NOT_YET_EFFECTIVE until 2027-01-01
+Anti-Unfair Competition Law        41  shared with enterprise pack
+--------------------------------------
+Pack membership articles          350
+Authorities / Versions            4 / 5
 ```
 
-The Patent Law snapshot is extracted from the complete CNIPA 2020-amended text whose page identifies China NPC as the information source. The catalog retains the NPC amendment decision as PRIMARY provenance and CNIPA as TEXT provenance.
+Enterprise-compliance pack:
 
-Still required before 15.2B can be called complete:
+```text
+Company Law                       266
+Anti-Unfair Competition Law        41  shared with IP pack
+Anti-Monopoly Law                  70
+Data Security Law                  55
+Personal Information Protection    74
+Cybersecurity Law                  81
+--------------------------------------
+Pack membership articles          587
+Authorities / Versions            6 / 6
+```
 
-1. freeze the remaining 14 non-blocked official Authority/Version snapshots;
-2. run registry-aware import/rebuild over the actual frozen corpus;
-3. repeat import and prove Authority/Version/Article identities and Legal Evidence IDs are stable;
-4. confirm the 2026 Trademark Law remains `NOT_YET_EFFECTIVE` before 2027-01-01;
-5. populate pack `authority_manifest_paths` only from validated frozen manifests;
-6. mark packs READY only after complete pack-level deterministic validation;
-7. record authoritative CI evidence for the final 15.2B head.
+Labor-dispute pack:
 
-No source whose exact complete current text or applicability cannot be proven may be fabricated as `FULL_TEXT`.
+```text
+Labor Law                         107
+Labor Contract Law                 98
+Labor Dispute Mediation/Arbitration 54
+Social Insurance Law               98
+Labor Dispute Interpretation (II)  21
+--------------------------------------
+Pack membership articles          378
+Authorities / Versions            5 / 5
+```
+
+Three-pack union after deduplicating the shared Anti-Unfair Competition Authority/Version:
+
+```text
+14 Authorities
+15 Versions
+1274 unique Articles
+14 EFFECTIVE versions
+1 NOT_YET_EFFECTIVE version (Trademark Law effective-2027-01-01)
+0 excerpt-only versions
+```
+
+All 15 non-BLOCKED versions now have checked-in `snapshot.txt` + `manifest.json` with official provenance, expected article count and expected SHA-256.
+
+### Deterministic validation checked in
+
+Stage 15 tests now cover:
+
+- actual manifest import/rebuild for the frozen corpus;
+- repeat import -> `NO_CHANGE` identity stability;
+- Article counts and terminal-article evidence;
+- Trademark 2019 -> 2027 transition semantics;
+- Cybersecurity 2025 amendment effective 2026-01-01 even though Article 81 retains the original 2017 commencement sentence;
+- Anti-Monopoly 2022 amendment effective 2022-08-01 even though Article 70 retains the original 2008 commencement sentence;
+- Labor Contract, Labor and Social Insurance current amended-version dates independent of historical commencement text retained in terminal articles;
+- Labor Dispute Interpretation (I) remains BLOCKED and is not imported;
+- three-pack union deduplicates the shared Anti-Unfair Competition manifest and expects `14 Authorities / 15 Versions / 1274 Articles`.
+
+Pack manifest references are populated:
+
+```text
+cn-intellectual-property-core   5 manifests / DRAFT
+cn-enterprise-compliance-core   6 manifests / DRAFT
+cn-labor-dispute-core           5 manifests / DRAFT
+```
+
+Do not mark a pack READY merely because its files exist. READY requires final authoritative repository-level validation.
+
+### Only remaining 15.2B closeout gate
+
+1. Obtain authoritative Stage 15 CI evidence for the final candidate head.
+2. CI must prove backend full pytest, public deterministic quality gates and frontend production build all PASS.
+3. If CI exposes any failure, fix the failure and rerun validation; do not weaken snapshot/source/version assertions to get green.
+4. Only after the final CI is green:
+   - change all three Pack statuses from `DRAFT` to `READY`;
+   - update the three-domain pack test to expect READY rather than DRAFT;
+   - record the authoritative CI run ID/results here;
+   - mark Stage 15.2B COMPLETE.
+
+The Stage 15 workflow is `.github/workflows/stage15-ci.yml` and is configured for pushes to `stage15-*` branches plus manual dispatch.
 
 ## Remaining Stage 15 boundaries
 
-### 15.3 — Corpus update + version management
+### 15.3 — Corpus update + version management — PENDING
 
-Preserve historical versions; detect additions/amendments/repeals deterministically; maintain a corpus version independent of the Law-Rag app version.
+Preserve historical versions; detect additions/amendments/repeals deterministically; maintain corpus version independent of application version.
 
-### 15.4 — Domain-aware RAG
+### 15.4 — Domain-aware RAG — PENDING
 
 ```text
 AuditPlan Issue
@@ -189,9 +212,9 @@ AuditPlan Issue
 
 Expanded corpus must be benchmarked so more data does not silently reduce retrieval quality.
 
-### 15.5 — Windows baseline corpus packaging + final regression
+### 15.5 — Windows baseline corpus packaging + final regression — PENDING
 
-Ship a verified baseline snapshot of the three READY packs with the Windows product so legal retrieval works offline immediately, while preserving an independent future corpus-update path.
+Ship a verified baseline snapshot of the three READY packs with the Windows product for offline legal retrieval, while preserving an independent future corpus-update path.
 
 ## Deferred after Stage 15
 
@@ -204,4 +227,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 15.2B is still in progress. One of 15 non-blocked Authority/Version full-text snapshots is frozen. Continue only with exact official full-text snapshots, hashes, manifests, deterministic import validation and pack population; do not begin Stage 15.3/15.4/15.5 yet.**
+**Stage 15.2B corpus data and deterministic validation are implemented. All 15 non-BLOCKED full-text snapshots/manifests are checked in and all three Pack manifest sets are populated, but the Packs must remain DRAFT until authoritative final Stage 15 CI evidence is recorded. Do not begin Stage 15.3/15.4/15.5 before that closeout.**
