@@ -88,7 +88,7 @@ def _write_pack(
     return path
 
 
-def test_checked_in_stage15_packs_are_discoverable_populated_and_draft() -> None:
+def test_checked_in_stage15_packs_are_discoverable_populated_and_ready() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     packs = discover_corpus_packs(repo_root / "legal_data")
     assert {item.manifest.pack_id for item in packs} == {
@@ -96,7 +96,7 @@ def test_checked_in_stage15_packs_are_discoverable_populated_and_draft() -> None
         "cn-intellectual-property-core",
         "cn-labor-dispute-core",
     }
-    assert all(item.manifest.status == CorpusPackStatus.DRAFT for item in packs)
+    assert all(item.manifest.status == CorpusPackStatus.READY for item in packs)
     assert {item.manifest.pack_id: len(item.members) for item in packs} == {
         "cn-enterprise-compliance-core": 6,
         "cn-intellectual-property-core": 5,
