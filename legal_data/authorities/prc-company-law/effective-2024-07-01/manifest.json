@@ -38,12 +38,12 @@
         }
       ],
       "snapshot_path": "snapshot.txt",
-      "expected_source_sha256": "024f5c615de2be34afd324a6a444a9ce90feaa6262ba1c8173fce9547e42882a",
+      "expected_source_sha256": "481e1a60c111a6dc3abe0c65f8084e852c8435961a7203668ae4297bc150ee8b",
       "expected_article_count": 266,
       "parser": "chinese-articles-v1",
       "inclusion_reason": "2023年第二次修订的现行公司法，共266条，自2024年7月1日起施行，是企业合规核心公司治理规范。",
       "verified_on": "2026-08-20",
-      "verification_note": "Canonical legal-body extraction from the SAMR official republication, which identifies the National Laws and Regulations Database as its information source. Parsed contiguous Article 1 through Article 266. Article 266 states the law took effect on 2024-07-01. Normalized UTF-8 SHA-256 024f5c615de2be34afd324a6a444a9ce90feaa6262ba1c8173fce9547e42882a. NPC remains PRIMARY provenance and Presidential Order No. 15 remains METADATA provenance."
+      "verification_note": "Canonical legal-body extraction from the SAMR official republication, which identifies the National Laws and Regulations Database as its information source. Parsed contiguous Article 1 through Article 266. Article 266 states the law took effect on 2024-07-01. Repository-level Stage 15 CI independently normalized the checked-in snapshot and pinned SHA-256 481e1a60c111a6dc3abe0c65f8084e852c8435961a7203668ae4297bc150ee8b. NPC remains PRIMARY provenance and Presidential Order No. 15 remains METADATA provenance."
     }
   ]
 }
