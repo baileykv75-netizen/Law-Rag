@@ -16,10 +16,28 @@ from app.audit_plan_models import (
 from app.issue_legal_context import build_issue_legal_context
 from app.legal.corpus_packs import CorpusPackStatus, discover_corpus_packs
 from app.legal.domain_routing import LegalDomain, route_issue_to_corpus_packs, routing_catalog_fingerprint
+from app.legal.embeddings import EmbeddingProvider
 from app.legal.importer import import_manifest
 from app.legal.retrieval import build_retrieval_index, retrieve_legal_evidence
-from app.legal.retrieval_models import RetrievalRequest
+from app.legal.retrieval_models import RetrievalChannel, RetrievalRequest
 from app.storage import job_audit_plan_path
+
+
+class DomainKeywordEmbeddingProvider(EmbeddingProvider):
+    provider_name = "stage15-domain-test"
+    model_name = "stage15-domain-test-v1"
+    dimension = 3
+
+    def encode(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for text in texts:
+            if "个人信息" in text:
+                vectors.append([1.0, 0.0, 0.0])
+            elif "商标" in text:
+                vectors.append([0.0, 1.0, 0.0])
+            else:
+                vectors.append([0.0, 0.0, 1.0])
+        return vectors
 
 
 def _repo_root() -> Path:
@@ -54,7 +72,13 @@ def _three_domain_manifests(root: Path) -> list[Path]:
     return ordered
 
 
-def _build_three_domain_store(root: Path, legal_db: Path, index_db: Path) -> None:
+def _build_three_domain_store(
+    root: Path,
+    legal_db: Path,
+    index_db: Path,
+    *,
+    semantic_provider: EmbeddingProvider | None = None,
+) -> None:
     registry = root / "legal_data" / "source_registry.json"
     for index, manifest in enumerate(_three_domain_manifests(root)):
         report = import_manifest(
@@ -64,7 +88,11 @@ def _build_three_domain_store(root: Path, legal_db: Path, index_db: Path) -> Non
             source_registry_path=registry,
         )
         assert report.rejected_records == 0
-    summary = build_retrieval_index(legal_db, index_db)
+    summary = build_retrieval_index(
+        legal_db,
+        index_db,
+        semantic_provider=semantic_provider,
+    )
     assert summary.ready is True
     assert summary.article_count == 1274
 
@@ -161,6 +189,44 @@ def test_authority_scope_filters_exact_and_lexical_channels_before_fusion(tmp_pa
         for item in blocked_exact.candidates
     )
     assert any("outside the eligible Authority scope" in warning for warning in blocked_exact.warnings)
+
+
+def test_authority_scope_filters_semantic_channel_before_fusion(tmp_path: Path) -> None:
+    root = _repo_root()
+    legal_db = tmp_path / "legal.db"
+    index_db = tmp_path / "retrieval.db"
+    provider = DomainKeywordEmbeddingProvider()
+    _build_three_domain_store(
+        root,
+        legal_db,
+        index_db,
+        semantic_provider=provider,
+    )
+
+    enterprise = route_issue_to_corpus_packs(
+        _issue("个人信息处理合规", "个人信息处理 同意"),
+        ContractType.UNKNOWN,
+    )
+    response = retrieve_legal_evidence(
+        legal_db,
+        index_db,
+        RetrievalRequest(
+            query="个人信息处理 同意",
+            as_of=date(2026, 8, 20),
+            top_k=8,
+            use_semantic=True,
+            authority_ids_allowlist=enterprise.eligible_authority_ids,
+        ),
+        embedding_provider=provider,
+    )
+    assert RetrievalChannel.SEMANTIC in response.channels_executed
+    assert response.candidates
+    assert {item.authority_id for item in response.candidates} <= set(enterprise.eligible_authority_ids)
+    assert any(
+        any(score.channel == RetrievalChannel.SEMANTIC for score in candidate.channels)
+        for candidate in response.candidates
+    )
+    assert not any(item.authority_id == "prc-trademark-law" for item in response.candidates)
 
 
 def test_domain_scope_preserves_trademark_as_of_version_resolution(tmp_path: Path) -> None:
