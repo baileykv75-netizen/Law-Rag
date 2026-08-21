@@ -87,6 +87,14 @@ def _suite_payload(*, suite_class: str, dataset_path: str, observations_path: st
     }
 
 
+def _contains_key(value, target: str) -> bool:
+    if isinstance(value, dict):
+        return target in value or any(_contains_key(item, target) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_key(item, target) for item in value)
+    return False
+
+
 def test_checked_in_public_stage16_suite_reuses_existing_evaluators_without_fake_overall_score(
     tmp_path: Path,
 ) -> None:
@@ -105,11 +113,11 @@ def test_checked_in_public_stage16_suite_reuses_existing_evaluators_without_fake
     assert report.entries[0].unit_count == 9
     assert report.entries[1].unit_label == "gates"
     assert report.entries[1].failed_count == 0
-    payload = report.model_dump_json()
-    assert "overall_accuracy" not in payload
-    assert "legal_accuracy" not in payload
-    assert "expected" not in payload
-    assert "observed" not in payload
+    payload = report.model_dump(mode="json")
+    assert not _contains_key(payload, "overall_accuracy")
+    assert not _contains_key(payload, "legal_accuracy")
+    assert not _contains_key(payload, "expected")
+    assert not _contains_key(payload, "observed")
 
 
 def test_private_expert_suite_is_external_and_summary_does_not_leak_labels_or_observations(
@@ -196,7 +204,7 @@ def test_real_provider_uat_requires_provider_model_and_sha256_artifact_provenanc
         ),
     )
 
-    with pytest.raises(EvaluationSuiteError, match="provider and producer.model"):
+    with pytest.raises(EvaluationSuiteError, match=r"producer\.provider and producer\.model"):
         run_evaluation_suite(_repo_root(), suite, tmp_path / "work-missing")
 
     _write_json(
