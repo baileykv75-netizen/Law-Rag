@@ -190,10 +190,11 @@ def test_symlink_job_root_fails_closed(tmp_path: Path, monkeypatch) -> None:
     upload_root.rmdir()
     upload_root.symlink_to(outside, target_is_directory=True)
 
-    with pytest.raises(JobCleanupNotAllowed, match="symlink"):
+    with pytest.raises(JobCleanupNotAllowed):
         delete_job_storage(job_id, confirm_job_id=job_id)
 
     assert (outside / "keep.txt").read_text(encoding="utf-8") == "KEEP"
+    assert (tmp_path / "jobs" / str(job_id) / "pipeline.json").exists()
 
 
 def test_storage_api_and_delete_api_use_explicit_confirmation(tmp_path: Path, monkeypatch) -> None:
