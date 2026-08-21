@@ -10,11 +10,12 @@ Allowed benchmark material:
 - synthetic OCR/layout fixtures created for Law-Rag;
 - verified public legal evidence already permitted by `docs/DATA_POLICY.md`;
 - non-sensitive expected IDs, structured values and evaluator metadata;
-- public Stage 16 evaluation-suite/regression manifests that reference only repository-safe public inputs.
+- public Stage 16 evaluation-suite/regression manifests that reference only repository-safe public inputs;
+- schemas, documentation and synthetic tests for private expert/UAT evaluation mechanics.
 
 Do not commit real contracts, private reviewer labels, private benchmark observations, customer data, runtime artifacts, logs, API keys, model caches or private databases.
 
-Private/professional evaluation data should remain outside Git, for example under ignored `benchmark_private/`, and can be passed to the evaluator with an explicit local path.
+Private/professional evaluation data must remain outside Git or under ignored `benchmark_private/`.
 
 ## Stage 11A format
 
@@ -83,9 +84,21 @@ explicit-article exact-hit rate              = 1.00
 
 They are regression gates for the named repository-safe fixtures only. In particular, the 10-case retrieval dataset covers the historical `CURATED_EXCERPT` seed; its score must never be described as general legal recall or production legal accuracy.
 
-## Stage 16 evaluation suites
+## Stage 16 evaluation evidence classes
 
-Stage 16 adds orchestration **above** the historical evaluators; it does not replace them.
+Stage 16 keeps three evidence classes explicit:
+
+```text
+PUBLIC_REGRESSION
+PRIVATE_EXPERT
+REAL_PROVIDER_UAT
+```
+
+They are intentionally not mixed into one overall score.
+
+### Public regression
+
+Stage 16 adds orchestration above the historical evaluators:
 
 ```text
 EvaluationSuiteManifest
@@ -100,28 +113,9 @@ EvaluationSuiteManifest
   -> sanitized EvaluationSuiteRunReport
 ```
 
-Suite schema version remains `1.0.0`. The active suite evaluator version after Stage 16.2 is `stage16b-1.0.0`.
+Suite schema version remains `1.0.0`. The active public suite evaluator version after Stage 16.2 is `stage16b-1.0.0`.
 
-The evidence classes remain explicit:
-
-```text
-PUBLIC_REGRESSION
-PRIVATE_EXPERT
-REAL_PROVIDER_UAT
-```
-
-They are intentionally not mixed into one overall score.
-
-### Stage 16.1 historical smoke
-
-`public/stage16a_evaluation_suite.json` remains unchanged as the historical 16.1 orchestration smoke. It contains:
-
-1. Stage 11A schema smoke;
-2. Stage 11B historical public quality gates.
-
-Passing it proves only the historical orchestration mechanics.
-
-### Stage 16.2 expanded public suite
+`public/stage16a_evaluation_suite.json` remains unchanged as the historical 16.1 orchestration smoke.
 
 Stage 16.2 adds:
 
@@ -146,24 +140,9 @@ Corpus Release: three-domain-core@1.0.0
 Articles:       1274
 ```
 
-It also requires the selected Release Pack ID/version/domain/member catalog to match the current READY routing catalog. This prevents evaluating old release text against silently changed routing metadata.
+It also requires the selected Release Pack ID/version/domain/member catalog to match the current READY routing catalog.
 
-Stage 16.2 gates cover:
-
-```text
-scoped lexical Recall@5                     >= 0.90
-scoped lexical MRR                          >= 0.80
-scoped Recall@5 - broad Recall@5            >= 0.00
-scoped MRR - broad MRR                      >= 0.00
-scoped Authority compliance                  = 1.00
-expected Authority routing eligibility       = 1.00
-release article count                        = 1274
-UNMAPPED broad fallback                      = 1.00
-CROSS_DOMAIN Pack union                      = 1.00
-trademark as_of version-boundary exact rate  = 1.00
-```
-
-Authoritative Stage 16 CI #40 measured on the named nine-case dataset:
+Final Stage 16.2 values on the named nine-case dataset were:
 
 ```text
 scoped Recall@5                  1.00
@@ -178,13 +157,66 @@ article count                    1274
 
 These numbers mean only that the current deterministic code passes the named public regression evidence. They are **not** professional legal correctness, audit accuracy, or full Chinese-law retrieval coverage.
 
-### Private expert
+### Private expert — Stage 16.3
 
-`PRIVATE_EXPERT` suite manifests, datasets and observations must be external or under ignored `benchmark_private/`. Expert benchmark cases use `PRIVATE_EXTERNAL` provenance. Detailed labels and expected/observed values stay inside that private boundary.
+Stage 16.3 defines a separate private expert protocol/evaluator:
+
+```text
+ExpertBenchmarkProtocol
+  + private BenchmarkDataset
+  + private BenchmarkObservationSet
+  + ExpertLabelAuditArtifact
+  -> sanitized ExpertBenchmarkRunReport
+```
+
+The protocol/dataset/observations/label audit must stay external or under ignored `benchmark_private/`. Every case must use `PRIVATE_EXTERNAL` provenance. Tracked repository paths are rejected.
+
+Expert label states are:
+
+```text
+AGREED
+ADJUDICATED
+AMBIGUOUS
+```
+
+Each label audit is SHA-256 bound to the case's current expected truth. If the expected labels change after expert review, the old audit fingerprint becomes stale and evaluation fails closed.
+
+The evaluator also requires exact Dataset/Observation/Audit case coverage and case-version alignment, so difficult or failed cases cannot be silently removed from a scored run.
+
+Initial professional metric types are:
+
+```text
+BINARY_CLASSIFICATION
+  TP / FP / FN / TN
+  precision / recall / F1
+
+SET_EXTRACTION
+  TP / FP / FN
+  precision / recall / F1
+```
+
+Binary metrics require both expert-positive and expert-negative usable truth. Set metrics require exhaustive `SET_EQUALS` labels; partial `SET_CONTAINS` gold sets are rejected for precision/recall/F1.
+
+The sanitized report records label-quality context alongside system metrics:
+
+```text
+agreed / adjudicated / ambiguous / usable counts
+agreement_rate
+adjudication_rate
+ambiguity_rate
+usable_rate
+reviewer-count bounds
+```
+
+`AMBIGUOUS` cases remain visible in those counts/rates and are excluded from performance scoring rather than silently relabeled.
+
+No real expert dataset or professional metric value is checked into this repository. Synthetic pytest fixtures validate evaluator mechanics only.
 
 ### Real-provider UAT
 
 `REAL_PROVIDER_UAT` suite manifests and Observation Sets must also be external/ignored. Every UAT observation must identify a current real provider/model and SHA-256 artifact fingerprint. Fake provider/producer identities are invalid UAT evidence.
+
+Stage 16.4 will add explicit opt-in capture from the current production `ISSUE_V1` path. Actual paid/network calls must never run in ordinary public CI.
 
 ## CLIs
 
@@ -220,4 +252,12 @@ python -m app.evaluation_suite_cli \
   --suite ../benchmarks/public/stage16b_evaluation_suite.json
 ```
 
-Both Stage 16 CLIs support optional JSON output paths. Private local evaluation must keep private manifests/inputs outside tracked paths; private labels do not need to enter the repository or normal CI.
+Stage 16.3 private expert evaluator:
+
+```text
+python -m app.expert_benchmark_cli \
+  --repo-root .. \
+  --protocol <external-or-benchmark_private/protocol.json>
+```
+
+Optional sanitized JSON output is supported by the Stage 16 CLIs. Private labels do not need to enter the repository or normal CI.

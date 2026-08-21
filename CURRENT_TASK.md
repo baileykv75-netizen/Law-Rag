@@ -13,8 +13,8 @@ Stage 15.1–15.5 COMPLETE / official three-domain corpus + domain-aware RAG + W
 
 Stage 16.1      COMPLETE / versioned evaluation-suite architecture + evidence-class isolation
 Stage 16.2      COMPLETE / public deterministic three-domain regression corpus + gates
-Stage 16.3      NEXT     / private expert benchmark protocol + scoped professional metrics
-Stage 16.4      PENDING  / real-provider ISSUE_V1 UAT observation capture
+Stage 16.3      COMPLETE / private expert protocol + label audit + scoped metric evaluator validated
+Stage 16.4      NEXT     / real-provider ISSUE_V1 UAT observation capture
 Stage 16.5      PENDING  / Stage 16 release-quality evidence matrix + final regression
 ```
 
@@ -194,11 +194,17 @@ python -m app.public_regression_cli \
   --profile ../benchmarks/public/stage16b_three_domain_regression.json
 ```
 
-Authoritative implementation validation on head `e04111f03ac2a67d6a818ffdeea3a9b9a94b821e`:
+Authoritative Stage 16.2 closeout head:
 
 ```text
-Law-Rag Stage 16 CI #40
-run 32458988693
+67407e54b27e595e82119b055774241ce708b971
+```
+
+Final Stage 16.2 validation:
+
+```text
+Law-Rag Stage 16 CI #50
+run 32459347103
 SUCCESS
 
 backend pytest
@@ -237,58 +243,182 @@ trademark as_of version-boundary exact rate     1.00
 
 These are **scoped deterministic regression results for this named public dataset**, not a claim that Law-Rag has 100% legal correctness, professional audit accuracy, or production recall over Chinese law.
 
-Draft PR #16 is the validation-only Stage 16.2 carrier:
+Draft PR #16 is the validation-only Stage 16.2 carrier and is not authorized for merge.
+
+## Stage 16.3 — Private expert benchmark protocol + scoped professional metrics — COMPLETE
+
+Stage 16.3 adds the evaluation machinery needed to use professionally labeled private truth without committing private contracts or reviewer labels to this public repository.
+
+Implemented private artifact model:
 
 ```text
-head: stage16-2-public-regression-corpus
-base: stage16-1-evaluation-suite-architecture
+ExpertBenchmarkProtocol
+  + private BenchmarkDataset
+  + private BenchmarkObservationSet
+  + ExpertLabelAuditArtifact
+  -> ExpertBenchmarkRunReport
 ```
 
-PR #16 is not authorized for merge.
+All four inputs must remain external or under ignored `benchmark_private/`. Every expert benchmark case must use `PRIVATE_EXTERNAL` provenance. Tracked repository paths fail closed.
 
-## Stage 16.3 — Private expert benchmark protocol + scoped professional metrics — NEXT
+### Expert truth controls
+
+Every case receives exactly one audited label state:
+
+```text
+AGREED
+ADJUDICATED
+AMBIGUOUS
+```
+
+Rules include:
+
+- protocol minimum reviewer count is at least 2;
+- `AGREED` cannot carry an adjudicator;
+- `ADJUDICATED` requires at least one adjudicator;
+- `AMBIGUOUS` stays visible and is excluded from performance scoring rather than silently coerced into a label;
+- Dataset, Observation Set and label audit must cover exactly the same case IDs and case versions;
+- selective omission of difficult/failed cases is rejected.
+
+Each audit record is bound to the current expected truth by a canonical SHA-256 `label_fingerprint` over case identity/version and complete expectations. If expected truth changes after review, the old expert audit becomes stale and execution fails closed.
+
+### Professional metric semantics
+
+Initial supported metric families are deliberately narrow:
+
+```text
+BINARY_CLASSIFICATION
+  -> TP / FP / FN / TN
+  -> precision / recall / F1
+
+SET_EXTRACTION
+  -> TP / FP / FN
+  -> precision / recall / F1
+```
+
+Binary metrics require explicit positive/negative classes and at least one usable expert-positive and expert-negative case. Set metrics require exhaustive `SET_EQUALS` truth; partial `SET_CONTAINS` labels cannot be treated as complete gold truth.
+
+Every metric is scoped by protocol ID/version, private dataset ID/version, assertion ID and optional task/tag filters. There is no cross-task professional `legal_accuracy` or `overall_accuracy` number.
+
+### Label-quality evidence
+
+The sanitized aggregate report records both system metrics and expert-label quality:
+
+```text
+total / agreed / adjudicated / ambiguous / usable case counts
+agreement_rate
+adjudication_rate
+ambiguity_rate
+usable_rate
+minimum reviewer count required / observed
+```
+
+These label-quality values must be read alongside system precision/recall/F1. A model score without the underlying expert-truth quality context is not treated as sufficient professional evidence.
+
+### Privacy-safe report + CLI
+
+The report contains protocol/dataset identity, aggregate label-quality counts/rates, scoped metrics and SHA-256 fingerprints for protocol/dataset/observations/label audit. It omits private case IDs, contract text, expected labels, per-case observed values, reviewer identities and raw provider payloads.
+
+CLI:
+
+```text
+python -m app.expert_benchmark_cli \
+  --repo-root .. \
+  --protocol <external-or-benchmark_private/protocol.json>
+```
+
+The evaluator consumes an existing Observation Set and never calls DeepSeek/Kimi itself.
+
+### Validation
+
+Public pytest uses only synthetic temporary private fixtures to attack the protocol mechanics. It does **not** represent professional expert data.
+
+Validated implementation head:
+
+```text
+3393caa150e2baee459ca0969e8f17ee451d6156
+```
+
+Validation:
+
+```text
+Law-Rag Stage 16 CI #62
+run 32460155009
+SUCCESS
+
+backend pytest
+443 passed, 5 skipped, 1 third-party warning
+
+historical Stage 11B public quality gates
+PASS
+
+Stage 16.2 direct public regression
+PASS
+
+Stage 16b public evaluation suite
+PASS
+
+frontend production build
+PASS
+```
+
+The new regression set covers successful aggregate metrics plus fail-closed behavior for tracked paths, non-private provenance, Observation/Audit case omission, insufficient reviewers, stale label fingerprints, partial set truth and degenerate one-class binary truth.
+
+**Important evidence boundary:** no real professionally labeled dataset has been added or executed in this repository. Therefore Stage 16.3 completion means the private expert **protocol/evaluator infrastructure is validated**; it does **not** mean Law-Rag currently has a measured professional audit accuracy, high-risk recall, citation relevance score or release threshold.
+
+Draft PR #17 is the validation-only Stage 16.3 carrier:
+
+```text
+head: stage16-3-private-expert-benchmark
+base: stage16-2-public-regression-corpus
+```
+
+PR #17 is not authorized for merge.
+
+## Stage 16.4 — Real-provider ISSUE_V1 UAT observation capture — NEXT
 
 ### Goal
 
-Move from deterministic repository regression to professionally labeled evaluation without leaking real/private contracts or expert truth into the public repository.
+Capture explicit, reproducible **real DeepSeek/Kimi observations** from the current production `ISSUE_V1` path without confusing provider behavior with expert truth or deterministic regression.
 
 ### Required focus
 
-Stage 16.3 should define and validate a private evaluation protocol for the product behaviors that public synthetic regression cannot establish, especially:
+Stage 16.4 should define one bounded opt-in UAT capture path that:
 
-- primary audit finding correctness on professionally labeled Issues;
-- high-risk finding recall and false-positive behavior;
-- Contract Evidence localization/coverage;
-- Legal Evidence citation validity/relevance against the supplied corpus;
-- secondary-review finding and omission/coverage behavior;
-- Issue-level review states where evidence is insufficient or legally uncertain.
+1. reuses the current production Audit Planner / Issue Legal RAG / DeepSeek / Kimi / deterministic comparison topology rather than creating a second model pipeline;
+2. requires explicit provider configuration and the existing persisted provider-approval/cancellation boundary;
+3. records exact provider/model identity and SHA-256 fingerprints of authoritative input/output artifacts;
+4. preserves one-to-one AuditPlan Issue coverage and checkpoint/restart semantics;
+5. stores detailed UAT observations only outside Git or under ignored private paths;
+6. emits only sanitized, non-secret provenance/summary data suitable for Stage 16 evidence assembly;
+7. remains clearly separate from `PRIVATE_EXPERT` labels and does not treat model agreement as correctness.
 
-### Data boundary
+### Validation direction
 
-Private expert manifests, labels, observations and detailed diagnostics must remain external or under ignored `benchmark_private/`. Public Git may contain only schemas, protocol documentation, synthetic examples and sanitized aggregate evidence that cannot reconstruct private labels/contracts.
+Public CI must test Stage 16.4 capture mechanics with fake/local provider doubles only. **Actual paid/network UAT must be explicit opt-in and must never run in ordinary CI.**
 
-### Metric direction
-
-Reuse the existing deterministic metric helpers where labels support them:
+The real UAT run should identify at minimum:
 
 ```text
-binary classification -> precision / recall / F1
-set extraction        -> precision / recall / F1
-ranked retrieval      -> Recall@K / MRR where appropriate
+architecture = ISSUE_V1
+provider
+model
+request/artifact fingerprints
+AuditPlan / Issue Legal Context fingerprints
+primary / secondary / comparison artifact fingerprints
+completion / interruption state
 ```
 
-High-risk recall and other professional metrics must identify the exact private dataset/version and label definition. Do not create a cross-task global legal-accuracy number.
+No raw API key, private contract text, hidden chain-of-thought or unrestricted provider payload may enter the public repository.
 
-Thresholds must not be invented or lowered merely to make the first private run pass. Dataset quality, label agreement and ambiguity handling must be established before using a metric as a release gate.
-
-### Non-goals for 16.3
+### Non-goals for 16.4
 
 Do not yet:
 
-- commit private contracts or expert labels;
-- run or score paid real-provider UAT as if it were deterministic expert truth;
-- change DeepSeek/Kimi prompts merely to optimize benchmark numbers;
-- change legal corpus identity/version semantics;
+- reinterpret provider UAT as professional correctness;
+- invent release thresholds from a tiny UAT sample;
+- tune prompts merely to improve one UAT run;
+- redesign `ISSUE_V1`;
 - begin Stage 17+.
 
 ## Stage 16 invariants
@@ -304,7 +434,7 @@ The entire stage must preserve:
 - Stage 14 PDF/image/DOCX source boundary and local OCR rules;
 - Stage 15 immutable packaged baseline vs writable upgrade-preserving runtime corpus separation;
 - explicit provider approval/cancellation boundaries;
-- public/private benchmark separation;
+- public/private/UAT evaluation separation;
 - no credentials, private contracts, private reviewer labels or raw private provider payloads in Git.
 
 ## Deferred after Stage 16
@@ -317,4 +447,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 16.1 and Stage 16.2 are COMPLETE. Stage 16.3 is the only NEXT implementation scope. Do not begin Stage 16.4+, Stage 17+, or merge Draft PR #13/#14/#15/#16 without separate authorization.**
+**Stage 16.1–16.3 are COMPLETE. Stage 16.4 is the only NEXT implementation scope. Do not begin Stage 16.5+, Stage 17+, or merge Draft PR #13/#14/#15/#16/#17 without separate authorization.**

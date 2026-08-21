@@ -34,7 +34,7 @@ Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupp
 
 ## Status
 
-**Stage 16.1 and Stage 16.2 are COMPLETE. Stage 16.3 — private expert benchmark protocol + scoped professional metrics — is NEXT.**
+**Stage 16.1–16.3 are COMPLETE. Stage 16.4 — real-provider ISSUE_V1 UAT observation capture — is NEXT.**
 
 Stage 15 delivered:
 
@@ -88,11 +88,11 @@ It validates:
 - semantic identity of the promoted Stage 15 benchmark truth;
 - selected Corpus Release identity and READY routing-catalog compatibility.
 
-Authoritative Stage 16.2 implementation validation:
+Final Stage 16.2 validation:
 
 ```text
-head e04111f03ac2a67d6a818ffdeea3a9b9a94b821e
-Law-Rag Stage 16 CI #40 (32458988693) SUCCESS
+head 67407e54b27e595e82119b055774241ce708b971
+Law-Rag Stage 16 CI #50 (32459347103) SUCCESS
 backend pytest                             434 passed, 5 skipped, 1 warning
 historical Stage 11B public gates          PASS
 Stage 16.2 public regression               10 / 10 gates PASS
@@ -103,24 +103,52 @@ frontend production build                 PASS
 Named nine-case public regression values:
 
 ```text
-scoped Recall@5 / MRR     1.00 / 1.00
-broad Recall@5 / MRR      1.00 / 1.00
-scoped-broad deltas       0.00 / 0.00
-Authority compliance     1.00
-route eligibility        1.00
-UNMAPPED fallback         1.00
-CROSS_DOMAIN union        1.00
+scoped Recall@5 / MRR       1.00 / 1.00
+broad Recall@5 / MRR        1.00 / 1.00
+scoped-broad deltas         0.00 / 0.00
+Authority compliance       1.00
+route eligibility          1.00
+UNMAPPED fallback           1.00
+CROSS_DOMAIN union          1.00
 trademark version boundary 1.00
-Article count             1274
+Article count               1274
 ```
 
 Those numbers are **scoped deterministic regression evidence for the named public dataset**, not a claim of 100% legal correctness or professional audit accuracy.
 
-Stage 16.3 moves to professionally labeled private evaluation. Private contracts/labels remain external or under ignored `benchmark_private/`; public Git may contain only schemas, protocol documentation, synthetic examples and privacy-safe aggregates.
+Stage 16.3 adds the private expert benchmark protocol/evaluator needed to measure professional labels safely:
 
-See [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md) and [`CURRENT_TASK.md`](CURRENT_TASK.md).
+```text
+ExpertBenchmarkProtocol
+  + private BenchmarkDataset
+  + private BenchmarkObservationSet
+  + ExpertLabelAuditArtifact
+  -> sanitized ExpertBenchmarkRunReport
+```
 
-Draft PR #13/#14/#15/#16 remain stacked validation carriers and are intentionally unmerged unless separately authorized.
+Private inputs must remain external or under ignored `benchmark_private/`; every case uses `PRIVATE_EXTERNAL` provenance. Expert labels have explicit `AGREED`, `ADJUDICATED` or `AMBIGUOUS` states. Each audit record is SHA-256 bound to the case's current expected truth so later label mutation invalidates the old expert audit.
+
+The initial professional metrics are scoped binary classification and exhaustive set extraction precision/recall/F1. `AMBIGUOUS` cases stay visible in label-quality counts/rates and are excluded from performance scoring rather than silently relabeled. The report also exposes agreement/adjudication/ambiguity/usable rates, because system metrics are not interpreted independently of expert-truth quality.
+
+Validated Stage 16.3 implementation:
+
+```text
+head 3393caa150e2baee459ca0969e8f17ee451d6156
+Law-Rag Stage 16 CI #62 (32460155009) SUCCESS
+backend pytest                             443 passed, 5 skipped, 1 warning
+historical Stage 11B public gates          PASS
+Stage 16.2 public regression               PASS
+Stage 16b public suite                     PASS
+frontend production build                 PASS
+```
+
+**No real professionally labeled dataset has been committed or executed.** Therefore Stage 16.3 completion means the private expert protocol/evaluator infrastructure is validated; Law-Rag does not yet have a measured professional audit accuracy, high-risk recall, citation-relevance score or release threshold.
+
+Stage 16.4 will capture explicit DeepSeek/Kimi `ISSUE_V1` UAT observations under the existing provider-approval/cancellation boundary, with provider/model/artifact fingerprints and private storage. Real-provider UAT remains separate from expert truth and ordinary public CI.
+
+See [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md), [`docs/STAGE16_EXPERT_BENCHMARK.md`](docs/STAGE16_EXPERT_BENCHMARK.md) and [`CURRENT_TASK.md`](CURRENT_TASK.md).
+
+Draft PR #13/#14/#15/#16/#17 remain stacked validation carriers and are intentionally unmerged unless separately authorized.
 
 ## Main routes
 
@@ -317,19 +345,21 @@ Human Review is append-only and fingerprint-bound. Only fresh final `CONFIRMED` 
 
 ## Evaluation
 
-Current public deterministic evaluation is layered:
+Stage 16 evaluation remains split by evidence class:
 
 ```text
-versioned EvaluationSuiteManifest
- -> historical BenchmarkDataset + BenchmarkObservationSet evaluator
- OR
- -> historical public QualityGateProfile evaluator
- OR
- -> Stage 16 public deterministic regression profile
- -> sanitized EvaluationSuiteRunReport
+PUBLIC_REGRESSION
+  EvaluationSuiteManifest / public deterministic regression profiles
+
+PRIVATE_EXPERT
+  private BenchmarkDataset + ObservationSet + ExpertLabelAuditArtifact
+  -> ExpertBenchmarkRunReport
+
+REAL_PROVIDER_UAT
+  explicit provider/model observations; Stage 16.4
 ```
 
-Direct Stage 16.2 regression report from `backend/`:
+Public deterministic regression from `backend/`:
 
 ```text
 python -m app.public_regression_cli \
@@ -345,7 +375,15 @@ python -m app.evaluation_suite_cli \
   --suite ../benchmarks/public/stage16b_evaluation_suite.json
 ```
 
-The historical `stage16a_evaluation_suite.json` remains unchanged for Stage 16.1 auditability.
+Private expert evaluator:
+
+```text
+python -m app.expert_benchmark_cli \
+  --repo-root .. \
+  --protocol <external-or-benchmark_private/protocol.json>
+```
+
+The historical `stage16a_evaluation_suite.json` remains unchanged for Stage 16.1 auditability. No evaluation command implicitly executes paid/network DeepSeek or Kimi.
 
 ## Core engineering principles
 
@@ -365,9 +403,10 @@ The historical `stage16a_evaluation_suite.json` remains unchanged for Stage 16.1
 14. **Corpus scope is auditable.** Domain routing narrows eligible Authorities without pretending unmapped scope means no law.
 15. **Evaluation evidence classes stay separate.** Public regression, private expert truth, and real-provider UAT are not collapsed into one fake score.
 16. **Benchmark identity is versioned.** Public regression truth, Corpus Release identity and routing catalog must remain reproducibly attributable.
+17. **Expert truth is audited.** Professional labels are reviewer-counted, ambiguity-aware and fingerprint-bound before metrics are interpreted.
 
 ## Repository safety
 
 This repository is public. Do not commit real/private contracts, API keys, runtime uploads, generated private reports, private benchmark labels, model caches/private vector stores, or logs containing private contract text.
 
-See [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CURRENT_TASK.md`](CURRENT_TASK.md), [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md), and [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
+See [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CURRENT_TASK.md`](CURRENT_TASK.md), [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md), [`docs/STAGE16_EXPERT_BENCHMARK.md`](docs/STAGE16_EXPERT_BENCHMARK.md), and [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
