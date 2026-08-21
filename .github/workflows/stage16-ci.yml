@@ -41,6 +41,11 @@ jobs:
         env:
           PYTHONPATH: .
         run: python -m app.evaluation_suite_cli --repo-root .. --suite ../benchmarks/public/stage16b_evaluation_suite.json
+      - name: Assemble Stage 16.5 release evidence matrix
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m app.release_evidence_cli --repo-root ..
 
   frontend:
     runs-on: ubuntu-latest
