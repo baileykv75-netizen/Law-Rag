@@ -1,0 +1,59 @@
+name: Law-Rag Stage 15.5 Windows Baseline CI
+
+on:
+  pull_request:
+    branches: ['stage15-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-baseline-release:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'stage15-5-')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12.10'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.2'
+          package-manager-cache: false
+
+      - name: Build Windows onedir bundle from exact release locks
+        shell: pwsh
+        run: ./release/build-windows.ps1
+
+      - name: Verify Stage 15.5 frozen baseline and writable runtime install
+        shell: pwsh
+        run: ./release/smoke-stage15-5-windows.ps1
+
+      - name: Run existing packaged Windows PDF OCR HTTP privacy smoke
+        shell: pwsh
+        run: ./release/smoke-windows.ps1 -Port 8810
+
+      - name: Build deterministic portable RC ZIP and manifest
+        shell: pwsh
+        run: ./release/package-rc.ps1
+
+      - name: Extract final RC and run existing Stage 12-14 regression smokes
+        shell: pwsh
+        run: ./release/smoke-rc-windows.ps1 -Port 8830
+
+      - name: Upload inspectable Stage 15.5 Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-onedir-stage15-5
+          path: release/dist/Law-Rag
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload Stage 15.5 portable RC files
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-x64-stage15-5
+          path: release/rc
+          if-no-files-found: error
+          retention-days: 7
