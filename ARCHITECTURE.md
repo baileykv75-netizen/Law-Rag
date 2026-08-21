@@ -38,7 +38,7 @@ Local FastAPI backend
 
 Source navigation, Results/Workspace reads, Developer diagnostics, Human Review, local OCR and local legal retrieval do not implicitly execute external providers.
 
-**Stage 15 is complete and Stage 16.1 is complete/validated.** The production legal baseline remains `three-domain-core@1.0.0`: 3 READY Corpus Packs, 14 Authorities, 15 Versions and 1274 unique Articles. The active next boundary is Stage 16.2 public deterministic regression-corpus expansion.
+**Stage 16.1 and Stage 16.2 are complete.** The production legal baseline remains `three-domain-core@1.0.0`: 3 READY Corpus Packs, 14 Authorities, 15 Versions and 1274 unique Articles. The active next boundary is Stage 16.3 private expert benchmark protocol + scoped professional metrics.
 
 ## 3. Authoritative job architectures
 
@@ -374,7 +374,9 @@ PRIVATE_EXPERT
 REAL_PROVIDER_UAT
 ```
 
-Stage 16.1 adds:
+### 20.1 Stage 16.1 suite layer
+
+Stage 16.1 added:
 
 ```text
 EvaluationSuiteManifest
@@ -382,76 +384,103 @@ EvaluationSuiteManifest
   +-- BENCHMARK
   |     BenchmarkDataset
   |       + BenchmarkObservationSet
-  |       -> existing Stage 11A deterministic evaluator
+  |       -> Stage 11A deterministic evaluator
   |
   +-- PUBLIC_QUALITY_PROFILE
         QualityGateProfile
-        -> existing Stage 11B deterministic quality runner
+        -> Stage 11B deterministic quality runner
 
   -> sanitized EvaluationSuiteRunReport
 ```
 
-The suite runner consumes existing observations and never calls DeepSeek, Kimi, OCR or another provider.
-
-### 20.1 Public regression boundary
-
-`PUBLIC_REGRESSION` manifests and benchmark inputs must stay under `benchmarks/public/`. Public datasets cannot contain `PRIVATE_EXTERNAL` cases.
-
-The checked-in Stage 16.1 public orchestration smoke reuses the Stage 11 schema smoke and Stage 11B public quality profile. Passing it proves orchestration/regression mechanics only.
-
-### 20.2 Private expert boundary
-
-`PRIVATE_EXPERT` manifests, datasets and observations must stay external or under ignored `benchmark_private/`. Every case is labeled `PRIVATE_EXTERNAL`.
-
-The suite-level report contains only summary counts, identities and SHA-256 fingerprints; assertion-level expected/observed payloads remain inside the private benchmark boundary.
-
-### 20.3 Real-provider UAT boundary
-
-`REAL_PROVIDER_UAT` observations must stay external/ignored and record the current real provider identity, model and a SHA-256 artifact fingerprint. Fake provider/producer identities are rejected as UAT evidence.
-
-Provider execution itself is separate from deterministic evaluation. Later Stage 16 work will generate Observation Sets under explicit opt-in and feed them into the suite runner.
-
-### 20.4 No fake global accuracy
-
-The suite layer deliberately does not emit cross-task `overall_accuracy`, `legal_accuracy` or an equivalent aggregate. Metrics retain named dataset/profile version and scope.
-
-### 20.5 Stage 16.1 validation — COMPLETE
-
-Validated implementation head:
+Final Stage 16.1 closeout:
 
 ```text
-de9fb64d3b03316eb3427f0137fc0c9086d145f3
+head 706ce85bc5b472896d33dcf4d926501755656247
+Law-Rag Stage 16 CI #15 (32458037391)  SUCCESS
+Law-Rag Stage 15 CI #130 (32458037327) SUCCESS
 ```
 
-Validation:
+### 20.2 Stage 16.2 public regression layer
+
+Stage 16.2 extends the suite with:
 
 ```text
-Law-Rag Stage 16 CI #9 (32457699628)               SUCCESS
-backend pytest                                      428 passed, 5 skipped, 1 warning
-existing public deterministic quality gates         PASS
-Stage 16 public evaluation suite                     2 / 2 entries PASS
-frontend production build                           PASS
-
-Law-Rag Stage 15 regression CI #127 (32457699622)  SUCCESS
-Stage 15.5 Windows workflow                         SKIPPED as intended
+PUBLIC_REGRESSION_PROFILE
+  -> versioned PublicRegressionProfile
+  -> named deterministic runner
+  -> scoped QualityRunReport + diagnostics + source fingerprints
 ```
 
-Draft PR #15 is the stacked validation carrier and remains intentionally unmerged unless separately authorized.
+Historical Stage 11A/11B evaluator/profile meanings remain unchanged.
 
-Detailed evaluation policy is documented in `docs/STAGE16_EVALUATION.md`.
+The Stage 16.2 public artifacts are:
 
-## 21. Next boundary — Stage 16.2
+```text
+stage16b_three_domain_retrieval.dataset.json
+stage16b_three_domain_regression.json
+stage16b_evaluation_suite.json
+```
 
-Stage 16.2 owns **public deterministic regression corpus expansion**.
+The nine-case dataset is promoted unchanged from the Stage 15 three-domain retrieval fixture. Runtime semantic comparison fails closed if the promoted case truth diverges from its source fixture.
 
-It should first formalize already-existing public deterministic evidence into versioned benchmark datasets/suite entries instead of inventing new claims. Priority targets are:
+The profile pins `three-domain-core@1.0.0`. The selected Corpus Release Pack catalog must exactly match the current READY routing catalog on Pack ID/version/domain/member paths; otherwise the run fails closed instead of mixing old release truth with new routing metadata.
 
-- the checked-in Stage 15 three-domain retrieval benchmark;
-- domain-routing eligibility and scoped-vs-broad retrieval invariants;
-- Authority-Version / `as_of` applicability cases;
-- repository-safe ISSUE_V1 deterministic artifact/fingerprint/integrity regressions;
-- public synthetic stale/missing/conflicting evidence failure states where fixtures already exist.
+The runner deterministically rebuilds scratch legal/retrieval stores and evaluates broad/scoped lexical retrieval, routing scope, `UNMAPPED` fallback, cross-domain Pack union and trademark `as_of` version selection. No paid/network DeepSeek or Kimi call occurs.
 
-Stage 16.2 must preserve task-level scope and diagnostics, stay secret/network free in public CI, and reuse the Stage 16.1 suite runner.
+Authoritative Stage 16.2 implementation validation:
 
-It must not absorb private expert evaluation (16.3), paid real-provider UAT (16.4), Stage 17 tray/history, Stage 18 encryption/report-export/provider-settings, or Stage 19 installer/signing/update work.
+```text
+head e04111f03ac2a67d6a818ffdeea3a9b9a94b821e
+Law-Rag Stage 16 CI #40 (32458988693) SUCCESS
+backend pytest                             434 passed, 5 skipped, 1 warning
+historical Stage 11B gates                PASS
+Stage 16.2 regression gates               10 / 10 PASS
+expanded Stage 16b suite                  3 / 3 PASS
+frontend build                            PASS
+```
+
+Named nine-case values:
+
+```text
+scoped Recall@5 / MRR       1.00 / 1.00
+broad Recall@5 / MRR        1.00 / 1.00
+scoped-broad deltas         0.00 / 0.00
+Authority compliance       1.00
+route eligibility          1.00
+UNMAPPED fallback           1.00
+CROSS_DOMAIN union          1.00
+trademark version boundary 1.00
+Articles                    1274
+```
+
+These are scoped deterministic regression results, not professional legal accuracy.
+
+### 20.3 Private expert boundary
+
+`PRIVATE_EXPERT` manifests, datasets and observations remain external or under ignored `benchmark_private/`. Detailed labels/diagnostics never enter the public suite report.
+
+Stage 16.3 will add the professional labeling protocol and scoped metrics needed to evaluate primary findings, high-risk recall/false positives, Contract Evidence coverage, Legal Evidence citation behavior, Kimi coverage review and uncertainty handling.
+
+### 20.4 Real-provider UAT boundary
+
+`REAL_PROVIDER_UAT` observations remain external/ignored and record a current real provider, model and SHA-256 artifact fingerprint. Fake provider/producer identities are rejected. Provider execution itself remains separate from deterministic evaluation and belongs to Stage 16.4.
+
+### 20.5 No fake global accuracy
+
+The evaluation layer deliberately does not emit cross-task `overall_accuracy`, `legal_accuracy` or an equivalent aggregate. Every metric retains its named dataset/profile version, label definition and scope.
+
+## 21. Next boundary — Stage 16.3
+
+Stage 16.3 owns **private expert benchmark protocol + scoped professional metrics**.
+
+It must:
+
+- keep private contracts, expert labels, observations and detailed diagnostics external/ignored;
+- establish explicit expert label definitions and ambiguity handling before interpreting scores;
+- use existing precision/recall/F1 and extraction/ranking helpers only where the label semantics support them;
+- report high-risk recall and other professional metrics against an exact private dataset/version;
+- distinguish expert truth from model/provider observations;
+- avoid invented or post-hoc lowered thresholds merely to produce a passing result.
+
+Stage 16.3 must not absorb paid real-provider UAT (16.4), Stage 17 tray/history, Stage 18 encryption/report-export/provider-settings, or Stage 19 installer/signing/update work.
