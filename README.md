@@ -34,7 +34,7 @@ Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupp
 
 ## Status
 
-**Stage 16.1–16.3 are COMPLETE. Stage 16.4 — real-provider ISSUE_V1 UAT observation capture — is NEXT.**
+**Stage 16.1–16.3 are COMPLETE. Stage 16.4 provider-free UAT capture/evaluation mechanics are VALIDATED and READY_FOR_REAL_UAT; actual paid/network DeepSeek/Kimi UAT has NOT RUN. Stage 16.5 remains PENDING.**
 
 Stage 15 delivered:
 
@@ -144,11 +144,23 @@ frontend production build                 PASS
 
 **No real professionally labeled dataset has been committed or executed.** Therefore Stage 16.3 completion means the private expert protocol/evaluator infrastructure is validated; Law-Rag does not yet have a measured professional audit accuracy, high-risk recall, citation-relevance score or release threshold.
 
-Stage 16.4 will capture explicit DeepSeek/Kimi `ISSUE_V1` UAT observations under the existing provider-approval/cancellation boundary, with provider/model/artifact fingerprints and private storage. Real-provider UAT remains separate from expert truth and ordinary public CI.
+Stage 16.4 now has a validated read-only capture path for already-executed `ISSUE_V1` jobs, explicit `TEST_DOUBLE` / `REAL_PROVIDER` modes, COMPLETE/Primary-interrupted/Secondary-interrupted checkpoint semantics, fail-closed artifact and pipeline provenance checks, a sanitized summary, and a dedicated `REAL_PROVIDER_UAT` / `UAT_CAPTURE` evaluation-suite entry. The capture/evaluation readers never invoke DeepSeek/Kimi themselves. A real provider run remains an explicit operator action because it may transmit selected contract evidence and incur provider cost.
 
-See [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md), [`docs/STAGE16_EXPERT_BENCHMARK.md`](docs/STAGE16_EXPERT_BENCHMARK.md) and [`CURRENT_TASK.md`](CURRENT_TASK.md).
+Provider-free Stage 16.4 validation:
 
-Draft PR #13/#14/#15/#16/#17 remain stacked validation carriers and are intentionally unmerged unless separately authorized.
+```text
+head 1775eb2fef049835cb29160d128a004e5ba75f2e
+Law-Rag Stage 16 CI #104 (32463233240) SUCCESS
+backend pytest                              466 passed, 5 skipped, 1 warning
+historical Stage 11B public gates           PASS
+Stage 16.2 public regression                PASS
+Stage 16b public suite                      PASS
+frontend production build                  PASS
+```
+
+See [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md), [`docs/STAGE16_EXPERT_BENCHMARK.md`](docs/STAGE16_EXPERT_BENCHMARK.md), [`docs/REAL_PROVIDER_UAT.md`](docs/REAL_PROVIDER_UAT.md) and [`CURRENT_TASK.md`](CURRENT_TASK.md).
+
+Draft PR #13/#14/#15/#16/#17/#18 remain stacked validation carriers and are intentionally unmerged unless separately authorized.
 
 ## Main routes
 
@@ -356,7 +368,8 @@ PRIVATE_EXPERT
   -> ExpertBenchmarkRunReport
 
 REAL_PROVIDER_UAT
-  explicit provider/model observations; Stage 16.4
+  private IssueV1UATObservation
+  -> REAL_PROVIDER_UAT / UAT_CAPTURE suite entry
 ```
 
 Public deterministic regression from `backend/`:
@@ -383,7 +396,18 @@ python -m app.expert_benchmark_cli \
   --protocol <external-or-benchmark_private/protocol.json>
 ```
 
-The historical `stage16a_evaluation_suite.json` remains unchanged for Stage 16.1 auditability. No evaluation command implicitly executes paid/network DeepSeek or Kimi.
+Capture an already-executed real-provider ISSUE_V1 job only after explicit authorization of that production provider run:
+
+```text
+python -m app.uat_capture_cli \
+  --repo-root .. \
+  --job-id <existing-issue-v1-job-uuid> \
+  --output <external-or-benchmark_private/observation.json> \
+  --mode REAL_PROVIDER \
+  --confirm-real-provider-uat
+```
+
+The capture command does not itself call DeepSeek/Kimi. The historical `stage16a_evaluation_suite.json` remains unchanged for Stage 16.1 auditability. No evaluation command implicitly executes paid/network DeepSeek or Kimi.
 
 ## Core engineering principles
 
@@ -404,9 +428,10 @@ The historical `stage16a_evaluation_suite.json` remains unchanged for Stage 16.1
 15. **Evaluation evidence classes stay separate.** Public regression, private expert truth, and real-provider UAT are not collapsed into one fake score.
 16. **Benchmark identity is versioned.** Public regression truth, Corpus Release identity and routing catalog must remain reproducibly attributable.
 17. **Expert truth is audited.** Professional labels are reviewer-counted, ambiguity-aware and fingerprint-bound before metrics are interpreted.
+18. **UAT completion is not correctness.** A complete DeepSeek/Kimi provider chain is operational provenance evidence, not professional legal truth.
 
 ## Repository safety
 
 This repository is public. Do not commit real/private contracts, API keys, runtime uploads, generated private reports, private benchmark labels, model caches/private vector stores, or logs containing private contract text.
 
-See [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CURRENT_TASK.md`](CURRENT_TASK.md), [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md), [`docs/STAGE16_EXPERT_BENCHMARK.md`](docs/STAGE16_EXPERT_BENCHMARK.md), and [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
+See [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CURRENT_TASK.md`](CURRENT_TASK.md), [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md), [`docs/STAGE16_EXPERT_BENCHMARK.md`](docs/STAGE16_EXPERT_BENCHMARK.md), [`docs/REAL_PROVIDER_UAT.md`](docs/REAL_PROVIDER_UAT.md), and [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
