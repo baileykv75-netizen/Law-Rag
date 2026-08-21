@@ -36,9 +36,9 @@ Local FastAPI backend
   +---- explicit bounded outbound calls ----> configured DeepSeek / Kimi APIs
 ```
 
-Source navigation, Results/Workspace reads, Stage 13 Developer diagnostics, Human Review, local OCR and local legal retrieval do not implicitly execute external providers.
+Source navigation, Results/Workspace reads, Developer diagnostics, Human Review, local OCR and local legal retrieval do not implicitly execute external providers.
 
-**Stage 15 is complete.** The production legal baseline is `three-domain-core@1.0.0`: 3 READY Corpus Packs, 14 Authorities, 15 Versions and 1274 unique Articles. Issue-level domain-aware retrieval and Windows baseline-corpus distribution are validated.
+**Stage 15 is complete and Stage 16.1 is complete/validated.** The production legal baseline remains `three-domain-core@1.0.0`: 3 READY Corpus Packs, 14 Authorities, 15 Versions and 1274 unique Articles. The active next boundary is Stage 16.2 public deterministic regression-corpus expansion.
 
 ## 3. Authoritative job architectures
 
@@ -55,15 +55,15 @@ The resolver uses persisted production provenance, not a convenient filename che
 ## 4. Issue V1 production Pipeline
 
 ```text
-INGEST                    10%
-  -> OCR                  25%
-  -> STRUCTURE            38%
-  -> RULES                48%
-  -> AUDIT_PLAN           58%
-  -> ISSUE_LEGAL_CONTEXT  68%
-  -> ISSUE_PRIMARY_AUDIT  82%
-  -> ISSUE_SECONDARY_REVIEW 92%
-  -> ISSUE_REVIEW_REPORT  100%
+INGEST                       10%
+  -> OCR                     25%
+  -> STRUCTURE               38%
+  -> RULES                   48%
+  -> AUDIT_PLAN              58%
+  -> ISSUE_LEGAL_CONTEXT     68%
+  -> ISSUE_PRIMARY_AUDIT     82%
+  -> ISSUE_SECONDARY_REVIEW  92%
+  -> ISSUE_REVIEW_REPORT    100%
 ```
 
 The application owns mandatory stage ordering. Neither a model nor the UI may skip evidence/validation stages.
@@ -351,55 +351,107 @@ Private runtime jobs, source contracts, API keys, downloaded model caches and pr
 
 ## 19. Stage 15 validation boundary — COMPLETE
 
-Stage 15.4 domain-aware retrieval validation:
+Final Stage 15 closeout validation:
 
 ```text
-Law-Rag Stage 15 CI #96 (32441338892)
-backend pytest                      416 passed, 5 skipped, 1 third-party warning
-public deterministic quality gates PASS
-frontend production build          PASS
+Law-Rag Stage 15 CI #123 (32456205510)                  SUCCESS
+Law-Rag Stage 15.5 Windows Baseline CI #9 (32456205586) SUCCESS
 ```
 
-Final Stage 15.5 product-head validation:
-
-```text
-Law-Rag Stage 15 CI #117 (32444333939)
-backend pytest                      422 passed, 5 skipped, 1 third-party warning
-public deterministic quality gates PASS
-frontend production build          PASS
-```
-
-Authoritative Windows baseline validation:
-
-```text
-Law-Rag Stage 15.5 Windows Baseline CI #6 (32444333963)
-exact Windows release-lock onedir build           PASS
-frozen baseline + writable runtime install check  PASS
-packaged PDF/OCR/HTTP/privacy smoke                PASS
-deterministic portable RC ZIP + manifest          PASS
-fresh-extracted Stage 12–14 regression smokes     PASS
-inspectable onedir + portable RC artifact upload  PASS
-```
+The Windows closeout revalidated exact release-lock build, frozen baseline installation, packaged PDF/OCR/HTTP/privacy smoke, deterministic portable RC packaging, fresh-extracted Stage 12–14 regressions and artifact upload.
 
 Draft PR #13 and #14 are stacked validation carriers and remain intentionally unmerged unless separately authorized.
 
-## 20. Next boundary — Stage 16
+## 20. Stage 16 evaluation architecture
 
-Stage 16 owns expert benchmark + regression corpus + real-provider UAT.
+Stage 16 adds a measurement layer around the proven production architecture; it does not create another audit pipeline.
 
-It may measure and harden retrieval quality, Issue coverage, legal-citation correctness, provider behavior, end-to-end review quality and failure-state handling against the proven Stage 13–15 architecture.
+Evidence classes remain separate:
 
-It must preserve:
+```text
+PUBLIC_REGRESSION
+PRIVATE_EXPERT
+REAL_PROVIDER_UAT
+```
 
-- canonical `Authority -> Version -> Article / Legal Evidence` identity;
-- immutable historical legal versions;
-- independent Corpus Release / Pack / Authority-Version identities;
-- deterministic `as_of` applicability;
-- explicit broad-fallback semantics for unmapped legal domains;
-- existing ISSUE_V1 stage topology;
-- Stage 14 source/OCR boundary;
-- Stage 15 Windows baseline/runtime-corpus separation;
-- explicit provider approval/cancellation boundaries;
-- public/private benchmark data separation.
+Stage 16.1 adds:
 
-Stage 16 must not absorb Stage 17 tray/history, Stage 18 encryption/report-export/provider-settings, or Stage 19 installer/signing/update work.
+```text
+EvaluationSuiteManifest
+  |
+  +-- BENCHMARK
+  |     BenchmarkDataset
+  |       + BenchmarkObservationSet
+  |       -> existing Stage 11A deterministic evaluator
+  |
+  +-- PUBLIC_QUALITY_PROFILE
+        QualityGateProfile
+        -> existing Stage 11B deterministic quality runner
+
+  -> sanitized EvaluationSuiteRunReport
+```
+
+The suite runner consumes existing observations and never calls DeepSeek, Kimi, OCR or another provider.
+
+### 20.1 Public regression boundary
+
+`PUBLIC_REGRESSION` manifests and benchmark inputs must stay under `benchmarks/public/`. Public datasets cannot contain `PRIVATE_EXTERNAL` cases.
+
+The checked-in Stage 16.1 public orchestration smoke reuses the Stage 11 schema smoke and Stage 11B public quality profile. Passing it proves orchestration/regression mechanics only.
+
+### 20.2 Private expert boundary
+
+`PRIVATE_EXPERT` manifests, datasets and observations must stay external or under ignored `benchmark_private/`. Every case is labeled `PRIVATE_EXTERNAL`.
+
+The suite-level report contains only summary counts, identities and SHA-256 fingerprints; assertion-level expected/observed payloads remain inside the private benchmark boundary.
+
+### 20.3 Real-provider UAT boundary
+
+`REAL_PROVIDER_UAT` observations must stay external/ignored and record the current real provider identity, model and a SHA-256 artifact fingerprint. Fake provider/producer identities are rejected as UAT evidence.
+
+Provider execution itself is separate from deterministic evaluation. Later Stage 16 work will generate Observation Sets under explicit opt-in and feed them into the suite runner.
+
+### 20.4 No fake global accuracy
+
+The suite layer deliberately does not emit cross-task `overall_accuracy`, `legal_accuracy` or an equivalent aggregate. Metrics retain named dataset/profile version and scope.
+
+### 20.5 Stage 16.1 validation — COMPLETE
+
+Validated implementation head:
+
+```text
+de9fb64d3b03316eb3427f0137fc0c9086d145f3
+```
+
+Validation:
+
+```text
+Law-Rag Stage 16 CI #9 (32457699628)               SUCCESS
+backend pytest                                      428 passed, 5 skipped, 1 warning
+existing public deterministic quality gates         PASS
+Stage 16 public evaluation suite                     2 / 2 entries PASS
+frontend production build                           PASS
+
+Law-Rag Stage 15 regression CI #127 (32457699622)  SUCCESS
+Stage 15.5 Windows workflow                         SKIPPED as intended
+```
+
+Draft PR #15 is the stacked validation carrier and remains intentionally unmerged unless separately authorized.
+
+Detailed evaluation policy is documented in `docs/STAGE16_EVALUATION.md`.
+
+## 21. Next boundary — Stage 16.2
+
+Stage 16.2 owns **public deterministic regression corpus expansion**.
+
+It should first formalize already-existing public deterministic evidence into versioned benchmark datasets/suite entries instead of inventing new claims. Priority targets are:
+
+- the checked-in Stage 15 three-domain retrieval benchmark;
+- domain-routing eligibility and scoped-vs-broad retrieval invariants;
+- Authority-Version / `as_of` applicability cases;
+- repository-safe ISSUE_V1 deterministic artifact/fingerprint/integrity regressions;
+- public synthetic stale/missing/conflicting evidence failure states where fixtures already exist.
+
+Stage 16.2 must preserve task-level scope and diagnostics, stay secret/network free in public CI, and reuse the Stage 16.1 suite runner.
+
+It must not absorb private expert evaluation (16.3), paid real-provider UAT (16.4), Stage 17 tray/history, Stage 18 encryption/report-export/provider-settings, or Stage 19 installer/signing/update work.
