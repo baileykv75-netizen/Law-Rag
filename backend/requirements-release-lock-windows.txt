@@ -1,4 +1,4 @@
-# Stage 11D exact Windows x64 / CPython 3.12.10 release-build environment.
+# Stage 17.1 exact Windows x64 / CPython 3.12.10 release-build environment.
 #
 # Install with --no-deps. Every Python package required by the base runtime or
 # PyInstaller build path is listed explicitly so a clean build does not inherit
@@ -21,6 +21,7 @@ pydantic==2.13.4
 pydantic-core==2.46.4
 pypdf==6.16.1
 pypdfium2==5.12.1
+pystray==0.19.5
 python-multipart==0.0.32
 starlette==1.6.0
 typing-extensions==4.16.0
