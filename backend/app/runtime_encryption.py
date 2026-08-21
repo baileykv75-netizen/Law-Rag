@@ -24,7 +24,7 @@ _CONFIG_FILE = "runtime-security.json"
 FILE_ENCRYPTABLE = 0
 FILE_IS_ENCRYPTED = 1
 FILE_SYSTEM_NOT_SUPPORT = 6
-CRYPTION_UNSUPPORTED_ERRORS = {1, 50, 87, 120}
+_EFS_UNSUPPORTED_ERRORS = {1, 50, 87, 120}
 
 
 class RuntimeEncryptionError(RuntimeError):
@@ -239,6 +239,7 @@ def apply_runtime_encryption(mode: RuntimeEncryptionMode | None = None) -> Runti
         return overview
 
     protected: list[str] = []
+    failed_names: list[str] = []
     failures: list[str] = []
     unsupported = False
     for name in _MANAGED_ROOT_NAMES:
@@ -247,9 +248,10 @@ def apply_runtime_encryption(mode: RuntimeEncryptionMode | None = None) -> Runti
             _protect_root(path)
             protected.append(name)
         except RuntimeEncryptionError as exc:
+            failed_names.append(name)
             failures.append(str(exc))
             message = str(exc)
-            if any(f"error {code}" in message for code in CRYPTION_UNSUPPORTED_ERRORS):
+            if any(f"error {code}" in message for code in _EFS_UNSUPPORTED_ERRORS):
                 unsupported = True
             if selected == RuntimeEncryptionMode.REQUIRED:
                 raise RuntimeEncryptionRequiredError(
@@ -259,15 +261,19 @@ def apply_runtime_encryption(mode: RuntimeEncryptionMode | None = None) -> Runti
     overview = _inspect_roots(selected)
     warnings = [*overview.warnings, *failures]
     if failures:
-        state = RuntimeEncryptionState.DEGRADED if protected else (
+        verified_protected = [name for name in overview.protected_root_names if name not in failed_names]
+        verified_unprotected = sorted(set([*overview.unprotected_root_names, *failed_names]))
+        state = RuntimeEncryptionState.DEGRADED if verified_protected else (
             RuntimeEncryptionState.UNSUPPORTED if unsupported else RuntimeEncryptionState.DEGRADED
         )
         overview = overview.model_copy(
             update={
                 "state": state,
+                "protected_root_names": verified_protected,
+                "unprotected_root_names": verified_unprotected,
                 "detail": (
                     "Runtime encryption is only partially active; see warnings."
-                    if protected
+                    if verified_protected
                     else "Windows EFS could not be enabled for the managed Job-private runtime."
                 ),
                 "warnings": sorted(set(warnings)),
