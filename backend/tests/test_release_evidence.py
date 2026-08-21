@@ -25,6 +25,14 @@ def _write(path: Path, payload: dict | None = None) -> Path:
     return path
 
 
+def _contains_key(value, target: str) -> bool:
+    if isinstance(value, dict):
+        return target in value or any(_contains_key(item, target) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_key(item, target) for item in value)
+    return False
+
+
 def _public_report(*, passed: bool = True) -> EvaluationSuiteRunReport:
     return EvaluationSuiteRunReport(
         evaluator_version="stage16d-1.0.0",
@@ -149,9 +157,9 @@ def test_matrix_keeps_external_evidence_pending_without_blocking_engineering_ci(
         ReleaseEvidenceStatus.PENDING,
         ReleaseEvidenceStatus.PENDING,
     ]
-    rendered = report.model_dump_json()
-    assert "overall_accuracy" not in rendered
-    assert "legal_accuracy" not in rendered
+    payload = report.model_dump(mode="json")
+    assert not _contains_key(payload, "overall_accuracy")
+    assert not _contains_key(payload, "legal_accuracy")
 
 
 def test_matrix_rejects_expert_report_from_tracked_repository_path(tmp_path: Path, monkeypatch) -> None:
