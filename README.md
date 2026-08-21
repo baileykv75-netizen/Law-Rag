@@ -6,7 +6,7 @@ The target product is a Windows-friendly local application rather than a generic
 
 ## Current production flow
 
-New jobs use the Stage 13 `ISSUE_V1` architecture:
+New jobs use the Stage 13 `ISSUE_V1` architecture with the Stage 15 domain-aware legal retrieval layer:
 
 ```text
 PDF / JPG / JPEG / PNG / DOCX
@@ -15,7 +15,11 @@ PDF / JPG / JPEG / PNG / DOCX
   -> evidence-grounded Canonical Contract
   -> deterministic audit rules
   -> Audit Planner + explicit canonical-object coverage
-  -> issue-based version-aware Legal RAG
+  -> deterministic Issue domain route
+  -> READY Corpus Pack eligibility
+  -> applicable Authority Version
+  -> Exact Citation + FTS5/BM25 + optional local BGE
+  -> deterministic retrieval fusion
   -> DeepSeek primary audit, one bounded call per AuditPlan Issue
   -> Kimi independent finding + coverage review, one bounded call per Issue
   -> deterministic Issue comparison
@@ -24,28 +28,53 @@ PDF / JPG / JPEG / PNG / DOCX
   -> /results + /workspace
 ```
 
-Source-format differences stop at the Evidence/Canonical boundary. The Issue V1 Planner/RAG/DeepSeek/Kimi/comparison/Human Review topology does not branch on PDF/image/DOCX.
+Source-format differences stop at the Evidence/Canonical boundary. Domain routing changes retrieval eligibility only; the Issue V1 Planner/RAG/DeepSeek/Kimi/comparison/Human Review topology does not branch on PDF/image/DOCX.
 
 Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupported, conflicting, stale, incomplete or insufficient-evidence states remain visible for human review.
 
 ## Status
 
-**Stage 14 is complete. Stage 15 — official legal corpus expansion + update/versioning + retrieval tuning — is next.**
+**Stage 15 is complete. Stage 16 — expert benchmark + regression corpus + real-provider UAT — is next.**
 
-Stage 14 delivered:
+Stage 15 delivered:
 
-- cross-format Evidence identities with typed PDF/image/DOCX source anchors;
-- safe modern DOCX OOXML ingestion without synthetic page numbers;
-- logical DOCX Source Viewer navigation to exact paragraphs/table cells;
-- Home/intake support for PDF, DOCX, JPG/JPEG and PNG;
-- source warnings preserved from ingestion through Home/Workspace;
-- source-format-aware Pipeline loading for historical paginated PDF/image Evidence and DOCX `SourceEvidenceArtifact`;
-- bundled Windows PaddlePaddle/PaddleOCR/PaddleX runtime;
-- fixed `PP-OCRv6_medium_det` + `PP-OCRv6_medium_rec` assets fetched from approved official Paddle sources during clean release builds;
-- archive and per-file SHA-256 model integrity validation;
-- no runtime model download/fallback;
-- real frozen Windows OCR inference with outbound network unavailable;
-- final packaged Windows DOCX/PDF/image/provider-boundary/privacy/RC regression.
+- extensible Corpus Pack architecture without changing canonical `Authority -> Version -> Article / Legal Evidence` identity;
+- three READY official-law packs covering intellectual property, enterprise compliance and labor disputes;
+- frozen `three-domain-core@1.0.0` baseline with **14 Authorities / 15 Versions / 1274 unique Articles**;
+- official-source provenance, immutable snapshots, SHA-256 integrity and lifecycle-aware versions;
+- independent Corpus Release versioning and deterministic corpus update planning;
+- staged legal-store rebuild with atomic replacement and fail-closed mutation checks;
+- deterministic Issue-domain routing into eligible READY Corpus Packs;
+- Authority allowlists enforced before Exact, BM25/FTS5 and local semantic ranking;
+- persisted routing provenance/fingerprint and explicit broad fallback behavior;
+- Windows distribution of the immutable three-domain baseline with one-time writable runtime installation;
+- preservation of an already-complete runtime corpus across application upgrades;
+- non-mutating offline corpus diagnostics;
+- final Windows onedir/portable-RC regression validation.
+
+Authoritative final Stage 15 validation:
+
+```text
+Stage 15.4 domain-aware RAG
+  Law-Rag Stage 15 CI #96 (32441338892)
+  backend: 416 passed, 5 skipped, 1 warning
+  public deterministic quality gates: PASS
+  frontend production build: PASS
+
+Stage 15.5 final branch head 355a003c67bdf4d9424e105d54e48779bca98c42
+  Law-Rag Stage 15 CI #117 (32444333939)
+  backend: 422 passed, 5 skipped, 1 warning
+  public deterministic quality gates: PASS
+  frontend production build: PASS
+
+  Law-Rag Stage 15.5 Windows Baseline CI #6 (32444333963)
+  exact Windows onedir build: PASS
+  frozen baseline + runtime install verification: PASS
+  packaged PDF/OCR/HTTP/privacy smoke: PASS
+  deterministic portable RC + fresh extraction regression: PASS
+```
+
+Draft PR #13 and #14 remain stacked validation carriers and are intentionally unmerged unless separately authorized.
 
 The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
@@ -93,9 +122,63 @@ Law-Rag pauses before the Audit Planner's first actual provider call. A configur
 
 Every later Planner/DeepSeek/Kimi request crosses the persisted provider/cancellation boundary independently. An already-started HTTP request cannot be recalled, but cancellation blocks subsequent requests.
 
-Stage 14 regression proves a native DOCX job can run the real local STRUCTURE + RULES stages and still stop at `AUDIT_PLAN`, 48%, with `PROVIDER_APPROVAL_REQUIRED` before the configured Planner can execute.
+Local OCR and local legal retrieval are independent of cloud-provider permission.
 
-Local OCR is independent of cloud-provider permission.
+## Legal corpus and retrieval
+
+Canonical legal identity remains:
+
+```text
+Authority -> Version -> Article / Legal Evidence
+```
+
+The installed baseline Corpus Release is:
+
+```text
+three-domain-core@1.0.0
+3 READY Corpus Packs
+14 Authorities
+15 Versions
+1274 unique Articles
+```
+
+Corpus Pack is a grouping/eligibility layer only. Shared Authority/Version text is not duplicated across packs. Corpus Release version, Pack version and Authority Version are independent identities.
+
+Issue-level retrieval is:
+
+```text
+AuditPlan Issue
+ -> deterministic legal-domain route
+ -> eligible READY Corpus Packs
+ -> eligible Authorities
+ -> applicable Version for as_of
+ -> Exact + FTS5/BM25 + optional local BGE
+ -> deterministic weighted RRF fusion
+```
+
+When Issue signals cannot safely narrow legal scope, routing broadens explicitly rather than interpreting no match as no applicable law.
+
+The current routing implementation and benchmark are documented in [`docs/STAGE15_DOMAIN_AWARE_RAG.md`](docs/STAGE15_DOMAIN_AWARE_RAG.md).
+
+## Corpus updates
+
+Legal text under an existing `(authority_id, version_id)` is immutable. A changed legal text requires a new Version identity.
+
+Future corpus publication uses:
+
+```text
+official-source verification
+ -> freeze new Authority Version where needed
+ -> update lifecycle/supersession state
+ -> bump affected Corpus Pack version
+ -> build candidate Corpus Release
+ -> deterministic update plan
+ -> staged legal.db rebuild
+ -> regression / quality gates
+ -> publish immutable Corpus Release
+```
+
+The packaged application baseline is immutable. On first normal launch it is verified, staged and atomically copied into writable runtime storage. A complete existing runtime corpus is left untouched so later application upgrades cannot roll back an independently updated legal corpus.
 
 ## Windows OCR distribution
 
@@ -116,7 +199,7 @@ PP-OCRv6_medium_rec
 
 Production OCR permits only the pinned detector and recognizer. Law-Rag validates the exact packaged model directories and file hashes and passes explicit local model paths plus a fixed minimal PaddleX OCR config. The runtime path does not silently use Hugging Face, BOS or downloaded Paddle caches.
 
-PyInstaller preserves PaddleX `ocr-core` distribution metadata required by `importlib.metadata` dependency checks. For the pinned Windows PaddlePaddle 3.3.0 CPU path, `enable_mkldnn=False` remains a tested compatibility requirement after packaged regression exposed a oneDNN/PIR failure when that branch was enabled.
+For the pinned Windows PaddlePaddle 3.3.0 CPU path, `enable_mkldnn=False` remains a tested compatibility requirement after packaged regression exposed a oneDNN/PIR failure when that branch was enabled.
 
 ## Development quick start
 
@@ -184,50 +267,9 @@ Unsupported/partial DOCX constructs remain explicit source warnings instead of b
 
 `audit-plan.json` is the authoritative review scope for Issue V1. Every canonical clause/block receives explicit planning coverage.
 
-Canonical legal identity is:
-
-```text
-authority -> authority version -> article / Legal Evidence ID
-```
-
-Retrieval combines exact citation lookup, SQLite FTS5 trigram/BM25, optional local BGE semantic retrieval and weighted reciprocal-rank fusion. Absence from a checked-in `CURATED_EXCERPT` source is never proof that no applicable legal rule exists.
+Model citations must resolve to supplied canonical Legal Evidence. Absence from the installed corpus is never proof that no applicable legal rule exists.
 
 Human Review is append-only and fingerprint-bound. Only fresh final `CONFIRMED` or `REJECTED` decisions close a mandatory Issue review; stale or incomplete states remain visible.
-
-## Stage 14 final validation
-
-Normal regression on the validated Stage 14.7 head:
-
-```text
-Law-Rag CI #755 (32245812433)
-  backend pytest: 320 passed, 5 skipped, 1 warning
-  public deterministic quality gates: PASS
-  frontend production build: PASS
-  Windows exact OCR dependency smoke: PASS
-```
-
-Final packaged Windows regression:
-
-```text
-Stage 14.7 final Windows release validation (32245812422)
-  clean Windows onedir + exact runtime/models      PASS
-  frozen OCR model integrity, network unavailable  PASS
-  packaged PDF/OCR/UI/privacy smoke                PASS
-  packaged DOCX Pipeline + image OCR API smoke      PASS
-  deterministic portable RC ZIP + manifest          PASS
-  extracted final RC complete user-flow smoke       PASS
-  model payload absent from Git                     PASS
-  onedir + RC artifact upload                       PASS
-```
-
-Validated artifacts:
-
-```text
-law-rag-windows-onedir-stage14-7
-law-rag-windows-x64-stage14-7
-```
-
-The remaining pytest warning is the existing Starlette TestClient/httpx deprecation warning.
 
 ## Core engineering principles
 
@@ -243,6 +285,8 @@ The remaining pytest warning is the existing Starlette TestClient/httpx deprecat
 10. **Human review is append-only.** Decisions never rewrite source/model/legal evidence.
 11. **Legacy compatibility is explicit.** Issue V1 and RC2 artifacts are not silently mixed.
 12. **Local-first private data.** Private artifacts and model caches stay outside Git.
+13. **Legal corpus identity is immutable.** Changed legal text requires a new Authority Version.
+14. **Corpus scope is auditable.** Domain routing narrows eligible Authorities without pretending unmapped scope means no law.
 
 ## Repository safety
 
