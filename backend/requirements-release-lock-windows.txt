@@ -23,6 +23,7 @@ pypdf==6.16.1
 pypdfium2==5.12.1
 pystray==0.19.5
 python-multipart==0.0.32
+six==1.17.0
 starlette==1.6.0
 typing-extensions==4.16.0
 typing-inspection==0.4.4
