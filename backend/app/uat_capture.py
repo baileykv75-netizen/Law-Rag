@@ -14,7 +14,7 @@ from .issue_legal_context_models import IssueLegalContextArtifact
 from .issue_primary_audit_models import IssuePrimaryAuditArtifact, IssuePrimaryAuditStatus
 from .issue_review_report_models import IssueReviewReport
 from .issue_secondary_review_models import IssueSecondaryReviewArtifact, IssueSecondaryReviewStatus
-from .pipeline_models import PipelineReport, PipelineStage, PipelineStatus
+from .pipeline_models import PipelineReport, PipelineStage, PipelineStageState, PipelineStatus
 from .safe_persistence import atomic_write_text
 from .storage import (
     job_audit_plan_path,
@@ -138,7 +138,10 @@ def _require_hash(value: str, *, label: str) -> str:
 def _validate_pipeline(pipeline: PipelineReport, job_id: UUID) -> None:
     if pipeline.job_id != job_id:
         raise UATCaptureError("pipeline.json belongs to a different job ID.")
-    stages = {item.stage for item in pipeline.stages}
+    stage_list = [item.stage for item in pipeline.stages]
+    if len(stage_list) != len(set(stage_list)):
+        raise UATCaptureError("pipeline.json contains duplicate stage records and cannot be used as UAT provenance.")
+    stages = set(stage_list)
     if stages & _LEGACY_STAGES:
         raise UATCaptureError("REAL_PROVIDER_UAT capture refuses a pipeline containing legacy RC2 audit stages.")
     required = {
@@ -343,29 +346,55 @@ def _chain_state(
     secondary: IssueSecondaryReviewArtifact | None,
     report: IssueReviewReport | None,
 ) -> UATChainState:
+    stage_states = {item.stage: item.state for item in pipeline.stages}
+    if stage_states.get(PipelineStage.AUDIT_PLAN) != PipelineStageState.COMPLETE:
+        raise UATCaptureError("AuditPlan pipeline stage state must be COMPLETE before UAT capture.")
+    if stage_states.get(PipelineStage.ISSUE_LEGAL_CONTEXT) != PipelineStageState.COMPLETE:
+        raise UATCaptureError("Issue Legal Context pipeline stage state must be COMPLETE before UAT capture.")
+
+    primary_stage_state = stage_states.get(PipelineStage.ISSUE_PRIMARY_AUDIT)
+    secondary_stage_state = stage_states.get(PipelineStage.ISSUE_SECONDARY_REVIEW)
+    report_stage_state = stage_states.get(PipelineStage.ISSUE_REVIEW_REPORT)
+
     if primary.status == IssuePrimaryAuditStatus.INTERRUPTED:
         if secondary is not None or report is not None:
             raise UATCaptureError("Interrupted primary UAT cannot coexist with downstream secondary/report artifacts.")
         if pipeline.status == PipelineStatus.COMPLETE:
             raise UATCaptureError("Pipeline cannot be COMPLETE while the primary Issue audit is INTERRUPTED.")
+        if primary_stage_state == PipelineStageState.COMPLETE:
+            raise UATCaptureError("Primary artifact is INTERRUPTED but its pipeline stage state is COMPLETE.")
+        if secondary_stage_state == PipelineStageState.COMPLETE or report_stage_state == PipelineStageState.COMPLETE:
+            raise UATCaptureError("Interrupted primary UAT cannot coexist with a downstream pipeline stage state of COMPLETE.")
         return UATChainState.PRIMARY_INTERRUPTED
 
     if primary.status != IssuePrimaryAuditStatus.COMPLETE:
         raise UATCaptureError("UAT capture accepts only COMPLETE or INTERRUPTED primary checkpoints.")
+    if primary_stage_state != PipelineStageState.COMPLETE:
+        raise UATCaptureError("Primary artifact is COMPLETE but its pipeline stage state is not COMPLETE.")
     if secondary is None:
         raise UATCaptureError(
             "Primary is COMPLETE but no secondary checkpoint exists; capture cannot distinguish not-started from lost/stale Stage 13F evidence."
         )
+    if secondary_stage_state is None:
+        raise UATCaptureError("Secondary artifact exists but its pipeline stage state is missing.")
     if secondary.status == IssueSecondaryReviewStatus.INTERRUPTED:
         if report is not None:
             raise UATCaptureError("Interrupted secondary UAT cannot coexist with a final Issue review report.")
         if pipeline.status == PipelineStatus.COMPLETE:
             raise UATCaptureError("Pipeline cannot be COMPLETE while secondary review is INTERRUPTED.")
+        if secondary_stage_state == PipelineStageState.COMPLETE:
+            raise UATCaptureError("Secondary artifact is INTERRUPTED but its pipeline stage state is COMPLETE.")
+        if report_stage_state == PipelineStageState.COMPLETE:
+            raise UATCaptureError("Interrupted secondary UAT cannot coexist with a report pipeline stage state of COMPLETE.")
         return UATChainState.SECONDARY_INTERRUPTED
     if secondary.status != IssueSecondaryReviewStatus.COMPLETE:
         raise UATCaptureError("UAT capture accepts only COMPLETE or INTERRUPTED secondary checkpoints.")
+    if secondary_stage_state != PipelineStageState.COMPLETE:
+        raise UATCaptureError("Secondary artifact is COMPLETE but its pipeline stage state is not COMPLETE.")
     if report is None:
         raise UATCaptureError("A complete primary+secondary chain requires issue-review-report.json for UAT capture.")
+    if report_stage_state != PipelineStageState.COMPLETE:
+        raise UATCaptureError("Final Issue report exists but its pipeline stage state is not COMPLETE.")
     if pipeline.status != PipelineStatus.COMPLETE:
         raise UATCaptureError("A COMPLETE Issue V1 UAT chain requires pipeline.json status COMPLETE.")
     return UATChainState.COMPLETE
