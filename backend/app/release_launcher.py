@@ -7,6 +7,7 @@ import socket
 import sys
 import threading
 import webbrowser
+from datetime import date
 from pathlib import Path
 from typing import Sequence
 
@@ -31,15 +32,27 @@ def release_asset_root() -> Path:
     return release_executable_dir()
 
 
-def configure_release_environment() -> dict[str, str]:
-    """Set release defaults without replacing explicit user/operator overrides."""
+def configure_release_environment(*, use_packaged_legal: bool = False) -> dict[str, str]:
+    """Set release defaults without replacing explicit user/operator overrides.
+
+    Normal execution uses a writable runtime legal directory. Non-mutating
+    diagnostics may point directly at the immutable packaged baseline instead.
+    """
 
     executable_dir = release_executable_dir()
     asset_root = release_asset_root()
+    runtime_root = Path(os.getenv("LAW_RAG_RUNTIME_DIR", str(executable_dir / "runtime"))).expanduser().resolve()
+    if use_packaged_legal:
+        default_legal = asset_root / "public-assets" / "legal" / "legal.db"
+        default_retrieval = asset_root / "public-assets" / "legal" / "retrieval.db"
+    else:
+        default_legal = runtime_root / "legal" / "legal.db"
+        default_retrieval = runtime_root / "legal" / "retrieval.db"
+
     defaults = {
-        "LAW_RAG_RUNTIME_DIR": str(executable_dir / "runtime"),
-        "LAW_RAG_LEGAL_DB": str(asset_root / "public-assets" / "legal" / "legal.db"),
-        "LAW_RAG_RETRIEVAL_DB": str(asset_root / "public-assets" / "legal" / "retrieval.db"),
+        "LAW_RAG_RUNTIME_DIR": str(runtime_root),
+        "LAW_RAG_LEGAL_DB": str(default_legal),
+        "LAW_RAG_RETRIEVAL_DB": str(default_retrieval),
         "LAW_RAG_FRONTEND_DIST": str(asset_root / "frontend-dist"),
         "LAW_RAG_OCR_MODEL_ROOT": str(asset_root / "ocr-models"),
         "LAW_RAG_OCR_MODEL_MANIFEST": str(asset_root / "release" / "ocr-models-manifest.json"),
@@ -109,9 +122,88 @@ def _print_ocr_model_probe(probe) -> None:
     print(probe.detail)
 
 
+def _corpus_diagnostic() -> tuple[bool, dict[str, object]]:
+    from .legal.retrieval import get_retrieval_index_summary, retrieve_legal_evidence
+    from .legal.retrieval_models import RetrievalRequest, RetrievalState
+    from .legal.store import get_summary
+    from .storage import legal_db_path, legal_retrieval_index_path
+
+    legal_path = legal_db_path()
+    retrieval_path = legal_retrieval_index_path()
+    legal = get_summary(legal_path)
+    retrieval = get_retrieval_index_summary(retrieval_path, legal_path)
+    request = RetrievalRequest(
+        query="劳动合同法第四十七条 经济补偿",
+        as_of=date(2026, 8, 21),
+        top_k=5,
+        authority_id_hint="prc-labor-contract-law",
+        article_token_hint="第四十七条",
+        use_semantic=False,
+    )
+    try:
+        response = retrieve_legal_evidence(legal_path, retrieval_path, request)
+    except Exception as exc:
+        response = None
+        retrieval_error = _format_exception_chain(exc)
+    else:
+        retrieval_error = None
+
+    exact_candidate = None
+    if response is not None:
+        exact_candidate = next(
+            (
+                candidate
+                for candidate in response.candidates
+                if candidate.authority_id == "prc-labor-contract-law" and candidate.exact_hit
+            ),
+            None,
+        )
+    ready = bool(
+        legal.ready
+        and legal.authority_count == 14
+        and legal.version_count == 15
+        and legal.article_count == 1274
+        and legal.excerpt_version_count == 0
+        and retrieval.ready
+        and retrieval.lexical_ready
+        and retrieval.article_count == 1274
+        and response is not None
+        and response.state == RetrievalState.OK
+        and exact_candidate is not None
+    )
+    payload: dict[str, object] = {
+        "ready": ready,
+        "legal": {
+            "authority_count": legal.authority_count,
+            "version_count": legal.version_count,
+            "article_count": legal.article_count,
+            "excerpt_version_count": legal.excerpt_version_count,
+        },
+        "retrieval": {
+            "ready": retrieval.ready,
+            "lexical_ready": retrieval.lexical_ready,
+            "semantic_ready": retrieval.semantic_ready,
+            "article_count": retrieval.article_count,
+        },
+        "smoke_query": {
+            "authority_id": exact_candidate.authority_id if exact_candidate else None,
+            "version_id": exact_candidate.version_id if exact_candidate else None,
+            "article_token": exact_candidate.article_token if exact_candidate else None,
+            "exact_hit": bool(exact_candidate and exact_candidate.exact_hit),
+            "error": retrieval_error,
+        },
+    }
+    return ready, payload
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Law-Rag local Windows release launcher")
     parser.add_argument("--diagnose", action="store_true", help="Run non-mutating diagnostics and exit.")
+    parser.add_argument(
+        "--diagnose-corpus",
+        action="store_true",
+        help="Verify the packaged/runtime legal baseline and run one offline exact-citation retrieval smoke without modifying runtime data.",
+    )
     parser.add_argument(
         "--diagnose-ocr-runtime",
         action="store_true",
@@ -137,7 +229,11 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    configure_release_environment()
+    explicit_legal_paths = bool(
+        os.getenv("LAW_RAG_LEGAL_DB", "").strip() or os.getenv("LAW_RAG_RETRIEVAL_DB", "").strip()
+    )
+    use_packaged_legal = (args.diagnose or args.diagnose_corpus) and not explicit_legal_paths
+    configure_release_environment(use_packaged_legal=use_packaged_legal)
 
     if args.diagnose_ocr_runtime:
         from .ocr_runtime import probe_ocr_runtime
@@ -186,20 +282,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(block.text)
         return 0 if blocks else 4
 
+    if args.diagnose_corpus:
+        try:
+            ready, payload = _corpus_diagnostic()
+        except Exception as exc:
+            ready = False
+            payload = {"ready": False, "error": _format_exception_chain(exc)}
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print("Law-Rag Offline Legal Corpus")
+            print(f"ready: {'YES' if ready else 'NO'}")
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if ready else 5
+
     from .startup_diagnostics import inspect_startup_health
 
-    report = inspect_startup_health()
     if args.diagnose:
+        report = inspect_startup_health()
         if args.json:
             print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
         else:
             _print_health(report)
         return 0 if report.base_app_ready else 2
-
-    if not report.base_app_ready:
-        _print_health(report)
-        print("[ERROR] Base runtime is not ready. No server was started and no recovery action was run automatically.")
-        return 2
 
     if args.host not in {"127.0.0.1", "localhost"}:
         print("[ERROR] The release launcher only permits loopback binding.")
@@ -208,6 +313,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not 1 <= args.port <= 65535:
         print("[ERROR] Port must be between 1 and 65535.")
         return 2
+
+    if not explicit_legal_paths:
+        try:
+            from .release_corpus import install_packaged_baseline
+            from .storage import runtime_dir
+
+            install_packaged_baseline(release_asset_root(), runtime_dir())
+        except Exception as exc:
+            print(f"[ERROR] Packaged legal baseline could not be installed safely: {_format_exception_chain(exc)}")
+            return 2
+
+    report = inspect_startup_health()
+    if not report.base_app_ready:
+        _print_health(report)
+        print("[ERROR] Base runtime is not ready. No server was started and no recovery action was run automatically.")
+        return 2
+
     if not _port_available(host, args.port):
         print(f"[ERROR] http://{host}:{args.port} is already in use. Law-Rag was not started twice.")
         return 2
