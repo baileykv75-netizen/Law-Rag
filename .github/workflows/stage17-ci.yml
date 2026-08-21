@@ -1,0 +1,68 @@
+name: Law-Rag Stage 17 CI
+
+on:
+  push:
+    branches: ['stage17-*']
+  pull_request:
+    branches: ['stage16-*', 'stage17-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Run Stage 16 public deterministic quality gates
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m app.quality_cli --repo-root .. --profile ../benchmarks/public/stage11b_quality_gates.json
+      - name: Run Stage 16.2 public regression
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m app.public_regression_cli --repo-root .. --profile ../benchmarks/public/stage16b_three_domain_regression.json
+      - name: Run Stage 16b evaluation suite
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m app.evaluation_suite_cli --repo-root .. --suite ../benchmarks/public/stage16b_evaluation_suite.json
+      - name: Assemble Stage 16.5 evidence matrix
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m app.release_evidence_cli --repo-root ..
+      - name: Probe non-Windows desktop lifecycle behavior
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m app.release_launcher --diagnose-desktop-lifecycle --json
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
