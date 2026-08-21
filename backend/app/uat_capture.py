@@ -43,13 +43,6 @@ class UATCaptureError(RuntimeError):
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FAKE_RE = re.compile(r"(?:^|[-_\s])(fake|test|stub|mock|double|dummy)(?:$|[-_\s])", re.IGNORECASE)
-_ISSUE_STAGES = {
-    PipelineStage.AUDIT_PLAN,
-    PipelineStage.ISSUE_LEGAL_CONTEXT,
-    PipelineStage.ISSUE_PRIMARY_AUDIT,
-    PipelineStage.ISSUE_SECONDARY_REVIEW,
-    PipelineStage.ISSUE_REVIEW_REPORT,
-}
 _LEGACY_STAGES = {
     PipelineStage.PRIMARY_AUDIT,
     PipelineStage.SECONDARY_REVIEW,
@@ -110,6 +103,12 @@ def _load(path: Path, model_type: type[BaseModel], label: str):
         raise UATCaptureError(f"{label} is malformed or schema-invalid.") from exc
 
 
+def _load_optional(path: Path, model_type: type[BaseModel], label: str):
+    if not path.exists():
+        return None
+    return _load(path, model_type, label)
+
+
 def _validate_embedded_fingerprint(value: BaseModel, *, label: str) -> str:
     embedded = getattr(value, "artifact_fingerprint", None)
     if not isinstance(embedded, str) or not _SHA256_RE.fullmatch(embedded):
@@ -149,6 +148,39 @@ def _validate_pipeline(pipeline: PipelineReport, job_id: UUID) -> None:
     }
     if not required.issubset(stages):
         raise UATCaptureError("pipeline.json does not establish the current ISSUE_V1 provider path.")
+
+
+def _validate_job_identity(job_id: UUID, **artifacts: BaseModel | None) -> None:
+    for label, value in artifacts.items():
+        if value is not None and getattr(value, "job_id", None) != job_id:
+            raise UATCaptureError(f"{label} belongs to a different job ID.")
+
+
+def _validate_run_parameters(
+    pipeline: PipelineReport,
+    plan: AuditPlan,
+    legal: IssueLegalContextArtifact,
+    primary: IssuePrimaryAuditArtifact,
+    report: IssueReviewReport | None,
+) -> None:
+    if plan.status.strip().lower() != "complete":
+        raise UATCaptureError("AuditPlan must be complete before its provider evidence can be captured as UAT.")
+    if legal.audit_plan_schema_version != plan.schema_version or legal.audit_planner_version != plan.planner_version:
+        raise UATCaptureError("Issue Legal Context was built against a different AuditPlan schema/planner version.")
+    if legal.contract_source_fingerprint != plan.contract_source_fingerprint:
+        raise UATCaptureError("Issue Legal Context contract source fingerprint differs from the AuditPlan.")
+    if legal.contract_content_fingerprint != plan.contract_content_fingerprint:
+        raise UATCaptureError("Issue Legal Context contract content fingerprint differs from the AuditPlan.")
+    if primary.contract_source_fingerprint != plan.contract_source_fingerprint:
+        raise UATCaptureError("Primary Issue audit contract source fingerprint differs from the AuditPlan.")
+    if primary.contract_content_fingerprint != plan.contract_content_fingerprint:
+        raise UATCaptureError("Primary Issue audit contract content fingerprint differs from the AuditPlan.")
+    if pipeline.as_of != legal.as_of or primary.as_of != legal.as_of:
+        raise UATCaptureError("Pipeline, Issue Legal Context and Primary Issue audit disagree on as_of.")
+    if pipeline.use_semantic != legal.use_semantic:
+        raise UATCaptureError("Pipeline use_semantic differs from the Issue Legal Context retrieval mode.")
+    if report is not None and report.as_of != legal.as_of.isoformat():
+        raise UATCaptureError("Final Issue review report as_of differs from the Issue Legal Context.")
 
 
 def _provider_identity_allowed(provider: str, model: str, *, expected_provider: str) -> None:
@@ -257,6 +289,7 @@ def _secondary_calls(secondary: IssueSecondaryReviewArtifact) -> list[UATProvide
 
 def _validate_issue_counts(
     plan: AuditPlan,
+    legal: IssueLegalContextArtifact,
     primary: IssuePrimaryAuditArtifact,
     secondary: IssueSecondaryReviewArtifact | None,
     report: IssueReviewReport | None,
@@ -265,6 +298,14 @@ def _validate_issue_counts(
     if len(issue_ids) != len(set(issue_ids)):
         raise UATCaptureError("AuditPlan contains duplicate Issue IDs.")
     expected = set(issue_ids)
+
+    legal_ids = [item.issue_id for item in legal.issues]
+    if len(legal_ids) != len(set(legal_ids)):
+        raise UATCaptureError("Issue Legal Context contains duplicate Issue packages.")
+    if legal.total_issue_count != len(issue_ids) or len(legal_ids) != len(issue_ids):
+        raise UATCaptureError("Issue Legal Context count does not reconcile with the AuditPlan.")
+    if set(legal_ids) != expected:
+        raise UATCaptureError("Issue Legal Context must cover exactly the AuditPlan Issue set.")
 
     primary_ids = [item.issue_id for item in primary.results]
     if len(primary_ids) != len(set(primary_ids)):
@@ -289,6 +330,8 @@ def _validate_issue_counts(
 
     if report is not None:
         comparison_ids = [item.issue_id for item in report.comparisons]
+        if report.total_issue_count != len(issue_ids) or report.compared_issue_count != len(comparison_ids):
+            raise UATCaptureError("Final Issue comparison counts do not reconcile with the AuditPlan.")
         if len(comparison_ids) != len(set(comparison_ids)) or set(comparison_ids) != expected:
             raise UATCaptureError("Final Issue comparison does not cover exactly the AuditPlan Issue set.")
     return issue_ids
@@ -357,12 +400,6 @@ def _provider_summaries(calls: list[UATProviderCallProvenance]) -> list[UATProvi
     return summaries
 
 
-def _load_optional(path: Path, model_type: type[BaseModel], label: str):
-    if not path.exists():
-        return None
-    return _load(path, model_type, label)
-
-
 def capture_issue_v1_uat(
     repo_root: Path,
     job_id: UUID,
@@ -398,17 +435,15 @@ def capture_issue_v1_uat(
     )
 
     _validate_pipeline(pipeline, job_id)
-    for label, value in (
-        ("audit-plan.json", plan),
-        ("issue-legal-context.json", legal),
-        ("issue-primary-audit.json", primary),
-    ):
-        if getattr(value, "job_id", None) != job_id:
-            raise UATCaptureError(f"{label} belongs to a different job ID.")
-    if secondary is not None and secondary.job_id != job_id:
-        raise UATCaptureError("issue-secondary-review.json belongs to a different job ID.")
-    if report is not None and report.job_id != job_id:
-        raise UATCaptureError("issue-review-report.json belongs to a different job ID.")
+    _validate_job_identity(
+        job_id,
+        audit_plan=plan,
+        issue_legal_context=legal,
+        issue_primary_audit=primary,
+        issue_secondary_review=secondary,
+        issue_review_report=report,
+    )
+    _validate_run_parameters(pipeline, plan, legal, primary, report)
 
     plan_fingerprint = _stable_fingerprint(plan.model_dump(mode="json"))
     legal_fingerprint = _validate_embedded_fingerprint(legal, label="issue-legal-context.json")
@@ -449,7 +484,7 @@ def capture_issue_v1_uat(
         if secondary is None or report.secondary_provider != secondary.provider or report.secondary_model != secondary.model:
             raise UATCaptureError("Final Issue report secondary provider/model differs from the secondary artifact.")
 
-    issue_ids = _validate_issue_counts(plan, primary, secondary, report)
+    issue_ids = _validate_issue_counts(plan, legal, primary, secondary, report)
     chain_state = _chain_state(pipeline, primary, secondary, report)
 
     calls = [*_planner_calls(plan), *_primary_calls(primary)]
