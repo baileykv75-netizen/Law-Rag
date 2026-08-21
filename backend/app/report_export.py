@@ -36,6 +36,7 @@ from .report_export_models import (
     ReportIssue,
     ReportLegalEvidence,
 )
+from .safe_persistence import atomic_write_text
 from .storage import runtime_dir
 from .workspace_models import WorkspaceOverallState
 
@@ -88,13 +89,20 @@ def _source_span_index(contract) -> dict[str, ReportContractEvidence]:
     return result
 
 
+def _issue_ids(label: str, items: list[object]) -> set[str]:
+    values = [str(getattr(item, "issue_id")) for item in items]
+    if len(values) != len(set(values)):
+        raise ReportExportError(f"{label} contains duplicate Issue IDs; refusing ambiguous report export.")
+    return set(values)
+
+
 def _assert_exact_issue_coverage(plan, legal, primary, secondary, review) -> None:
-    expected = {item.issue_id for item in plan.issues}
+    expected = _issue_ids("audit-plan", plan.issues)
     actual_sets = {
-        "issue-legal-context": {item.issue_id for item in legal.issues},
-        "issue-primary-audit": {item.issue_id for item in primary.results},
-        "issue-secondary-review": {item.issue_id for item in secondary.results},
-        "issue-review-report": {item.issue_id for item in review.comparisons},
+        "issue-legal-context": _issue_ids("issue-legal-context", legal.issues),
+        "issue-primary-audit": _issue_ids("issue-primary-audit", primary.results),
+        "issue-secondary-review": _issue_ids("issue-secondary-review", secondary.results),
+        "issue-review-report": _issue_ids("issue-review-report", review.comparisons),
     }
     for label, actual in actual_sets.items():
         if actual != expected:
@@ -479,7 +487,7 @@ def _render_pdf(report: AuditReportDocument, destination: Path) -> None:
             for evidence in issue.contract_evidence:
                 where = f"第 {evidence.page_number} 页" if evidence.page_number else "结构锚点"
                 story.append(_pdf_paragraph(
-                    f"• {evidence.evidence_id} · {where} · {_safe_text(evidence.source_method)}<br/>{_safe_text(evidence.quote)}",
+                    f"• {evidence.evidence_id} · {where} · {_safe_text(evidence.source_method)}\n{_safe_text(evidence.quote)}",
                     body,
                 ))
         else:
@@ -490,7 +498,7 @@ def _render_pdf(report: AuditReportDocument, destination: Path) -> None:
             for evidence in issue.legal_evidence:
                 validity = evidence.effective_date + (f" 至 {evidence.end_date_exclusive}（不含）" if evidence.end_date_exclusive else " 起")
                 story.append(_pdf_paragraph(
-                    f"• {evidence.authority_title} {evidence.article_token} · version={evidence.version_id} · {validity}<br/>{evidence.article_text}",
+                    f"• {evidence.authority_title} {evidence.article_token} · version={evidence.version_id} · {validity}\n{evidence.article_text}",
                     body,
                 ))
         else:
@@ -541,13 +549,30 @@ def _atomic_render(destination: Path, renderer) -> None:
         raise
 
 
+def _validated_export_dir(job_id: UUID) -> Path:
+    exports_root = runtime_dir() / "exports"
+    if exports_root.is_symlink():
+        raise ReportExportError("runtime/exports must not be a symlink.")
+    exports_root.mkdir(parents=True, exist_ok=True)
+    if exports_root.is_symlink():
+        raise ReportExportError("runtime/exports became a symlink during report export.")
+
+    export_dir = exports_root / str(job_id)
+    if export_dir.is_symlink():
+        raise ReportExportError("Job report export directory must not be a symlink.")
+    export_dir.mkdir(parents=True, exist_ok=True)
+    if exports_root.is_symlink() or export_dir.is_symlink():
+        raise ReportExportError("Report export directory changed into a symlink during setup.")
+    return export_dir
+
+
 def export_audit_report(job_id: UUID, format: ReportExportFormat) -> tuple[Path, ReportExportResult]:
     report = build_audit_report(job_id)
-    export_dir = runtime_dir() / "exports" / str(job_id)
+    export_dir = _validated_export_dir(job_id)
     filename = f"Law-Rag-Audit-{str(job_id)[:8]}.{format.value}"
     destination = export_dir / filename
-    if destination.is_symlink() or export_dir.is_symlink():
-        raise ReportExportError("Report export path must not be a symlink.")
+    if destination.is_symlink():
+        raise ReportExportError("Report export destination must not be a symlink.")
 
     renderer = _render_docx if format == ReportExportFormat.DOCX else _render_pdf
     _atomic_render(destination, lambda path: renderer(report, path))
@@ -560,5 +585,5 @@ def export_audit_report(job_id: UUID, format: ReportExportFormat) -> tuple[Path,
         report_content_fingerprint=report.report_content_fingerprint,
     )
     manifest = export_dir / f"{filename}.manifest.json"
-    manifest.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+    atomic_write_text(manifest, result.model_dump_json(indent=2))
     return destination, result
