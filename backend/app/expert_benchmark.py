@@ -46,6 +46,10 @@ def _stable_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def _ratio(numerator: int, denominator: int) -> float:
+    return float(numerator) / float(denominator) if denominator else 0.0
+
+
 def expert_case_label_fingerprint(case: BenchmarkCase) -> str:
     expectations = sorted(case.expectations, key=lambda item: item.assertion_id)
     payload = {
@@ -367,9 +371,11 @@ def run_expert_benchmark(
 
     statuses = [item.status for item in audit.cases]
     reviewer_counts = [item.reviewer_count for item in audit.cases]
+    total = len(dataset.cases)
     agreed = sum(1 for status in statuses if status == ExpertLabelStatus.AGREED)
     adjudicated = sum(1 for status in statuses if status == ExpertLabelStatus.ADJUDICATED)
     ambiguous = sum(1 for status in statuses if status == ExpertLabelStatus.AMBIGUOUS)
+    usable = agreed + adjudicated
 
     return ExpertBenchmarkRunReport(
         evaluator_version=EXPERT_BENCHMARK_EVALUATOR_VERSION,
@@ -378,11 +384,15 @@ def run_expert_benchmark(
         dataset_id=dataset.dataset_id,
         dataset_version=dataset.dataset_version,
         label_quality=ExpertLabelQualitySummary(
-            total_case_count=len(dataset.cases),
+            total_case_count=total,
             agreed_case_count=agreed,
             adjudicated_case_count=adjudicated,
             ambiguous_case_count=ambiguous,
-            usable_case_count=agreed + adjudicated,
+            usable_case_count=usable,
+            agreement_rate=_ratio(agreed, total),
+            adjudication_rate=_ratio(adjudicated, total),
+            ambiguity_rate=_ratio(ambiguous, total),
+            usable_rate=_ratio(usable, total),
             minimum_reviewer_count_required=protocol.minimum_reviewer_count,
             minimum_reviewer_count_observed=min(reviewer_counts) if reviewer_counts else 0,
         ),
@@ -395,6 +405,7 @@ def run_expert_benchmark(
         },
         warnings=[
             "Expert benchmark metrics are valid only for the exact private dataset/protocol versions and label audit represented by these fingerprints.",
+            "Label agreement/adjudication/ambiguity rates describe the audited private truth set and must be reviewed alongside system metrics.",
             "AMBIGUOUS expert cases remain visible in denominator-quality counts and are excluded from professional performance metrics rather than silently relabeled.",
             "This runner defines no release threshold and no cross-task legal_accuracy/overall_accuracy score.",
             "Real-provider UAT provenance/execution is a separate Stage 16.4 evidence class.",
