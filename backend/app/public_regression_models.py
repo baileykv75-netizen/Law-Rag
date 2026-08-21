@@ -58,6 +58,8 @@ class PublicRegressionProfile(BaseModel):
     runner: PublicRegressionRunner
     benchmark_path: str = Field(min_length=1, max_length=1000)
     corpus_release_path: str = Field(min_length=1, max_length=1000)
+    expected_corpus_id: str = Field(min_length=1, max_length=160)
+    expected_corpus_version: str = Field(min_length=1, max_length=80)
     gates: list[QualityGateDefinition] = Field(min_length=1)
 
     @model_validator(mode="after")
