@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from .batch_results import (
     BatchNotFoundError,
@@ -13,6 +13,8 @@ from .batch_results import (
     summarize_latest_batch,
 )
 from .batch_results_models import BatchManifest, BatchResultSummary
+from .job_history import JobHistoryError, get_job_history, list_job_history
+from .job_history_models import JobHistoryItem, JobHistoryPage
 
 router = APIRouter(prefix="/api/batches", tags=["batch-results"])
 
@@ -39,6 +41,29 @@ def latest_batch_results_api() -> BatchResultSummary | None:
     try:
         return summarize_latest_batch()
     except BatchResultError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@router.get("/history/jobs", response_model=JobHistoryPage)
+def job_history_api(
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> JobHistoryPage:
+    """List persisted local jobs without triggering OCR, retrieval or providers."""
+
+    try:
+        return list_job_history(offset=offset, limit=limit)
+    except JobHistoryError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@router.get("/history/jobs/{job_id}", response_model=JobHistoryItem)
+def job_history_item_api(job_id: UUID) -> JobHistoryItem:
+    try:
+        return get_job_history(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except JobHistoryError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
