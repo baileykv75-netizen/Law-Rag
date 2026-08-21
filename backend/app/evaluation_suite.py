@@ -23,6 +23,8 @@ from .quality import QualityError, load_quality_gate_profile, run_public_quality
 from .quality_models import QUALITY_EVALUATOR_VERSION
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_FAKE_TOKEN_RE = re.compile(r"(^|[-_.])fake($|[-_.])", re.IGNORECASE)
+_REAL_UAT_PROVIDERS = frozenset({"deepseek", "kimi"})
 
 
 class EvaluationSuiteError(RuntimeError):
@@ -159,6 +161,10 @@ def _validate_dataset_provenance(
             )
 
 
+def _looks_fake(value: str) -> bool:
+    return bool(_FAKE_TOKEN_RE.search(value.strip()))
+
+
 def _uat_producer_summaries(observations: BenchmarkObservationSet) -> list[EvaluationProducerSummary]:
     if not observations.observations:
         raise EvaluationSuiteError("REAL_PROVIDER_UAT requires at least one real-provider observation.")
@@ -166,6 +172,7 @@ def _uat_producer_summaries(observations: BenchmarkObservationSet) -> list[Evalu
     unique: dict[tuple[str, str, str], EvaluationProducerSummary] = {}
     for item in observations.observations:
         producer = item.producer
+        producer_id = producer.producer_id.strip()
         provider = (producer.provider or "").strip()
         model = (producer.model or "").strip()
         artifact_fingerprint = (producer.artifact_fingerprint or "").strip()
@@ -173,15 +180,22 @@ def _uat_producer_summaries(observations: BenchmarkObservationSet) -> list[Evalu
             raise EvaluationSuiteError(
                 "Every REAL_PROVIDER_UAT observation must record producer.provider and producer.model."
             )
-        if provider.lower() == "fake":
-            raise EvaluationSuiteError("Fake providers cannot be accepted as REAL_PROVIDER_UAT evidence.")
+        normalized_provider = provider.lower()
+        if normalized_provider not in _REAL_UAT_PROVIDERS:
+            raise EvaluationSuiteError(
+                "REAL_PROVIDER_UAT provider must be one of the current production providers: deepseek or kimi."
+            )
+        if _looks_fake(producer_id) or _looks_fake(provider):
+            raise EvaluationSuiteError(
+                "Fake producer identities/providers cannot be accepted as REAL_PROVIDER_UAT evidence."
+            )
         if not _SHA256_RE.fullmatch(artifact_fingerprint):
             raise EvaluationSuiteError(
                 "Every REAL_PROVIDER_UAT observation must record a SHA-256 artifact_fingerprint."
             )
-        key = (provider, model, artifact_fingerprint.lower())
+        key = (normalized_provider, model, artifact_fingerprint.lower())
         unique[key] = EvaluationProducerSummary(
-            provider=provider,
+            provider=normalized_provider,
             model=model,
             artifact_fingerprint=artifact_fingerprint.lower(),
         )
@@ -241,6 +255,22 @@ def _run_benchmark_entry(
     )
 
 
+def _public_quality_source_fingerprints(repo_root: Path, profile_path: Path) -> dict[str, str]:
+    sources = {
+        "quality_profile_sha256": profile_path,
+        "schema_dataset_sha256": repo_root / "benchmarks" / "public" / "stage11a_schema_smoke.dataset.json",
+        "schema_observations_sha256": repo_root
+        / "benchmarks"
+        / "public"
+        / "stage11a_schema_smoke.observations.json",
+        "legal_seed_manifest_sha256": repo_root / "legal_data" / "seed" / "manifest.json",
+        "retrieval_benchmark_sha256": repo_root / "legal_data" / "fixtures" / "retrieval_benchmark.json",
+    }
+    for label, path in sources.items():
+        _require_file(path, label=label)
+    return {label: _file_sha256(path) for label, path in sources.items()}
+
+
 def _run_quality_entry(
     entry: EvaluationSuiteEntry,
     *,
@@ -271,7 +301,7 @@ def _run_quality_entry(
         unit_count=len(report.gates),
         passed_count=passed_count,
         failed_count=len(report.gates) - passed_count,
-        source_fingerprints={"quality_profile_sha256": _file_sha256(profile_path)},
+        source_fingerprints=_public_quality_source_fingerprints(repo_root, profile_path),
         warnings=[
             "Public quality gates are scoped deterministic regression evidence and are not a general legal-accuracy claim."
         ],
