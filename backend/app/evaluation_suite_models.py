@@ -71,11 +71,9 @@ class EvaluationSuiteManifest(BaseModel):
 
 
 class EvaluationProducerSummary(BaseModel):
-    producer_id: str
-    producer_version: str
-    provider: str | None = None
-    model: str | None = None
-    artifact_fingerprint: str | None = None
+    provider: str
+    model: str
+    artifact_fingerprint: str
 
 
 class EvaluationSuiteEntryResult(BaseModel):
