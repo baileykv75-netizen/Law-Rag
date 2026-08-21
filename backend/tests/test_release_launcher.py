@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.release_assets_cli import DEFAULT_CORPUS_RELEASE, build_public_release_assets
 from app.release_launcher import configure_release_environment, main
 
 
@@ -81,6 +82,35 @@ def test_release_diagnose_is_non_mutating_and_never_prints_provider_secret_value
     assert "checks" in payload
     assert deepseek_secret not in output
     assert kimi_secret not in output
+    assert not runtime.exists()
+
+
+def test_release_corpus_diagnostic_uses_packaged_baseline_without_creating_runtime(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _clear_release_env(monkeypatch)
+    asset_root = tmp_path / "assets"
+    runtime = tmp_path / "runtime"
+    build_public_release_assets(asset_root, DEFAULT_CORPUS_RELEASE)
+    monkeypatch.setenv("LAW_RAG_RELEASE_ASSET_ROOT", str(asset_root))
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(runtime))
+
+    code = main(["--diagnose-corpus", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["ready"] is True
+    assert payload["legal"] == {
+        "authority_count": 14,
+        "version_count": 15,
+        "article_count": 1274,
+        "excerpt_version_count": 0,
+    }
+    assert payload["retrieval"]["ready"] is True
+    assert payload["retrieval"]["lexical_ready"] is True
+    assert payload["retrieval"]["article_count"] == 1274
+    assert payload["smoke_query"]["authority_id"] == "prc-labor-contract-law"
+    assert payload["smoke_query"]["exact_hit"] is True
     assert not runtime.exists()
 
 
