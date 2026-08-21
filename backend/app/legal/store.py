@@ -104,10 +104,11 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
         raise LegalStoreError(
             f"Legal database schema {existing['value']} is incompatible with {LEGAL_SCHEMA_VERSION}."
         )
-    connection.execute(
-        "INSERT OR REPLACE INTO legal_meta(key, value) VALUES ('schema_version', ?)",
-        (LEGAL_SCHEMA_VERSION,),
-    )
+    if existing is None:
+        connection.execute(
+            "INSERT INTO legal_meta(key, value) VALUES ('schema_version', ?)",
+            (LEGAL_SCHEMA_VERSION,),
+        )
 
 
 def _authority_from_row(row: sqlite3.Row) -> LegalAuthority:
