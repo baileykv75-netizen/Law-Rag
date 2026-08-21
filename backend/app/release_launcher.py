@@ -226,8 +226,18 @@ def _parser() -> argparse.ArgumentParser:
         metavar="IMAGE",
         help="Run the production PaddleOCR adapter on one local image using only verified packaged model directories.",
     )
+    parser.add_argument(
+        "--diagnose-desktop-lifecycle",
+        action="store_true",
+        help="Verify whether the Windows system-tray runtime dependency is available without starting the local server.",
+    )
     parser.add_argument("--json", action="store_true", help="With a diagnostic mode, print machine-readable JSON.")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the local workstation in a browser.")
+    parser.add_argument(
+        "--no-tray",
+        action="store_true",
+        help="Disable the Windows tray icon and use the plain local-server lifecycle (automation/debug only).",
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     return parser
@@ -240,6 +250,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     use_packaged_legal = (args.diagnose or args.diagnose_corpus) and not explicit_legal_paths
     configure_release_environment(use_packaged_legal=use_packaged_legal)
+
+    if args.diagnose_desktop_lifecycle:
+        from .desktop_lifecycle import probe_desktop_lifecycle
+
+        probe = probe_desktop_lifecycle()
+        payload = {
+            "platform": probe.platform,
+            "tray_supported": probe.tray_supported,
+            "pystray_available": probe.pystray_available,
+            "detail": probe.detail,
+        }
+        if args.json:
+            print(_diagnostic_json(payload))
+        else:
+            print("Law-Rag Desktop Lifecycle")
+            print(_diagnostic_json(payload))
+        if os.name == "nt":
+            return 0 if probe.pystray_available else 6
+        return 0
 
     if args.diagnose_ocr_runtime:
         from .ocr_runtime import probe_ocr_runtime
@@ -350,12 +379,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
+    from .desktop_lifecycle import run_server_with_desktop_lifecycle
     from .main import app
     import uvicorn
 
     print(f"[Law-Rag] Local workstation: {url}")
     print("[Law-Rag] Contract/runtime data remains local except explicit DeepSeek/Kimi calls initiated by the user.")
-    uvicorn.run(app, host=host, port=args.port, log_level="info", access_log=False)
+    if os.name == "nt" and not args.no_tray:
+        print("[Law-Rag] System tray: use 'Open Law-Rag' to reopen the workstation or 'Quit Law-Rag' for graceful shutdown.")
+
+    config = uvicorn.Config(app, host=host, port=args.port, log_level="info", access_log=False)
+    server = uvicorn.Server(config)
+    try:
+        run_server_with_desktop_lifecycle(
+            server,
+            url,
+            enable_tray=bool(os.name == "nt" and not args.no_tray),
+        )
+    except RuntimeError as exc:
+        print(f"[ERROR] Desktop lifecycle could not start safely: {_format_exception_chain(exc)}")
+        return 6
     return 0
 
 
