@@ -1,0 +1,74 @@
+name: Law-Rag Stage 17.4 Windows Validation
+
+on:
+  pull_request:
+    branches: ['stage17-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-stage17-release:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'stage17-4-')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12.10'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.2'
+          package-manager-cache: false
+
+      - name: Build Windows onedir bundle from exact release locks
+        shell: pwsh
+        run: ./release/build-windows.ps1
+
+      - name: Revalidate frozen three-domain corpus baseline
+        shell: pwsh
+        run: ./release/smoke-stage15-5-windows.ps1 -Port 8795
+
+      - name: Revalidate packaged PDF OCR HTTP privacy path
+        shell: pwsh
+        run: ./release/smoke-windows.ps1 -Port 8810
+
+      - name: Validate Stage 17 tray history storage cleanup and restart recovery
+        shell: pwsh
+        run: ./release/smoke-stage17-4-windows.ps1 -Port 8850
+
+      - name: Build deterministic portable RC ZIP and manifest
+        shell: pwsh
+        run: ./release/package-rc.ps1
+
+      - name: Extract final RC and re-run existing Stage 12-14 regressions
+        shell: pwsh
+        run: ./release/smoke-rc-windows.ps1 -Port 8830
+
+      - name: Validate Stage 17 against extracted portable RC
+        shell: pwsh
+        run: |
+          $Zip = Get-ChildItem ./release/rc -Filter '*.zip' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $Zip) { throw 'Portable RC ZIP not found.' }
+          $Extract = Join-Path $env:RUNNER_TEMP ('law-rag-stage17-4-rc-' + [guid]::NewGuid().ToString('N'))
+          Expand-Archive -Path $Zip.FullName -DestinationPath $Extract -Force
+          $Bundle = Get-ChildItem $Extract -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'Law-Rag.exe') } | Select-Object -First 1
+          if ($null -eq $Bundle) { throw 'Extracted portable RC does not contain Law-Rag.exe.' }
+          ./release/smoke-stage17-4-windows.ps1 -BundleDir $Bundle.FullName -Port 8860
+
+      - name: Upload inspectable Stage 17.4 Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-onedir-stage17-4
+          path: release/dist/Law-Rag
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload Stage 17.4 portable RC files
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-x64-stage17-4
+          path: release/rc
+          if-no-files-found: error
+          retention-days: 7
