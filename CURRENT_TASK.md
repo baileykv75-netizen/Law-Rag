@@ -1,23 +1,58 @@
 # CURRENT_TASK.md
 
-# Stage 15 — Official Legal Corpus Expansion + Versioning + Retrieval Tuning
+# Stage 16 — Expert Benchmark + Regression Corpus + Real-Provider UAT
 
 ## Status
 
 ```text
-Stage 11A–11E   COMPLETE / validated release foundations
+Stage 11A–11E   COMPLETE / benchmark + quality + release foundations
 Stage 12A–12F   COMPLETE / RC2 VALIDATED
 Stage 13A–13G   COMPLETE / ISSUE_V1 production migration validated
 Stage 14.1–14.7 COMPLETE / OCR distribution + DOCX + packaged Windows validation
-Stage 15.1–15.5 COMPLETE / official three-domain corpus + versioning + domain-aware RAG + Windows baseline validated
+Stage 15.1–15.5 COMPLETE / official three-domain corpus + domain-aware RAG + Windows baseline validated
 
-Stage 16        NEXT
-                expert benchmark + regression corpus + real-provider UAT
+Stage 16.1      COMPLETE / versioned evaluation-suite architecture + evidence-class isolation
+Stage 16.2      NEXT     / public deterministic regression corpus expansion
+Stage 16.3      PENDING  / private expert benchmark protocol + metrics
+Stage 16.4      PENDING  / real-provider ISSUE_V1 UAT observation capture
+Stage 16.5      PENDING  / Stage 16 release-quality evidence matrix + final regression
 ```
 
-Stage 15 is closed. Do not reopen Stage 13 ISSUE_V1 topology, Stage 14 source/OCR boundaries, or Stage 15 corpus identity/versioning rules without new evidence.
+Stage 16 measures and hardens the proven Stage 13–15 product. It does **not** redesign the production review topology.
 
-## Production baseline
+## Stage 15 closeout baseline
+
+Authoritative closeout head before Stage 16:
+
+```text
+2ea5b936723133ddf5eb8829534c0e1530c60f85
+```
+
+Closeout validation:
+
+```text
+Law-Rag Stage 15 CI #123
+run 32456205510
+SUCCESS
+
+Law-Rag Stage 15.5 Windows Baseline CI #9
+run 32456205586
+SUCCESS
+```
+
+The frozen packaged baseline remains:
+
+```text
+Corpus Release  three-domain-core@1.0.0
+READY Packs     3
+Authorities     14
+Versions        15
+Unique Articles 1274
+```
+
+Draft PR #13 and #14 remain stacked Stage 15 validation carriers only. They are not authorized for merge.
+
+## Production architecture Stage 16 must preserve
 
 ```text
 Source file
@@ -28,8 +63,8 @@ Source file
  -> issue-based Legal RAG
       -> deterministic Issue domain route
       -> READY Corpus Pack eligibility
-      -> applicable Authority Version
-      -> Exact Citation + BM25 + optional local BGE
+      -> applicable Authority Version for as_of
+      -> Exact Citation + BM25/FTS5 + optional local BGE
       -> deterministic fusion
  -> one bounded DeepSeek primary request per AuditPlan Issue
  -> one bounded Kimi finding + coverage review per AuditPlan Issue
@@ -38,200 +73,150 @@ Source file
  -> architecture-aware Results / Workspace / Developer
 ```
 
-Historical completed RC2 jobs remain readable as `LEGACY_RC2`; provenance conflicts fail closed as `CONFLICT`.
-
-## Stage 14 — COMPLETE
-
-Authoritative Stage 14 packaged Windows validation: `32245812422`.
-Final Stage 14 closeout CI: Law-Rag CI #757 (`32249531744`) — SUCCESS.
-
-The validated source boundary remains PDF/JPG/JPEG/PNG/modern DOCX with local native-text-first processing and bundled fixed local OCR for OCR-required content.
-
-## Stage 15.1 — Corpus Pack architecture — COMPLETE
-
 Canonical legal identity remains:
 
 ```text
 Authority -> Version -> Article / Legal Evidence
 ```
 
-Corpus Pack is only a grouping/distribution layer. Membership is many-to-many, shared Authority/Version text is not duplicated, pack paths are corpus-root-relative POSIX paths, duplicate identity in one pack is rejected, and Stage 6 `LegalManifest` / `legal.db` compatibility is preserved.
+## Stage 16 measurement principle
 
-Authoritative validation: Law-Rag CI #762 (`32323430473`) — SUCCESS.
-
-## Stage 15.2 — Official three-domain corpus — COMPLETE
-
-Frozen READY baseline:
+Stage 16 keeps three evidence classes explicit:
 
 ```text
-cn-intellectual-property-core    4 Authorities / 5 Versions / 350 membership Articles
-cn-enterprise-compliance-core    6 Authorities / 6 Versions / 587 membership Articles
-cn-labor-dispute-core            5 Authorities / 5 Versions / 378 membership Articles
+PUBLIC_REGRESSION
+  checked-in synthetic/public/legal deterministic regression evidence
+
+PRIVATE_EXPERT
+  professionally labeled reviewer truth kept outside tracked Git paths
+
+REAL_PROVIDER_UAT
+  explicit paid/network ISSUE_V1 observations with provider/model/artifact provenance
 ```
 
-Deduplicated union:
+These evidence classes must never be collapsed into one invented `overall_accuracy` or `legal_accuracy` score.
+
+## Stage 16.1 — Versioned Evaluation Suite Architecture — COMPLETE
+
+Stage 16.1 added one deterministic orchestration layer above the existing Stage 11 benchmark and quality evaluators:
 
 ```text
-14 Authorities
-15 Versions
-1274 unique Articles
-14 EFFECTIVE versions
-1 NOT_YET_EFFECTIVE version
+EvaluationSuiteManifest
+  -> ordered EvaluationSuiteEntry[]
+       -> existing BenchmarkDataset + BenchmarkObservationSet evaluator
+       OR
+       -> existing public QualityGateProfile evaluator
+  -> sanitized deterministic EvaluationSuiteRunReport
 ```
 
-All 15 non-BLOCKED versions have checked-in official-source `snapshot.txt` + `manifest.json` with pinned SHA-256 and Article count. Labor Dispute Interpretation (I) remains explicitly BLOCKED because the current version-level validity model cannot safely flatten its paragraph-level partial repeal.
+Implemented boundaries:
 
-## Stage 15.3 — Corpus update + version management — COMPLETE
+- versioned suite schema and evaluator identity;
+- explicit `PUBLIC_REGRESSION`, `PRIVATE_EXPERT`, `REAL_PROVIDER_UAT` suite classes;
+- public suite data restricted to `benchmarks/public/`;
+- private expert suite/data restricted to external or ignored `benchmark_private/` locations;
+- real-provider UAT observations restricted to external/ignored paths;
+- current production UAT provider identity limited to DeepSeek/Kimi and fake producer identities rejected;
+- provider/model/SHA-256 artifact provenance required for UAT observations;
+- suite summaries omit assertion-level expected/observed values, expert labels, private contract text, raw provider payloads, hidden reasoning and credentials;
+- dataset/profile/evaluation-input SHA-256 fingerprints retained for auditability;
+- checked-in public Stage 16.1 orchestration smoke;
+- deterministic CLI and Stage 16 CI.
 
-Version hierarchy is explicit:
+The suite evaluator consumes observations only. It never calls DeepSeek, Kimi, OCR or another provider itself.
+
+Authoritative Stage 16.1 implementation validation on head `de9fb64d3b03316eb3427f0137fc0c9086d145f3`:
 
 ```text
-Application version
-  != Corpus Release version
-  != Corpus Pack version
-  != Authority Version
+Law-Rag Stage 16 CI #9
+run 32457699628
+SUCCESS
+
+backend pytest
+428 passed, 5 skipped, 1 third-party warning
+
+existing public deterministic quality gates
+PASS
+
+Stage 16 public evaluation suite
+2 / 2 entries PASS
+
+frontend production build
+PASS
+
+Law-Rag Stage 15 regression CI #127
+run 32457699622
+SUCCESS
+
+Stage 15.5 Windows workflow on this PR
+SKIPPED as intended
 ```
 
-Implemented immutable Corpus Releases, deterministic update planning, fail-closed historical/version mutation checks, and staged `legal.db` rebuild with atomic replacement.
-
-Baseline Corpus Release:
+Draft PR #15 is the validation-only Stage 16.1 carrier:
 
 ```text
-legal_data/releases/three-domain-core/1.0.0/release.json
-corpus_id       three-domain-core
-corpus_version  1.0.0
-released_on     2026-08-20
-Pack count      3
-Authorities     14
-Versions        15
-Articles        1274
-release_digest  4009c06967cd2281089e85bdfda64388dd4ac8fc3b86125d971bfa1c0f642b4f
+head: stage16-1-evaluation-suite-architecture
+base: stage15-5-windows-baseline-corpus
 ```
 
-Authoritative Stage 15.3 validation: Law-Rag Stage 15 CI run `32359854525` — SUCCESS.
+PR #15 is not authorized for merge.
 
-## Stage 15.4 — Domain-aware Legal RAG — COMPLETE
+See `docs/STAGE16_EVALUATION.md`.
 
-Stage 15.4 adds an auditable eligibility layer before the existing retrieval engine without creating a second RAG path or changing ISSUE_V1 reasoning topology.
+## Stage 16.2 — Public deterministic regression corpus expansion — NEXT
 
-```text
-AuditPlan Issue
- -> deterministic domain route
- -> READY Corpus Pack domain tags
- -> eligible Authority allowlist
- -> as_of applicable Authority Version
- -> Exact Citation + FTS5/BM25 + optional local BGE
- -> deterministic weighted RRF fusion
- -> IssueLegalEvidencePackage
-```
+### Goal
 
-Current deterministic route states:
+Promote the strongest already-public deterministic Stage 13–15 regression evidence into versioned Stage 16 benchmark datasets/suite entries so the public suite measures more than harness integrity and the old Stage 7 curated retrieval seed.
 
-```text
-INTELLECTUAL_PROPERTY
-ENTERPRISE_COMPLIANCE
-LABOR_DISPUTE
-CROSS_DOMAIN
-UNMAPPED
-```
+### Required focus
 
-Broad fallback remains explicit when signals cannot safely narrow scope. Authority eligibility is enforced before Exact, lexical and semantic candidate ranking and checked again before final fusion. Existing `as_of` Authority-Version applicability remains authoritative.
+Stage 16.2 should reuse and formalize existing repository-safe evidence before inventing new cases. Priority sources include:
 
-`IssueLegalContext` persists routing provenance plus a deterministic routing catalog fingerprint so later Pack-routing changes make old context visibly stale.
+1. Stage 15 three-domain retrieval benchmark (`legal_data/fixtures/stage15_domain_retrieval_benchmark.json`);
+2. domain-routing eligibility and broad-vs-scoped retrieval invariants;
+3. legal-version / `as_of` applicability cases;
+4. ISSUE_V1 deterministic artifact/fingerprint/integrity regression cases that can be expressed without paid providers;
+5. public synthetic failure-state cases for missing/stale/conflicting evidence where repository-safe fixtures already exist.
 
-Legacy Stage 6/7 development corpora remain compatible: when the selected Stage 15 scope has zero overlap with the installed legacy store, retrieval preserves the historical path with an explicit warning rather than silently returning no law.
+### Acceptance direction
 
-Checked-in nine-case three-domain benchmark requires:
+Stage 16.2 must:
 
-```text
-scoped Recall@5 >= 0.90
-scoped MRR      >= 0.80
-scoped Recall@5 >= broad Recall@5
-scoped MRR      >= broad MRR
-all scoped candidates inside eligible Authorities
-```
+- create explicit versioned public datasets rather than burying evaluation only inside pytest;
+- preserve task-level metrics/scope instead of inventing one cross-task score;
+- include deterministic case diagnostics;
+- keep all checked-in cases repository-safe;
+- reuse the Stage 16.1 suite runner rather than adding another evaluator;
+- preserve Stage 15 domain routing and Authority eligibility semantics;
+- keep provider calls entirely out of public CI.
 
-Authoritative validation:
+### Non-goals for 16.2
 
-```text
-Draft PR #13
-head: stage15-4-domain-aware-rag
-base: stage15-3-corpus-version-management
-Law-Rag Stage 15 CI run #96 (`32441338892`) — SUCCESS
-backend pytest: 416 passed, 5 skipped, 1 third-party warning
-public deterministic quality gates: PASS
-frontend production build: PASS
-```
+Do not yet:
 
-PR #13 is a validation carrier only and remains Draft/Open/Unmerged unless separately authorized.
+- create or publish private expert labels;
+- run paid DeepSeek/Kimi UAT;
+- tune production prompts merely to improve benchmark numbers;
+- enlarge the legal corpus without independent corpus evidence;
+- change ISSUE_V1 topology;
+- begin Stage 17+.
 
-See `docs/STAGE15_DOMAIN_AWARE_RAG.md`.
+## Stage 16 invariants
 
-## Stage 15.5 — Windows baseline corpus packaging + final regression — COMPLETE
+The entire stage must preserve:
 
-The Windows product now ships the immutable `three-domain-core@1.0.0` baseline instead of the old curated seed:
-
-```text
-14 Authorities / 15 Versions / 1274 Articles
-```
-
-Packaged legal assets are immutable and hash-verified. On normal first launch the complete baseline is staged and atomically installed into writable runtime storage.
-
-A complete existing runtime corpus is **never overwritten** by an application upgrade, preserving the independent Stage 15.3 corpus-update path. An incomplete runtime legal directory fails closed rather than mixing packaged and runtime corpus assets.
-
-The release also exposes a non-mutating offline `--diagnose-corpus` retrieval smoke. Diagnostic execution must not rewrite the packaged baseline bytes.
-
-Authoritative validation on head `355a003c67bdf4d9424e105d54e48779bca98c42`:
-
-```text
-Law-Rag Stage 15 CI run #117 (`32444333939`) — SUCCESS
-backend pytest: 422 passed, 5 skipped, 1 third-party warning
-public deterministic quality gates: PASS
-frontend production build: PASS
-
-Law-Rag Stage 15.5 Windows Baseline CI run #6 (`32444333963`) — SUCCESS
-exact Windows release-lock onedir build: PASS
-frozen baseline + writable runtime install verification: PASS
-packaged PDF/OCR/HTTP/privacy smoke: PASS
-deterministic portable RC ZIP + manifest: PASS
-fresh-extracted Stage 12–14 regression smokes: PASS
-inspectable onedir + portable RC artifact upload: PASS
-```
-
-Validation PR:
-
-```text
-Draft PR #14
-head: stage15-5-windows-baseline-corpus
-base: stage15-4-domain-aware-rag
-```
-
-PR #14 remains a validation carrier only. Do not merge it without separate authorization.
-
-## Stage 15 closeout invariants
-
-The next stage must preserve all of the following:
-
-- canonical legal identity is still `Authority -> Version -> Article / Legal Evidence`;
-- Corpus Pack is eligibility/grouping metadata, never a second legal identity;
-- Corpus Release, Pack version and Authority Version remain independently versioned;
-- legal text mutation under an existing Authority/Version identity is forbidden;
-- historical versions are preserved;
-- applicability remains deterministic and `as_of`-aware;
-- domain routing narrows eligible Authorities but does not claim that an unmapped Issue has no applicable law;
-- retrieval remains Exact + lexical/BM25 + optional local BGE + deterministic fusion;
-- Issue V1 Planner/DeepSeek/Kimi/comparison/Human Review topology remains unchanged;
-- Windows bundled baseline is immutable while runtime corpus storage is writable and upgrade-preserving;
-- provider calls remain explicit, bounded and approval-aware;
-- private contracts, credentials, runtime jobs, private benchmark labels and model caches stay out of Git/release public assets.
-
-## Next boundary — Stage 16
-
-Stage 16 owns **expert benchmark + regression corpus + real-provider UAT**.
-
-Stage 16 may measure and harden product quality across the proven architecture, including retrieval, issue coverage, legal citation correctness, cross-provider behavior and end-to-end review quality. It must distinguish deterministic/public regression evidence from private expert labels and real-provider UAT evidence.
-
-Stage 16 must not silently become Stage 17 tray/history work, Stage 18 encryption/report export/provider-settings work, or Stage 19 installer/signing/update infrastructure.
+- one canonical Contract model and exact Contract Evidence provenance;
+- canonical `Authority -> Version -> Article / Legal Evidence` identity;
+- immutable historical legal versions and deterministic `as_of` applicability;
+- independent application / Corpus Release / Pack / Authority-Version identities;
+- explicit broad fallback when domain routing cannot safely narrow legal scope;
+- current ISSUE_V1 Planner/RAG/DeepSeek/Kimi/comparison/Human Review topology;
+- Stage 14 PDF/image/DOCX source boundary and local OCR rules;
+- Stage 15 immutable packaged baseline vs writable upgrade-preserving runtime corpus separation;
+- explicit provider approval/cancellation boundaries;
+- public/private benchmark separation;
+- no credentials, private contracts, private reviewer labels or raw private provider payloads in Git.
 
 ## Deferred after Stage 16
 
@@ -243,4 +228,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 15.1–15.5 are COMPLETE and validated. The product baseline is `three-domain-core@1.0.0` with 3 READY Packs, 14 canonical Authorities, 15 Versions and 1274 unique Articles; Issue-level domain-aware retrieval and Windows baseline distribution are both validated. Stage 16 is NEXT. Draft PR #13/#14 remain open only as stacked validation evidence and are not authorized for merge. Do not begin Stage 17+ or merge validation PRs without separate authorization.**
+**Stage 16.1 is COMPLETE and validated. Stage 16.2 is the only NEXT implementation scope. Do not begin Stage 16.3+, Stage 17+, or merge Draft PR #13/#14/#15 without separate authorization.**

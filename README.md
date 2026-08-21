@@ -34,7 +34,7 @@ Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupp
 
 ## Status
 
-**Stage 15 is complete. Stage 16 — expert benchmark + regression corpus + real-provider UAT — is next.**
+**Stage 16.1 is COMPLETE and validated. Stage 16.2 — public deterministic regression corpus expansion — is NEXT.**
 
 Stage 15 delivered:
 
@@ -52,31 +52,44 @@ Stage 15 delivered:
 - non-mutating offline corpus diagnostics;
 - final Windows onedir/portable-RC regression validation.
 
-Authoritative final Stage 15 validation:
+Authoritative Stage 15 closeout validation:
 
 ```text
-Stage 15.4 domain-aware RAG
-  Law-Rag Stage 15 CI #96 (32441338892)
-  backend: 416 passed, 5 skipped, 1 warning
-  public deterministic quality gates: PASS
-  frontend production build: PASS
-
-Stage 15.5 final branch head 355a003c67bdf4d9424e105d54e48779bca98c42
-  Law-Rag Stage 15 CI #117 (32444333939)
-  backend: 422 passed, 5 skipped, 1 warning
-  public deterministic quality gates: PASS
-  frontend production build: PASS
-
-  Law-Rag Stage 15.5 Windows Baseline CI #6 (32444333963)
-  exact Windows onedir build: PASS
-  frozen baseline + runtime install verification: PASS
-  packaged PDF/OCR/HTTP/privacy smoke: PASS
-  deterministic portable RC + fresh extraction regression: PASS
+Law-Rag Stage 15 CI #123 (32456205510)                  SUCCESS
+Law-Rag Stage 15.5 Windows Baseline CI #9 (32456205586) SUCCESS
 ```
 
-Draft PR #13 and #14 remain stacked validation carriers and are intentionally unmerged unless separately authorized.
+Stage 16.1 added a deterministic orchestration layer above the existing Stage 11 benchmark/quality evaluators and keeps three evidence classes explicit:
 
-The only active implementation scope is [`CURRENT_TASK.md`](CURRENT_TASK.md).
+```text
+PUBLIC_REGRESSION
+PRIVATE_EXPERT
+REAL_PROVIDER_UAT
+```
+
+The suite evaluator consumes existing observations and never calls DeepSeek, Kimi, OCR, or another provider itself. Public regression data stays under `benchmarks/public/`; private expert labels and real-provider UAT observations stay external or under ignored `benchmark_private/`. Suite reports are summary-only and do not embed expert labels, assertion payloads, private contract text, raw provider responses, or an invented cross-task `overall_accuracy`/`legal_accuracy` score.
+
+Authoritative Stage 16.1 implementation validation:
+
+```text
+Stage 16 implementation head
+  de9fb64d3b03316eb3427f0137fc0c9086d145f3
+
+Law-Rag Stage 16 CI #9 (32457699628)                    SUCCESS
+  backend pytest: 428 passed, 5 skipped, 1 warning
+  existing public deterministic quality gates: PASS
+  Stage 16 public evaluation suite: 2 / 2 entries PASS
+  frontend production build: PASS
+
+Law-Rag Stage 15 regression CI #127 (32457699622)      SUCCESS
+Stage 15.5 Windows workflow on Stage 16.1 PR            SKIPPED as intended
+```
+
+Stage 16.2 will promote the strongest existing public deterministic Stage 13–15 regression evidence into explicit versioned benchmark datasets/suite entries, beginning with the Stage 15 three-domain retrieval benchmark and deterministic routing/versioning invariants. It must not introduce paid provider calls or private expert labels.
+
+See [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md) and [`CURRENT_TASK.md`](CURRENT_TASK.md).
+
+Draft PR #13 and #14 remain Stage 15 stacked validation carriers and are intentionally unmerged unless separately authorized. Draft PR #15 is the Stage 16.1 validation carrier and is also not authorized for merge.
 
 ## Main routes
 
@@ -271,6 +284,28 @@ Model citations must resolve to supplied canonical Legal Evidence. Absence from 
 
 Human Review is append-only and fingerprint-bound. Only fresh final `CONFIRMED` or `REJECTED` decisions close a mandatory Issue review; stale or incomplete states remain visible.
 
+## Evaluation
+
+Stage 16 evaluation is deliberately layered:
+
+```text
+versioned EvaluationSuiteManifest
+ -> existing BenchmarkDataset + BenchmarkObservationSet evaluator
+ OR
+ -> existing public QualityGateProfile evaluator
+ -> sanitized EvaluationSuiteRunReport
+```
+
+Run the checked-in public Stage 16.1 orchestration smoke from `backend/`:
+
+```text
+python -m app.evaluation_suite_cli \
+  --repo-root .. \
+  --suite ../benchmarks/public/stage16a_evaluation_suite.json
+```
+
+Passing that smoke establishes only that the named public regression/evaluation machinery is functioning. It is not a professional legal-accuracy claim.
+
 ## Core engineering principles
 
 1. **Evidence first.** Material conclusions trace to exact contract evidence; legal conclusions additionally trace to canonical Legal Evidence.
@@ -287,9 +322,10 @@ Human Review is append-only and fingerprint-bound. Only fresh final `CONFIRMED` 
 12. **Local-first private data.** Private artifacts and model caches stay outside Git.
 13. **Legal corpus identity is immutable.** Changed legal text requires a new Authority Version.
 14. **Corpus scope is auditable.** Domain routing narrows eligible Authorities without pretending unmapped scope means no law.
+15. **Evaluation evidence classes stay separate.** Public regression, private expert truth, and real-provider UAT are not collapsed into one fake score.
 
 ## Repository safety
 
 This repository is public. Do not commit real/private contracts, API keys, runtime uploads, generated private reports, private benchmark labels, model caches/private vector stores, or logs containing private contract text.
 
-See [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CURRENT_TASK.md`](CURRENT_TASK.md), and [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
+See [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CURRENT_TASK.md`](CURRENT_TASK.md), [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md), and [`docs/DATA_POLICY.md`](docs/DATA_POLICY.md).
