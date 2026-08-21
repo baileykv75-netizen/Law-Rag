@@ -73,7 +73,13 @@ def _job_dir(job_id: UUID) -> Path:
 
 
 def _fingerprint(payload: object) -> str:
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -143,6 +149,11 @@ def _imported_call_id(job_id: UUID, stage: str, issue_id: str, raw_response_hash
     return uuid5(NAMESPACE_URL, f"law-rag:{job_id}:{stage}:{issue_id}:{raw_response_hash}")
 
 
+def _checkpoint_artifact_valid(artifact) -> bool:
+    payload = artifact.model_dump(mode="json", exclude={"artifact_fingerprint"})
+    return artifact.artifact_fingerprint == _fingerprint(payload)
+
+
 def _checkpoint_records(job_id: UUID) -> list[ProviderCallLedgerRecord]:
     records: list[ProviderCallLedgerRecord] = []
     sources = (
@@ -155,11 +166,8 @@ def _checkpoint_records(job_id: UUID) -> list[ProviderCallLedgerRecord]:
         try:
             artifact = model.model_validate_json(path.read_text(encoding="utf-8"))
         except (OSError, ValidationError):
-            # Budget accounting never repairs or trusts malformed audit artifacts.
-            # Their normal artifact readers remain responsible for surfacing the
-            # underlying integrity failure.
             continue
-        if artifact.job_id != job_id:
+        if artifact.job_id != job_id or not _checkpoint_artifact_valid(artifact):
             continue
         stamp = _checkpoint_time(path)
         for call in artifact.provider_calls:
@@ -181,19 +189,58 @@ def _checkpoint_records(job_id: UUID) -> list[ProviderCallLedgerRecord]:
 
 
 def _reconcile_checkpoints(artifact: ResourceBudgetArtifact) -> bool:
+    """Merge authoritative checkpoint usage without double-counting live calls.
+
+    A real request is reserved before the network boundary. The normal provider
+    wrappers do not expose usage to pipeline_control, so finish_provider_call
+    marks that ledger row RETURNED_PENDING_RECONCILIATION. Once Stage 13E/F has
+    persisted its validated provider-call checkpoint, this function attaches the
+    provider usage/hash to an unmatched live row instead of importing a second
+    call. Calls that never produce a checkpoint remain visible with unknown
+    usage and therefore fail closed under token/cost continuation limits.
+    """
+
     changed = False
     known_fingerprints = {
         item.checkpoint_fingerprint
         for item in artifact.calls
         if item.checkpoint_fingerprint is not None
     }
-    known_import_ids = {item.call_id for item in artifact.calls}
+    known_ids = {item.call_id for item in artifact.calls}
+
     for imported in _checkpoint_records(artifact.job_id):
-        if imported.checkpoint_fingerprint in known_fingerprints or imported.call_id in known_import_ids:
+        if imported.checkpoint_fingerprint in known_fingerprints or imported.call_id in known_ids:
             continue
+
+        candidates = sorted(
+            (
+                item
+                for item in artifact.calls
+                if item.source == ProviderCallLedgerSource.LIVE
+                and item.checkpoint_fingerprint is None
+                and item.provider == imported.provider
+                and item.state in {
+                    ProviderCallLedgerState.RETURNED_PENDING_RECONCILIATION,
+                    ProviderCallLedgerState.STARTED,
+                }
+            ),
+            key=lambda item: item.started_at,
+        )
+        if candidates:
+            live = candidates[0]
+            live.stage = imported.stage
+            live.issue_id = imported.issue_id
+            live.state = ProviderCallLedgerState.COMPLETED
+            live.finished_at = live.finished_at or imported.finished_at
+            live.usage = imported.usage
+            live.checkpoint_fingerprint = imported.checkpoint_fingerprint
+            known_fingerprints.add(imported.checkpoint_fingerprint)
+            changed = True
+            continue
+
         artifact.calls.append(imported)
         known_fingerprints.add(imported.checkpoint_fingerprint)
-        known_import_ids.add(imported.call_id)
+        known_ids.add(imported.call_id)
         changed = True
     return changed
 
@@ -204,7 +251,10 @@ def _usage_totals(calls: list[ProviderCallLedgerRecord]) -> tuple[int, int, int,
     total = 0
     unknown = 0
     for call in calls:
-        if call.state == ProviderCallLedgerState.STARTED:
+        if call.state in {
+            ProviderCallLedgerState.STARTED,
+            ProviderCallLedgerState.RETURNED_PENDING_RECONCILIATION,
+        }:
             unknown += 1
             continue
         usage = _normalized_usage(call.usage)
@@ -219,13 +269,19 @@ def _usage_totals(calls: list[ProviderCallLedgerRecord]) -> tuple[int, int, int,
     return prompt, completion, total, unknown
 
 
-def _cost_totals(calls: list[ProviderCallLedgerRecord], policy: ResourceBudgetPolicy) -> tuple[float | None, int]:
+def _cost_totals(
+    calls: list[ProviderCallLedgerRecord],
+    policy: ResourceBudgetPolicy,
+) -> tuple[float | None, int]:
     if not policy.provider_prices:
         return None, 0
     total_cost = 0.0
     unknown = 0
     for call in calls:
-        if call.state == ProviderCallLedgerState.STARTED:
+        if call.state in {
+            ProviderCallLedgerState.STARTED,
+            ProviderCallLedgerState.RETURNED_PENDING_RECONCILIATION,
+        }:
             unknown += 1
             continue
         price = policy.provider_prices.get(call.provider.strip().lower())
@@ -246,6 +302,10 @@ def _overview(artifact: ResourceBudgetArtifact) -> ResourceBudgetOverview:
     completed = sum(item.state == ProviderCallLedgerState.COMPLETED for item in calls)
     failed = sum(item.state == ProviderCallLedgerState.FAILED for item in calls)
     in_flight = sum(item.state == ProviderCallLedgerState.STARTED for item in calls)
+    returned_pending = sum(
+        item.state == ProviderCallLedgerState.RETURNED_PENDING_RECONCILIATION
+        for item in calls
+    )
     prompt, completion, total_tokens, unknown_usage = _usage_totals(calls)
     estimated_cost, unknown_cost = _cost_totals(calls, artifact.policy)
     policy = artifact.policy
@@ -305,6 +365,7 @@ def _overview(artifact: ResourceBudgetArtifact) -> ResourceBudgetOverview:
         completed_calls=completed,
         failed_calls=failed,
         in_flight_calls=in_flight,
+        returned_pending_calls=returned_pending,
         prompt_tokens_known=prompt,
         completion_tokens_known=completion,
         total_tokens_known=total_tokens,
@@ -375,8 +436,8 @@ def reserve_provider_call(
     job_id: UUID,
     *,
     provider: str,
-    stage: str,
-    issue_id: str | None,
+    stage: str = "PROVIDER_BOUNDARY",
+    issue_id: str | None = None,
 ) -> ResourceBudgetCallReservation:
     with _lock_for(job_id):
         artifact = _read(job_id)
@@ -404,6 +465,33 @@ def reserve_provider_call(
         )
 
 
+def mark_latest_provider_call_returned(job_id: UUID, provider: str) -> ResourceBudgetOverview:
+    with _lock_for(job_id):
+        artifact = _read(job_id)
+        normalized = provider.strip().lower()
+        candidates = sorted(
+            (
+                item
+                for item in artifact.calls
+                if item.provider == normalized and item.state == ProviderCallLedgerState.STARTED
+            ),
+            key=lambda item: item.started_at,
+            reverse=True,
+        )
+        if not candidates:
+            # Backward compatibility: a provider call that pre-dates Stage 18.3
+            # may finish without a live ledger reservation. Checkpoint import on
+            # the next overview remains the source of historical accounting.
+            if _reconcile_checkpoints(artifact):
+                artifact = _persist(artifact)
+            return _overview(artifact)
+        record = candidates[0]
+        record.state = ProviderCallLedgerState.RETURNED_PENDING_RECONCILIATION
+        record.finished_at = _now()
+        artifact = _persist(artifact)
+        return _overview(artifact)
+
+
 def complete_provider_call(
     reservation: ResourceBudgetCallReservation,
     *,
@@ -415,10 +503,13 @@ def complete_provider_call(
         record = next((item for item in artifact.calls if item.call_id == reservation.call_id), None)
         if record is None:
             raise ResourceBudgetError("Provider budget reservation does not exist.")
-        if record.state != ProviderCallLedgerState.STARTED:
+        if record.state not in {
+            ProviderCallLedgerState.STARTED,
+            ProviderCallLedgerState.RETURNED_PENDING_RECONCILIATION,
+        }:
             raise ResourceBudgetError("Provider budget reservation is already terminal.")
         record.state = ProviderCallLedgerState.COMPLETED
-        record.finished_at = _now()
+        record.finished_at = record.finished_at or _now()
         record.usage = _normalized_usage(usage)
         if raw_response_hash is not None:
             if len(raw_response_hash) != 64 or any(ch not in "0123456789abcdef" for ch in raw_response_hash):
@@ -438,9 +529,12 @@ def fail_provider_call(
         record = next((item for item in artifact.calls if item.call_id == reservation.call_id), None)
         if record is None:
             raise ResourceBudgetError("Provider budget reservation does not exist.")
-        if record.state == ProviderCallLedgerState.STARTED:
+        if record.state in {
+            ProviderCallLedgerState.STARTED,
+            ProviderCallLedgerState.RETURNED_PENDING_RECONCILIATION,
+        }:
             record.state = ProviderCallLedgerState.FAILED
-            record.finished_at = _now()
+            record.finished_at = record.finished_at or _now()
             record.error_type = error_type[:160]
             artifact = _persist(artifact)
         return _overview(artifact)
