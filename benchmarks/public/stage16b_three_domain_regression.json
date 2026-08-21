@@ -7,6 +7,8 @@
   "runner": "THREE_DOMAIN_RETRIEVAL",
   "benchmark_path": "benchmarks/public/stage16b_three_domain_retrieval.dataset.json",
   "corpus_release_path": "legal_data/releases/three-domain-core/1.0.0/release.json",
+  "expected_corpus_id": "three-domain-core",
+  "expected_corpus_version": "1.0.0",
   "gates": [
     {
       "gate_id": "three-domain-scoped-recall",
