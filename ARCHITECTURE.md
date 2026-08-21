@@ -38,7 +38,7 @@ Local FastAPI backend
 
 Source navigation, Results/Workspace reads, Developer diagnostics, Human Review, local OCR and local legal retrieval do not implicitly execute external providers.
 
-**Stage 16.1 and Stage 16.2 are complete.** The production legal baseline remains `three-domain-core@1.0.0`: 3 READY Corpus Packs, 14 Authorities, 15 Versions and 1274 unique Articles. The active next boundary is Stage 16.3 private expert benchmark protocol + scoped professional metrics.
+**Stage 16.1–16.3 are complete.** The production legal baseline remains `three-domain-core@1.0.0`: 3 READY Corpus Packs, 14 Authorities, 15 Versions and 1274 unique Articles. Stage 16.3 validated private expert-label audit and scoped professional metric infrastructure without adding any real expert dataset or professional accuracy claim. The active next boundary is Stage 16.4 real-provider `ISSUE_V1` UAT observation capture.
 
 ## 3. Authoritative job architectures
 
@@ -428,11 +428,11 @@ The profile pins `three-domain-core@1.0.0`. The selected Corpus Release Pack cat
 
 The runner deterministically rebuilds scratch legal/retrieval stores and evaluates broad/scoped lexical retrieval, routing scope, `UNMAPPED` fallback, cross-domain Pack union and trademark `as_of` version selection. No paid/network DeepSeek or Kimi call occurs.
 
-Authoritative Stage 16.2 implementation validation:
+Final Stage 16.2 validation:
 
 ```text
-head e04111f03ac2a67d6a818ffdeea3a9b9a94b821e
-Law-Rag Stage 16 CI #40 (32458988693) SUCCESS
+head 67407e54b27e595e82119b055774241ce708b971
+Law-Rag Stage 16 CI #50 (32459347103) SUCCESS
 backend pytest                             434 passed, 5 skipped, 1 warning
 historical Stage 11B gates                PASS
 Stage 16.2 regression gates               10 / 10 PASS
@@ -456,31 +456,101 @@ Articles                    1274
 
 These are scoped deterministic regression results, not professional legal accuracy.
 
-### 20.3 Private expert boundary
+### 20.3 Stage 16.3 private expert layer
 
-`PRIVATE_EXPERT` manifests, datasets and observations remain external or under ignored `benchmark_private/`. Detailed labels/diagnostics never enter the public suite report.
+Stage 16.3 adds a private professional truth/audit layer without adding another production analysis pipeline:
 
-Stage 16.3 will add the professional labeling protocol and scoped metrics needed to evaluate primary findings, high-risk recall/false positives, Contract Evidence coverage, Legal Evidence citation behavior, Kimi coverage review and uncertainty handling.
+```text
+ExpertBenchmarkProtocol
+  + private BenchmarkDataset
+  + private BenchmarkObservationSet
+  + ExpertLabelAuditArtifact
+  -> sanitized ExpertBenchmarkRunReport
+```
+
+All inputs remain external or under ignored `benchmark_private/`; tracked paths are rejected. Every expert case must use `PRIVATE_EXTERNAL` provenance.
+
+Each private case has exactly one audited label state:
+
+```text
+AGREED
+ADJUDICATED
+AMBIGUOUS
+```
+
+The protocol requires at least two expert reviewers. `ADJUDICATED` requires an adjudicator; `AGREED` cannot claim one was needed. `AMBIGUOUS` truth remains visible and is excluded from professional performance metrics instead of being coerced into a positive/negative answer.
+
+A canonical SHA-256 label fingerprint binds each expert audit to the current case version and complete expected assertions. Any post-review truth mutation invalidates the prior audit. Dataset, observations and label audit must also have exact case-ID/case-version coverage; selective removal of difficult cases fails closed.
+
+Initial metric types are deliberately scoped:
+
+```text
+BINARY_CLASSIFICATION
+  -> TP / FP / FN / TN
+  -> precision / recall / F1
+
+SET_EXTRACTION
+  -> TP / FP / FN
+  -> precision / recall / F1
+```
+
+Binary truth must include usable expert-positive and expert-negative cases. Set truth must be exhaustive `SET_EQUALS`; partial `SET_CONTAINS` labels are not accepted for precision/recall/F1.
+
+The report also carries expert-truth quality:
+
+```text
+agreed / adjudicated / ambiguous / usable counts
+agreement_rate
+adjudication_rate
+ambiguity_rate
+usable_rate
+minimum reviewer required / observed
+```
+
+Professional system metrics therefore stay attributable to the quality of the exact expert truth set.
+
+The private expert evaluator is a companion metric layer to the Stage 16 suite architecture. The generic `PRIVATE_EXPERT` suite class can still orchestrate private BenchmarkDataset/ObservationSet evaluation, but Stage 16.3 deliberately does not invent a threshold-bearing expert-protocol suite PASS/FAIL entry before real dataset quality and release criteria exist.
+
+Validated Stage 16.3 implementation:
+
+```text
+head 3393caa150e2baee459ca0969e8f17ee451d6156
+Law-Rag Stage 16 CI #62 (32460155009) SUCCESS
+backend pytest                            443 passed, 5 skipped, 1 warning
+historical Stage 11B gates               PASS
+Stage 16.2 public regression             PASS
+Stage 16b public suite                   PASS
+frontend build                           PASS
+```
+
+No real professionally labeled dataset was committed or executed. Stage 16.3 therefore validates the protocol/evaluator infrastructure only; it does not establish a professional accuracy, high-risk recall, citation relevance value or expert-derived release threshold.
 
 ### 20.4 Real-provider UAT boundary
 
-`REAL_PROVIDER_UAT` observations remain external/ignored and record a current real provider, model and SHA-256 artifact fingerprint. Fake provider/producer identities are rejected. Provider execution itself remains separate from deterministic evaluation and belongs to Stage 16.4.
+`REAL_PROVIDER_UAT` observations remain external/ignored and record a current real provider, model and SHA-256 artifact fingerprint. Fake provider/producer identities are rejected.
+
+Stage 16.4 owns the explicit capture path. It must reuse the existing production Planner/RAG/DeepSeek/Kimi/comparison chain and existing approval/cancellation/checkpoint semantics rather than creating a second model pipeline. Actual paid/network execution stays explicit opt-in and outside ordinary CI.
+
+Real-provider observations are provider-specific behavior evidence. They are not expert truth and model agreement is not correctness.
 
 ### 20.5 No fake global accuracy
 
 The evaluation layer deliberately does not emit cross-task `overall_accuracy`, `legal_accuracy` or an equivalent aggregate. Every metric retains its named dataset/profile version, label definition and scope.
 
-## 21. Next boundary — Stage 16.3
+## 21. Next boundary — Stage 16.4
 
-Stage 16.3 owns **private expert benchmark protocol + scoped professional metrics**.
+Stage 16.4 owns **real-provider `ISSUE_V1` UAT observation capture**.
 
 It must:
 
-- keep private contracts, expert labels, observations and detailed diagnostics external/ignored;
-- establish explicit expert label definitions and ambiguity handling before interpreting scores;
-- use existing precision/recall/F1 and extraction/ranking helpers only where the label semantics support them;
-- report high-risk recall and other professional metrics against an exact private dataset/version;
-- distinguish expert truth from model/provider observations;
-- avoid invented or post-hoc lowered thresholds merely to produce a passing result.
+- reuse the current production Audit Planner -> Issue Legal RAG -> DeepSeek -> Kimi -> deterministic comparison topology;
+- require configured providers plus existing explicit approval/cancellation checks;
+- capture provider/model identity and authoritative input/output artifact SHA-256 fingerprints;
+- preserve one-to-one AuditPlan Issue coverage and checkpoint/restart behavior;
+- keep detailed UAT observations external or under ignored private paths;
+- emit only sanitized provenance/summary suitable for Stage 16 evidence assembly;
+- test capture mechanics in normal CI with provider doubles only;
+- require explicit opt-in for actual paid/network UAT;
+- keep UAT evidence separate from private expert correctness labels.
 
-Stage 16.3 must not absorb paid real-provider UAT (16.4), Stage 17 tray/history, Stage 18 encryption/report-export/provider-settings, or Stage 19 installer/signing/update work.
+Stage 16.4 must not invent release thresholds from a small UAT sample, tune prompts merely to improve one run, redesign `ISSUE_V1`, or absorb Stage 17+ work.
