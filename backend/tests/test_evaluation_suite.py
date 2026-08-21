@@ -111,8 +111,24 @@ def test_checked_in_public_stage16_suite_reuses_existing_evaluators_without_fake
     ]
     assert report.entries[0].unit_label == "cases"
     assert report.entries[0].unit_count == 9
+    assert set(report.entries[0].source_fingerprints) == {
+        "dataset_sha256",
+        "observations_sha256",
+    }
     assert report.entries[1].unit_label == "gates"
     assert report.entries[1].failed_count == 0
+    assert set(report.entries[1].source_fingerprints) == {
+        "quality_profile_sha256",
+        "schema_dataset_sha256",
+        "schema_observations_sha256",
+        "legal_seed_manifest_sha256",
+        "retrieval_benchmark_sha256",
+    }
+    assert all(
+        len(value) == 64
+        for entry in report.entries
+        for value in entry.source_fingerprints.values()
+    )
     payload = report.model_dump(mode="json")
     assert not _contains_key(payload, "overall_accuracy")
     assert not _contains_key(payload, "legal_accuracy")
@@ -220,8 +236,24 @@ def test_real_provider_uat_requires_provider_model_and_sha256_artifact_provenanc
             },
         ),
     )
-    with pytest.raises(EvaluationSuiteError, match="Fake providers"):
-        run_evaluation_suite(_repo_root(), suite, tmp_path / "work-fake")
+    with pytest.raises(EvaluationSuiteError, match="current production providers"):
+        run_evaluation_suite(_repo_root(), suite, tmp_path / "work-fake-provider")
+
+    _write_json(
+        observations,
+        _single_case_observations(
+            observed_value="PASS",
+            producer={
+                "producer_id": "fake-uat-run",
+                "producer_version": "1.0.0",
+                "provider": "deepseek",
+                "model": "deepseek-v4-pro",
+                "artifact_fingerprint": "a" * 64,
+            },
+        ),
+    )
+    with pytest.raises(EvaluationSuiteError, match="Fake producer"):
+        run_evaluation_suite(_repo_root(), suite, tmp_path / "work-fake-producer")
 
     _write_json(
         observations,
