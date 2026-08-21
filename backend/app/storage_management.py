@@ -30,7 +30,10 @@ class JobCleanupNotAllowed(StorageManagementError):
     pass
 
 
-_JOB_CATEGORIES = ("jobs", "uploads", "rendered")
+# Stage 18.2 report exports are job-private data and must move through the same
+# tombstone transaction as jobs/uploads/rendered. Shared runtime/legal is
+# deliberately absent from this list.
+_JOB_CATEGORIES = ("jobs", "uploads", "rendered", "exports")
 
 
 def _root() -> Path:
@@ -153,8 +156,6 @@ def _validate_live_job_for_new_cleanup(root: Path, job_id: UUID) -> tuple[int, s
     if not pipeline_path.is_file() or pipeline_path.is_symlink():
         raise JobCleanupNotAllowed("A safely deletable job must retain a regular pipeline.json until cleanup begins.")
 
-    # Batch manifests are part of the cleanup transaction. Validate them before
-    # moving any job bytes so a damaged batch index cannot create a half-cleanup.
     _load_batch_manifests(root)
     return item.storage_bytes, _sha256(pipeline_path)
 
@@ -173,8 +174,6 @@ def _move_job_roots(root: Path, transaction: CleanupTransaction) -> CleanupTrans
 
     started = _transaction_has_started(root, transaction)
     if not started:
-        # No destructive step has occurred yet. Re-check terminal state and bind
-        # the transaction to the exact pipeline that was authorized for cleanup.
         _load_batch_manifests(root)
         item = get_job_history(transaction.job_id)
         if not item.can_delete or not item.terminal:
@@ -237,9 +236,6 @@ def _repair_latest_batch(root: Path, manifests: list[tuple[Path, BatchManifest]]
             return True
         return current_id is not None
 
-    # Batch manifests are rewritten on successful registration, so mtime is a
-    # closer approximation of the existing "most recently useful batch" pointer
-    # than creation time after cleanup invalidates the old latest batch.
     chosen_path, chosen = max(
         nonempty,
         key=lambda pair: (pair[0].stat().st_mtime, pair[1].created_at, str(pair[1].batch_id)),
@@ -263,7 +259,6 @@ def _remove_batch_references(root: Path, job_id: UUID) -> tuple[int, bool]:
         _persist_batch_manifest(path, manifest)
         updated += 1
 
-    # Reload after writes so latest repair sees exactly the persisted state.
     persisted = _load_batch_manifests(root)
     latest_repaired = _repair_latest_batch(root, persisted)
     return updated, latest_repaired
@@ -338,8 +333,6 @@ def reconcile_storage_cleanup_transactions() -> tuple[int, list[str]]:
 def storage_summary() -> StorageSummary:
     root = _root()
     history = list_job_history(offset=0, limit=200)
-    # A runtime may eventually contain more than 200 jobs. Continue paging so
-    # summary counts/bytes do not silently truncate at the history API page cap.
     items = list(history.items)
     offset = len(items)
     while offset < history.total_count:
@@ -349,6 +342,7 @@ def storage_summary() -> StorageSummary:
         if not page.items:
             break
 
+    # Job history storage includes reports under runtime/exports/<job_id>.
     jobs_bytes = sum(item.storage_bytes for item in items)
     batches_bytes = _tree_bytes(root / "batches")
     shared_legal_bytes = _tree_bytes(root / "legal")
@@ -360,6 +354,10 @@ def storage_summary() -> StorageSummary:
     if cleanup_bytes:
         warnings.append(
             "Cleanup transaction/tombstone bytes are present; startup recovery will retry incomplete safe cleanup transactions."
+        )
+    if other_runtime_bytes and (root / "exports").exists():
+        warnings.append(
+            "Some runtime bytes are not attached to discoverable Jobs; orphaned exports or other runtime data may require inspection."
         )
 
     return StorageSummary(
