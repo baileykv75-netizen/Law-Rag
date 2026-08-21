@@ -154,12 +154,13 @@ def assert_provider_allowed(job_id: UUID) -> PipelineControl:
 
 
 def begin_provider_call(job_id: UUID, provider: str) -> PipelineControl:
-    """Atomically cross the provider boundary for one outbound model request.
+    """Atomically cross every local guard before one outbound model request.
 
-    Cancellation and provider-mode changes use the same per-job lock. Therefore
-    either the user control wins before this boundary, or the outbound request is
-    recorded as already started; a later cancel can stop subsequent stages but
-    cannot retract data already transmitted by an in-flight request.
+    Provider approval/cancellation is checked first. A shared Stage 18.3 budget
+    reservation is then persisted before `provider.generate(...)` can execute.
+    Therefore LOCAL_ONLY / unapproved / cancelled work consumes no provider-call
+    budget, while every request allowed to reach the external network is counted
+    conservatively even if the process later crashes or model output is invalid.
     """
 
     with _lock_for(job_id):
@@ -176,6 +177,19 @@ def begin_provider_call(job_id: UUID, provider: str) -> PipelineControl:
                 "PROVIDER_APPROVAL_REQUIRED",
                 "外部模型调用需要明确确认。",
             )
+
+        try:
+            from .resource_budget import ResourceBudgetError, ResourceBudgetExceeded, reserve_provider_call
+
+            reserve_provider_call(job_id, provider=provider)
+        except ResourceBudgetExceeded as exc:
+            raise ProviderBoundaryPaused(exc.code, exc.detail) from exc
+        except (ResourceBudgetError, FileNotFoundError) as exc:
+            raise ProviderBoundaryPaused(
+                "RESOURCE_BUDGET_INVALID",
+                f"本地资源预算状态无法安全验证，未发送外部模型请求：{exc}",
+            ) from exc
+
         control.active_provider = provider
         control.active_provider_started_at = _now()
         return _persist(control)
@@ -185,13 +199,34 @@ def finish_provider_call(job_id: UUID, provider: str) -> PipelineControl:
     with _lock_for(job_id):
         control = _read_existing(job_id) or _new_control(job_id, ProviderExecutionMode.AUTO_CONTINUE)
         if control.active_provider == provider:
+            try:
+                from .resource_budget import ResourceBudgetError, mark_latest_provider_call_returned
+
+                mark_latest_provider_call_returned(job_id, provider)
+            except (ResourceBudgetError, FileNotFoundError) as exc:
+                # The request has already crossed the provider boundary. Losing
+                # its accounting state would make later cost/token claims false,
+                # so stop the pipeline instead of silently continuing.
+                control.active_provider = None
+                control.active_provider_started_at = None
+                _persist(control)
+                raise ProviderBoundaryPaused(
+                    "RESOURCE_BUDGET_ACCOUNTING_ERROR",
+                    f"外部模型请求已结束，但本地资源用量账本无法安全更新：{exc}",
+                ) from exc
             control.active_provider = None
             control.active_provider_started_at = None
         return _persist(control)
 
 
 def clear_stale_provider_activity(job_id: UUID) -> None:
-    """Clear process-local provider activity during startup recovery only."""
+    """Clear process-local provider activity during startup recovery only.
+
+    Stage 18.3 deliberately does not erase the corresponding STARTED resource
+    ledger row. A process crash after the provider boundary is conservatively
+    counted as a call with unknown usage; token/cost-limited continuation then
+    requires explicit attention instead of assuming the lost usage was zero.
+    """
 
     with _lock_for(job_id):
         control = _read_existing(job_id)
