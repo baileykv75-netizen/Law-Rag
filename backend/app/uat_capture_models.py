@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
@@ -59,7 +58,7 @@ class IssueV1UATObservation(BaseModel):
     schema_version: str = UAT_CAPTURE_SCHEMA_VERSION
     capture_version: str = UAT_CAPTURE_VERSION
     capture_mode: UATCaptureMode
-    captured_at: datetime
+    captured_at: str = Field(min_length=20, max_length=80)
     architecture: str = "ISSUE_V1"
     job_id: UUID
     chain_state: UATChainState
