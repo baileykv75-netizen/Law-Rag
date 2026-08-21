@@ -20,7 +20,8 @@ from app.legal.embeddings import EmbeddingProvider
 from app.legal.importer import import_manifest
 from app.legal.retrieval import build_retrieval_index, retrieve_legal_evidence
 from app.legal.retrieval_models import RetrievalChannel, RetrievalRequest
-from app.storage import job_audit_plan_path
+from app.legal.store import list_authorities
+from app.storage import job_audit_plan_path, legal_db_path, legal_retrieval_index_path
 
 
 class DomainKeywordEmbeddingProvider(EmbeddingProvider):
@@ -273,10 +274,19 @@ def test_issue_legal_context_persists_applied_domain_scope_on_three_domain_store
     tmp_path: Path, monkeypatch
 ) -> None:
     root = _repo_root()
+    monkeypatch.delenv("LAW_RAG_LEGAL_DB", raising=False)
+    monkeypatch.delenv("LAW_RAG_RETRIEVAL_DB", raising=False)
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     legal_db = tmp_path / "legal" / "legal.db"
     index_db = tmp_path / "legal" / "retrieval.db"
+    assert legal_db_path() == legal_db.resolve()
+    assert legal_retrieval_index_path() == index_db.resolve()
     _build_three_domain_store(root, legal_db, index_db)
+
+    local_authority_ids = {
+        item.authority.authority_id for item in list_authorities(legal_db_path())
+    }
+    assert "prc-labor-contract-law" in local_authority_ids
 
     job_id = uuid4()
     issue = _issue("劳动合同解除与经济补偿", "劳动合同解除 经济补偿")
