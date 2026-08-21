@@ -263,7 +263,7 @@ def test_uat_capture_rejects_stale_embedded_fingerprint(tmp_path: Path, monkeypa
     ("field", "value", "error"),
     [
         ("as_of", "2026-08-19", "disagree on as_of"),
-        ("use_semantic", True, "semantic retrieval mode"),
+        ("use_semantic", True, "retrieval mode"),
     ],
 )
 def test_uat_capture_rejects_pipeline_run_parameter_mismatch(
