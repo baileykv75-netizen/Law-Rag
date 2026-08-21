@@ -10,14 +10,21 @@ from pydantic import ValidationError
 
 from .audit_planner import AuditPlannerError, load_audit_plan
 from .issue_legal_context_models import (
+    ISSUE_LEGAL_CONTEXT_BUILDER_VERSION,
     IssueLegalContextArtifact,
     IssueLegalEvidenceHit,
     IssueLegalEvidencePackage,
     IssueLegalSupportState,
     IssueRetrievalRun,
 )
+from .legal.domain_routing import (
+    DomainRoutingError,
+    route_issue_to_corpus_packs,
+    routing_catalog_fingerprint,
+)
 from .legal.retrieval import RetrievalIndexError, get_retrieval_index_summary, retrieve_legal_evidence
 from .legal.retrieval_models import RetrievalRequest, RetrievalState
+from .legal.store import list_authorities
 from .safe_persistence import atomic_write_text
 from .storage import (
     job_issue_legal_context_path,
@@ -138,14 +145,56 @@ def build_issue_legal_context(
             "The local legal retrieval index is not ready or is stale. Rebuild the legal retrieval index before issue-based Legal RAG."
         )
 
+    local_authority_ids = {
+        item.authority.authority_id for item in list_authorities(legal_db_path())
+    }
+    try:
+        domain_catalog_fingerprint = routing_catalog_fingerprint()
+    except DomainRoutingError as exc:
+        raise IssueLegalContextError(str(exc)) from exc
+
     issue_packages: list[IssueLegalEvidencePackage] = []
     artifact_warnings: list[str] = []
     lexical_versions: list[str] = []
     semantic_providers: list[str] = []
     semantic_models: list[str] = []
     for issue in plan.issues:
-        runs: list[IssueRetrievalRun] = []
+        try:
+            route = route_issue_to_corpus_packs(issue, plan.contract_type)
+        except DomainRoutingError as exc:
+            raise IssueLegalContextError(
+                f"Unable to route Audit issue {issue.issue_id} to a legal Corpus Pack: {exc}"
+            ) from exc
+
         issue_warnings: list[str] = []
+        active_authority_ids = sorted(
+            set(route.eligible_authority_ids) & local_authority_ids
+        )
+        if active_authority_ids:
+            if len(active_authority_ids) != len(route.eligible_authority_ids):
+                issue_warnings.append(
+                    "Domain routing scope was reduced to Authorities present in the current local legal store."
+                )
+            route = route.model_copy(
+                update={
+                    "retrieval_authority_ids": active_authority_ids,
+                    "scope_applied": True,
+                }
+            )
+        else:
+            route = route.model_copy(
+                update={"retrieval_authority_ids": [], "scope_applied": False}
+            )
+            issue_warnings.append(
+                "The current local legal store has no Authority overlap with the READY Stage 15 Corpus Packs; "
+                "domain filtering was not applied so legacy/development corpus behavior remains available."
+            )
+        if route.fallback_all_ready_packs:
+            issue_warnings.append(
+                "No deterministic legal domain was identified; all READY Corpus Packs remain eligible to preserve recall."
+            )
+
+        runs: list[IssueRetrievalRun] = []
         for query_index, query in enumerate(issue.retrieval_queries, start=1):
             response = retrieve_legal_evidence(
                 legal_db_path(),
@@ -155,6 +204,9 @@ def build_issue_legal_context(
                     as_of=as_of,
                     top_k=top_k_per_query,
                     use_semantic=use_semantic,
+                    authority_ids_allowlist=(
+                        route.retrieval_authority_ids if route.scope_applied else []
+                    ),
                 ),
             )
             runs.append(IssueRetrievalRun(query_index=query_index, query=query, response=response))
@@ -185,6 +237,7 @@ def build_issue_legal_context(
             questions=issue.questions,
             contract_object_ids=issue.contract_object_ids,
             contract_evidence_ids=issue.contract_evidence_ids,
+            domain_route=route,
             retrieval_runs=runs,
             legal_evidence=hits,
             support_state=support_state,
@@ -198,7 +251,7 @@ def build_issue_legal_context(
 
     base = {
         "schema_version": "1.0.0",
-        "builder_version": "stage13d-1.0.0",
+        "builder_version": ISSUE_LEGAL_CONTEXT_BUILDER_VERSION,
         "job_id": str(job_id),
         "as_of": as_of.isoformat(),
         "use_semantic": use_semantic,
@@ -210,6 +263,7 @@ def build_issue_legal_context(
         "contract_content_fingerprint": plan.contract_content_fingerprint,
         "legal_source_fingerprint": index_summary.legal_source_fingerprint,
         "retrieval_index_fingerprint": _index_fingerprint(index_summary),
+        "domain_routing_fingerprint": domain_catalog_fingerprint,
         "retrieval_schema_version": index_summary.schema_version,
         "lexical_tokenizer": index_summary.lexical_tokenizer,
         "lexical_index_version": lexical_versions[0] if lexical_versions else None,
@@ -241,6 +295,8 @@ def load_issue_legal_context(job_id: UUID, *, validate_freshness: bool = True) -
             plan = load_audit_plan(job_id)
         except (FileNotFoundError, AuditPlannerError) as exc:
             raise IssueLegalContextStaleError("The source Audit Plan is missing or unreadable.") from exc
+        if artifact.builder_version != ISSUE_LEGAL_CONTEXT_BUILDER_VERSION:
+            raise IssueLegalContextStaleError("Issue legal context is stale because the domain-aware builder version changed.")
         if artifact.audit_plan_fingerprint != _plan_fingerprint(plan):
             raise IssueLegalContextStaleError("Issue legal context is stale because audit-plan.json changed.")
         index_summary = get_retrieval_index_summary(legal_retrieval_index_path(), legal_db_path())
@@ -248,4 +304,10 @@ def load_issue_legal_context(job_id: UUID, *, validate_freshness: bool = True) -
             raise IssueLegalContextStaleError("Issue legal context is stale because the local legal corpus changed.")
         if artifact.retrieval_index_fingerprint != _index_fingerprint(index_summary):
             raise IssueLegalContextStaleError("Issue legal context is stale because the local retrieval index configuration changed.")
+        try:
+            current_routing_fingerprint = routing_catalog_fingerprint()
+        except DomainRoutingError as exc:
+            raise IssueLegalContextStaleError("Issue legal context routing catalog is no longer readable.") from exc
+        if artifact.domain_routing_fingerprint != current_routing_fingerprint:
+            raise IssueLegalContextStaleError("Issue legal context is stale because READY Corpus Pack routing metadata changed.")
     return artifact
