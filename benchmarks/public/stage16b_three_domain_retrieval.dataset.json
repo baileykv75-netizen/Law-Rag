@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0.0",
+  "dataset_id": "law-rag-stage16b-three-domain-retrieval",
+  "dataset_version": "1.0.0",
+  "title": "Stage 16.2 three-domain deterministic retrieval regression",
+  "scope": "Nine repository-safe Stage 15 domain-aware retrieval cases promoted unchanged into a versioned Stage 16 public regression dataset. Expected values are Authority identities, not professional legal correctness labels.",
+  "source_fixture_path": "legal_data/fixtures/stage15_domain_retrieval_benchmark.json",
+  "cases": [
+    {
+      "case_id": "labor-contract-compensation",
+      "topic": "劳动合同解除与经济补偿",
+      "query": "中华人民共和国劳动合同法 解除劳动合同 经济补偿",
+      "contract_type": "EMPLOYMENT",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-labor-contract-law"
+    },
+    {
+      "case_id": "labor-social-insurance",
+      "topic": "社会保险缴费义务",
+      "query": "中华人民共和国社会保险法 用人单位 社会保险费",
+      "contract_type": "EMPLOYMENT",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-social-insurance-law"
+    },
+    {
+      "case_id": "labor-arbitration-limitation",
+      "topic": "劳动争议仲裁时效",
+      "query": "中华人民共和国劳动争议调解仲裁法 仲裁时效 一年",
+      "contract_type": "EMPLOYMENT",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-labor-dispute-mediation-arbitration-law"
+    },
+    {
+      "case_id": "enterprise-company-capital",
+      "topic": "公司股东出资义务",
+      "query": "中华人民共和国公司法 股东 出资 认缴",
+      "contract_type": "EQUITY",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-company-law"
+    },
+    {
+      "case_id": "enterprise-personal-information",
+      "topic": "个人信息处理合规",
+      "query": "中华人民共和国个人信息保护法 处理个人信息 同意",
+      "contract_type": "SERVICE",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-personal-information-protection-law"
+    },
+    {
+      "case_id": "enterprise-cybersecurity",
+      "topic": "网络安全等级保护",
+      "query": "中华人民共和国网络安全法 网络安全等级保护 网络运营者",
+      "contract_type": "SERVICE",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-cybersecurity-law"
+    },
+    {
+      "case_id": "ip-trademark-registration",
+      "topic": "商标注册与申请",
+      "query": "中华人民共和国商标法 商标注册 申请",
+      "contract_type": "TECHNOLOGY",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-trademark-law"
+    },
+    {
+      "case_id": "ip-patent-invention",
+      "topic": "发明专利保护",
+      "query": "中华人民共和国专利法 发明 专利权",
+      "contract_type": "TECHNOLOGY",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-patent-law"
+    },
+    {
+      "case_id": "ip-copyright-use",
+      "topic": "著作权合理使用",
+      "query": "中华人民共和国著作权法 著作权 合理使用",
+      "contract_type": "TECHNOLOGY",
+      "as_of": "2026-08-20",
+      "expected_authority_id": "prc-copyright-law"
+    }
+  ]
+}

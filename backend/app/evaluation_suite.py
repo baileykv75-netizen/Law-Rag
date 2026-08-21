@@ -19,6 +19,7 @@ from .evaluation_suite_models import (
     EvaluationSuiteManifest,
     EvaluationSuiteRunReport,
 )
+from .public_regression import PublicRegressionError, run_public_regression_profile
 from .quality import QualityError, load_quality_gate_profile, run_public_quality_profile
 from .quality_models import QUALITY_EVALUATOR_VERSION
 
@@ -308,6 +309,46 @@ def _run_quality_entry(
     )
 
 
+def _run_public_regression_entry(
+    entry: EvaluationSuiteEntry,
+    *,
+    repo_root: Path,
+    suite_path: Path,
+    work_dir: Path,
+) -> EvaluationSuiteEntryResult:
+    assert entry.public_regression_profile_path is not None
+    profile_path = _resolve_reference(
+        entry.public_regression_profile_path,
+        repo_root=repo_root,
+        suite_path=suite_path,
+    )
+    _require_file(profile_path, label="Public regression profile")
+    if _path_class(profile_path, repo_root) != "PUBLIC":
+        raise EvaluationSuiteError("PUBLIC_REGRESSION_PROFILE input must stay under benchmarks/public/.")
+    try:
+        report, fingerprints = run_public_regression_profile(repo_root, profile_path, work_dir)
+    except PublicRegressionError as exc:
+        raise EvaluationSuiteError(str(exc)) from exc
+
+    passed_count = sum(1 for gate in report.gates if gate.passed)
+    return EvaluationSuiteEntryResult(
+        entry_id=entry.entry_id,
+        kind=entry.kind,
+        passed=report.all_gates_passed,
+        evaluator_version=report.evaluator_version,
+        identity_id=report.profile_id,
+        identity_version=report.profile_version,
+        unit_label="gates",
+        unit_count=len(report.gates),
+        passed_count=passed_count,
+        failed_count=len(report.gates) - passed_count,
+        source_fingerprints=fingerprints,
+        warnings=[
+            "Stage 16 public deterministic regression gates are scoped repository-safe evidence, not professional legal accuracy."
+        ],
+    )
+
+
 def run_evaluation_suite(
     repo_root: Path,
     suite_path: Path,
@@ -337,7 +378,14 @@ def run_evaluation_suite(
                 suite_path=suite_path,
                 work_dir=work_dir / f"quality-{index}",
             )
-        else:  # defensive for future schema expansion
+        elif entry.kind == EvaluationSuiteEntryKind.PUBLIC_REGRESSION_PROFILE:
+            result = _run_public_regression_entry(
+                entry,
+                repo_root=repo_root,
+                suite_path=suite_path,
+                work_dir=work_dir / f"regression-{index}",
+            )
+        else:
             raise EvaluationSuiteError(f"Unsupported evaluation suite entry kind: {entry.kind}")
         results.append(result)
 
@@ -364,6 +412,6 @@ def run_evaluation_suite(
         warnings=[
             class_warning,
             "No cross-task overall_accuracy or legal_accuracy score is produced by the evaluation-suite layer.",
-            "The evaluation-suite runner consumes observations and never invokes DeepSeek, Kimi, OCR or another model/provider.",
+            "The evaluation-suite runner never invokes paid/network DeepSeek or Kimi provider calls.",
         ],
     )

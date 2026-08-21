@@ -31,11 +31,16 @@ jobs:
         env:
           PYTHONPATH: .
         run: python -m app.quality_cli --repo-root .. --profile ../benchmarks/public/stage11b_quality_gates.json
-      - name: Run Stage 16 public evaluation suite
+      - name: Run Stage 16.2 three-domain public regression metrics
         working-directory: backend
         env:
           PYTHONPATH: .
-        run: python -m app.evaluation_suite_cli --repo-root .. --suite ../benchmarks/public/stage16a_evaluation_suite.json
+        run: python -m app.public_regression_cli --repo-root .. --profile ../benchmarks/public/stage16b_three_domain_regression.json
+      - name: Run Stage 16.2 expanded public evaluation suite
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m app.evaluation_suite_cli --repo-root .. --suite ../benchmarks/public/stage16b_evaluation_suite.json
 
   frontend:
     runs-on: ubuntu-latest

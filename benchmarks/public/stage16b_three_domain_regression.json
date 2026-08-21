@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "law-rag-stage16b-three-domain-public-regression",
+  "profile_version": "1.0.0",
+  "title": "Stage 16.2 three-domain public deterministic regression",
+  "scope": "Deterministic lexical retrieval and routing/versioning invariants over the frozen three-domain-core@1.0.0 public corpus. This is regression evidence only and is not a professional legal-accuracy benchmark.",
+  "runner": "THREE_DOMAIN_RETRIEVAL",
+  "benchmark_path": "benchmarks/public/stage16b_three_domain_retrieval.dataset.json",
+  "corpus_release_path": "legal_data/releases/three-domain-core/1.0.0/release.json",
+  "expected_corpus_id": "three-domain-core",
+  "expected_corpus_version": "1.0.0",
+  "gates": [
+    {
+      "gate_id": "three-domain-scoped-recall",
+      "metric_key": "retrieval.three_domain.scoped_recall_at_5",
+      "operator": "GTE",
+      "threshold": 0.9,
+      "rationale": "Preserve the Stage 15 scoped lexical Recall@5 floor on the promoted nine-case dataset."
+    },
+    {
+      "gate_id": "three-domain-scoped-mrr",
+      "metric_key": "retrieval.three_domain.scoped_mrr",
+      "operator": "GTE",
+      "threshold": 0.8,
+      "rationale": "Preserve the Stage 15 scoped lexical MRR floor."
+    },
+    {
+      "gate_id": "scope-does-not-reduce-recall",
+      "metric_key": "retrieval.three_domain.scoped_recall_minus_broad",
+      "operator": "GTE",
+      "threshold": 0.0,
+      "rationale": "Domain routing must not reduce Recall@5 relative to broad retrieval on the named dataset."
+    },
+    {
+      "gate_id": "scope-does-not-reduce-mrr",
+      "metric_key": "retrieval.three_domain.scoped_mrr_minus_broad",
+      "operator": "GTE",
+      "threshold": 0.0,
+      "rationale": "Domain routing must not reduce MRR relative to broad retrieval on the named dataset."
+    },
+    {
+      "gate_id": "authority-scope-compliance",
+      "metric_key": "retrieval.three_domain.authority_scope_compliance_rate",
+      "operator": "EQ",
+      "threshold": 1.0,
+      "rationale": "Every scoped retrieval candidate must remain inside the deterministic Authority allowlist."
+    },
+    {
+      "gate_id": "expected-authority-is-eligible",
+      "metric_key": "routing.three_domain.expected_authority_eligible_rate",
+      "operator": "EQ",
+      "threshold": 1.0,
+      "rationale": "Routing must not exclude the benchmark's expected Authority before retrieval."
+    },
+    {
+      "gate_id": "frozen-release-article-count",
+      "metric_key": "corpus.three_domain.article_count",
+      "operator": "EQ",
+      "threshold": 1274.0,
+      "rationale": "Evaluate the validated three-domain-core@1.0.0 1274-Article baseline rather than a partial store."
+    },
+    {
+      "gate_id": "unmapped-broad-fallback",
+      "metric_key": "routing.unmapped_fallback_preserved",
+      "operator": "EQ",
+      "threshold": 1.0,
+      "rationale": "An unmapped Issue must preserve the all-READY-Pack recall fallback."
+    },
+    {
+      "gate_id": "cross-domain-union",
+      "metric_key": "routing.cross_domain_union_preserved",
+      "operator": "EQ",
+      "threshold": 1.0,
+      "rationale": "Cross-domain IP + enterprise routing must preserve the deterministic Pack union without labor leakage."
+    },
+    {
+      "gate_id": "trademark-as-of-version-boundary",
+      "metric_key": "retrieval.trademark_version_boundary_exact_rate",
+      "operator": "EQ",
+      "threshold": 1.0,
+      "rationale": "Exact citation must resolve the 2019 trademark Version through 2026-12-31 and the 2027 Version from 2027-01-01."
+    }
+  ]
+}

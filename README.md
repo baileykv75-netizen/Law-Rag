@@ -34,7 +34,7 @@ Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupp
 
 ## Status
 
-**Stage 16.1 is COMPLETE and validated. Stage 16.2 — public deterministic regression corpus expansion — is NEXT.**
+**Stage 16.1 and Stage 16.2 are COMPLETE. Stage 16.3 — private expert benchmark protocol + scoped professional metrics — is NEXT.**
 
 Stage 15 delivered:
 
@@ -59,7 +59,7 @@ Law-Rag Stage 15 CI #123 (32456205510)                  SUCCESS
 Law-Rag Stage 15.5 Windows Baseline CI #9 (32456205586) SUCCESS
 ```
 
-Stage 16.1 added a deterministic orchestration layer above the existing Stage 11 benchmark/quality evaluators and keeps three evidence classes explicit:
+Stage 16 keeps evaluation evidence classes explicit:
 
 ```text
 PUBLIC_REGRESSION
@@ -67,29 +67,60 @@ PRIVATE_EXPERT
 REAL_PROVIDER_UAT
 ```
 
-The suite evaluator consumes existing observations and never calls DeepSeek, Kimi, OCR, or another provider itself. Public regression data stays under `benchmarks/public/`; private expert labels and real-provider UAT observations stay external or under ignored `benchmark_private/`. Suite reports are summary-only and do not embed expert labels, assertion payloads, private contract text, raw provider responses, or an invented cross-task `overall_accuracy`/`legal_accuracy` score.
-
-Authoritative Stage 16.1 implementation validation:
+Stage 16.1 added a versioned deterministic evaluation-suite architecture with public/private/UAT isolation, sanitized reports and input fingerprints. Final Stage 16.1 closeout validation:
 
 ```text
-Stage 16 implementation head
-  de9fb64d3b03316eb3427f0137fc0c9086d145f3
-
-Law-Rag Stage 16 CI #9 (32457699628)                    SUCCESS
-  backend pytest: 428 passed, 5 skipped, 1 warning
-  existing public deterministic quality gates: PASS
-  Stage 16 public evaluation suite: 2 / 2 entries PASS
-  frontend production build: PASS
-
-Law-Rag Stage 15 regression CI #127 (32457699622)      SUCCESS
-Stage 15.5 Windows workflow on Stage 16.1 PR            SKIPPED as intended
+head 706ce85bc5b472896d33dcf4d926501755656247
+Law-Rag Stage 16 CI #15 (32458037391)  SUCCESS
+Law-Rag Stage 15 CI #130 (32458037327) SUCCESS
 ```
 
-Stage 16.2 will promote the strongest existing public deterministic Stage 13–15 regression evidence into explicit versioned benchmark datasets/suite entries, beginning with the Stage 15 three-domain retrieval benchmark and deterministic routing/versioning invariants. It must not introduce paid provider calls or private expert labels.
+Stage 16.2 promoted the existing nine-case Stage 15 three-domain retrieval fixture into an explicit versioned public regression dataset and added a separate deterministic regression profile without changing the historical Stage 11B quality profile.
+
+It validates:
+
+- broad/scoped lexical Recall@5 and MRR;
+- Authority routing/scope invariants;
+- `UNMAPPED` broad fallback;
+- cross-domain Pack union;
+- frozen `three-domain-core@1.0.0` article count;
+- trademark `as_of` version boundary;
+- semantic identity of the promoted Stage 15 benchmark truth;
+- selected Corpus Release identity and READY routing-catalog compatibility.
+
+Authoritative Stage 16.2 implementation validation:
+
+```text
+head e04111f03ac2a67d6a818ffdeea3a9b9a94b821e
+Law-Rag Stage 16 CI #40 (32458988693) SUCCESS
+backend pytest                             434 passed, 5 skipped, 1 warning
+historical Stage 11B public gates          PASS
+Stage 16.2 public regression               10 / 10 gates PASS
+expanded Stage 16b suite                   3 / 3 entries PASS
+frontend production build                 PASS
+```
+
+Named nine-case public regression values:
+
+```text
+scoped Recall@5 / MRR     1.00 / 1.00
+broad Recall@5 / MRR      1.00 / 1.00
+scoped-broad deltas       0.00 / 0.00
+Authority compliance     1.00
+route eligibility        1.00
+UNMAPPED fallback         1.00
+CROSS_DOMAIN union        1.00
+trademark version boundary 1.00
+Article count             1274
+```
+
+Those numbers are **scoped deterministic regression evidence for the named public dataset**, not a claim of 100% legal correctness or professional audit accuracy.
+
+Stage 16.3 moves to professionally labeled private evaluation. Private contracts/labels remain external or under ignored `benchmark_private/`; public Git may contain only schemas, protocol documentation, synthetic examples and privacy-safe aggregates.
 
 See [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md) and [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
-Draft PR #13 and #14 remain Stage 15 stacked validation carriers and are intentionally unmerged unless separately authorized. Draft PR #15 is the Stage 16.1 validation carrier and is also not authorized for merge.
+Draft PR #13/#14/#15/#16 remain stacked validation carriers and are intentionally unmerged unless separately authorized.
 
 ## Main routes
 
@@ -286,25 +317,35 @@ Human Review is append-only and fingerprint-bound. Only fresh final `CONFIRMED` 
 
 ## Evaluation
 
-Stage 16 evaluation is deliberately layered:
+Current public deterministic evaluation is layered:
 
 ```text
 versioned EvaluationSuiteManifest
- -> existing BenchmarkDataset + BenchmarkObservationSet evaluator
+ -> historical BenchmarkDataset + BenchmarkObservationSet evaluator
  OR
- -> existing public QualityGateProfile evaluator
+ -> historical public QualityGateProfile evaluator
+ OR
+ -> Stage 16 public deterministic regression profile
  -> sanitized EvaluationSuiteRunReport
 ```
 
-Run the checked-in public Stage 16.1 orchestration smoke from `backend/`:
+Direct Stage 16.2 regression report from `backend/`:
+
+```text
+python -m app.public_regression_cli \
+  --repo-root .. \
+  --profile ../benchmarks/public/stage16b_three_domain_regression.json
+```
+
+Expanded public suite:
 
 ```text
 python -m app.evaluation_suite_cli \
   --repo-root .. \
-  --suite ../benchmarks/public/stage16a_evaluation_suite.json
+  --suite ../benchmarks/public/stage16b_evaluation_suite.json
 ```
 
-Passing that smoke establishes only that the named public regression/evaluation machinery is functioning. It is not a professional legal-accuracy claim.
+The historical `stage16a_evaluation_suite.json` remains unchanged for Stage 16.1 auditability.
 
 ## Core engineering principles
 
@@ -323,6 +364,7 @@ Passing that smoke establishes only that the named public regression/evaluation 
 13. **Legal corpus identity is immutable.** Changed legal text requires a new Authority Version.
 14. **Corpus scope is auditable.** Domain routing narrows eligible Authorities without pretending unmapped scope means no law.
 15. **Evaluation evidence classes stay separate.** Public regression, private expert truth, and real-provider UAT are not collapsed into one fake score.
+16. **Benchmark identity is versioned.** Public regression truth, Corpus Release identity and routing catalog must remain reproducibly attributable.
 
 ## Repository safety
 

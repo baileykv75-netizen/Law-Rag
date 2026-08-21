@@ -12,8 +12,8 @@ Stage 14.1–14.7 COMPLETE / OCR distribution + DOCX + packaged Windows validati
 Stage 15.1–15.5 COMPLETE / official three-domain corpus + domain-aware RAG + Windows baseline validated
 
 Stage 16.1      COMPLETE / versioned evaluation-suite architecture + evidence-class isolation
-Stage 16.2      NEXT     / public deterministic regression corpus expansion
-Stage 16.3      PENDING  / private expert benchmark protocol + metrics
+Stage 16.2      COMPLETE / public deterministic three-domain regression corpus + gates
+Stage 16.3      NEXT     / private expert benchmark protocol + scoped professional metrics
 Stage 16.4      PENDING  / real-provider ISSUE_V1 UAT observation capture
 Stage 16.5      PENDING  / Stage 16 release-quality evidence matrix + final regression
 ```
@@ -123,83 +123,172 @@ Implemented boundaries:
 - checked-in public Stage 16.1 orchestration smoke;
 - deterministic CLI and Stage 16 CI.
 
-The suite evaluator consumes observations only. It never calls DeepSeek, Kimi, OCR or another provider itself.
-
-Authoritative Stage 16.1 implementation validation on head `de9fb64d3b03316eb3427f0137fc0c9086d145f3`:
+Final Stage 16.1 closeout head:
 
 ```text
-Law-Rag Stage 16 CI #9
-run 32457699628
+706ce85bc5b472896d33dcf4d926501755656247
+```
+
+Final closeout validation:
+
+```text
+Law-Rag Stage 16 CI #15 (32458037391)  SUCCESS
+Law-Rag Stage 15 CI #130 (32458037327) SUCCESS
+```
+
+Draft PR #15 is validation-only and remains unmerged without separate authorization.
+
+## Stage 16.2 — Public deterministic regression corpus expansion — COMPLETE
+
+Stage 16.2 promotes the existing nine-case Stage 15 three-domain retrieval fixture into a versioned public Stage 16 dataset instead of leaving the quality evidence only inside pytest.
+
+Public artifacts:
+
+```text
+benchmarks/public/stage16b_three_domain_retrieval.dataset.json
+benchmarks/public/stage16b_three_domain_regression.json
+benchmarks/public/stage16b_evaluation_suite.json
+```
+
+The original source fixture remains unchanged:
+
+```text
+legal_data/fixtures/stage15_domain_retrieval_benchmark.json
+```
+
+The runner fails closed if the promoted Stage 16 dataset diverges semantically from that Stage 15 source fixture. A changed benchmark truth therefore requires an explicit dataset/source version change rather than silent relabeling.
+
+Stage 16.2 adds a separate `PUBLIC_REGRESSION_PROFILE` suite entry instead of mutating the historical Stage 11B quality profile. The expanded public suite remains backward-compatible with the Stage 16.1 smoke:
+
+```text
+stage16a suite -> 2 historical entries
+stage16b suite -> those same 2 entries + Stage16b three-domain regression
+```
+
+The three-domain runner deterministically rebuilds `legal.db` + FTS5 retrieval from the pinned Corpus Release and evaluates:
+
+- scoped lexical Recall@5;
+- scoped lexical MRR;
+- broad lexical Recall@5;
+- broad lexical MRR;
+- scoped-vs-broad regression deltas;
+- Authority allowlist compliance;
+- expected-Authority routing eligibility;
+- frozen release article count;
+- `UNMAPPED` all-READY-Pack fallback;
+- IP + enterprise `CROSS_DOMAIN` Pack union without labor leakage;
+- exact `as_of` trademark-version selection at the 2027-01-01 boundary.
+
+Reproducibility guards:
+
+- profile pins `three-domain-core@1.0.0` identity;
+- Release Pack ID/version/domain/member metadata must equal the current READY routing catalog or execution fails closed;
+- profile, promoted dataset, Stage 15 source fixture, Corpus Release and routing catalog are SHA-256 fingerprinted;
+- public CI is lexical/deterministic only and never invokes paid/network DeepSeek or Kimi.
+
+Direct deterministic metrics are exposed through:
+
+```text
+python -m app.public_regression_cli \
+  --repo-root .. \
+  --profile ../benchmarks/public/stage16b_three_domain_regression.json
+```
+
+Authoritative implementation validation on head `e04111f03ac2a67d6a818ffdeea3a9b9a94b821e`:
+
+```text
+Law-Rag Stage 16 CI #40
+run 32458988693
 SUCCESS
 
 backend pytest
-428 passed, 5 skipped, 1 third-party warning
+434 passed, 5 skipped, 1 third-party warning
 
-existing public deterministic quality gates
+historical Stage 11B public quality gates
 PASS
 
-Stage 16 public evaluation suite
-2 / 2 entries PASS
+Stage 16.2 direct three-domain regression
+10 / 10 gates PASS
+no diagnostics
+
+expanded Stage 16b evaluation suite
+3 / 3 entries PASS
 
 frontend production build
 PASS
-
-Law-Rag Stage 15 regression CI #127
-run 32457699622
-SUCCESS
-
-Stage 15.5 Windows workflow on this PR
-SKIPPED as intended
 ```
 
-Draft PR #15 is the validation-only Stage 16.1 carrier:
+Measured values on the named nine-case public dataset:
 
 ```text
-head: stage16-1-evaluation-suite-architecture
-base: stage15-5-windows-baseline-corpus
+scoped lexical Recall@5                         1.00
+scoped lexical MRR                              1.00
+broad lexical Recall@5                          1.00
+broad lexical MRR                               1.00
+scoped Recall@5 - broad Recall@5                0.00
+scoped MRR - broad MRR                          0.00
+scoped candidate Authority compliance           1.00
+expected Authority routing eligibility          1.00
+frozen Corpus Release article count             1274
+UNMAPPED broad fallback preserved               1.00
+CROSS_DOMAIN Pack union preserved               1.00
+trademark as_of version-boundary exact rate     1.00
 ```
 
-PR #15 is not authorized for merge.
+These are **scoped deterministic regression results for this named public dataset**, not a claim that Law-Rag has 100% legal correctness, professional audit accuracy, or production recall over Chinese law.
 
-See `docs/STAGE16_EVALUATION.md`.
+Draft PR #16 is the validation-only Stage 16.2 carrier:
 
-## Stage 16.2 — Public deterministic regression corpus expansion — NEXT
+```text
+head: stage16-2-public-regression-corpus
+base: stage16-1-evaluation-suite-architecture
+```
+
+PR #16 is not authorized for merge.
+
+## Stage 16.3 — Private expert benchmark protocol + scoped professional metrics — NEXT
 
 ### Goal
 
-Promote the strongest already-public deterministic Stage 13–15 regression evidence into versioned Stage 16 benchmark datasets/suite entries so the public suite measures more than harness integrity and the old Stage 7 curated retrieval seed.
+Move from deterministic repository regression to professionally labeled evaluation without leaking real/private contracts or expert truth into the public repository.
 
 ### Required focus
 
-Stage 16.2 should reuse and formalize existing repository-safe evidence before inventing new cases. Priority sources include:
+Stage 16.3 should define and validate a private evaluation protocol for the product behaviors that public synthetic regression cannot establish, especially:
 
-1. Stage 15 three-domain retrieval benchmark (`legal_data/fixtures/stage15_domain_retrieval_benchmark.json`);
-2. domain-routing eligibility and broad-vs-scoped retrieval invariants;
-3. legal-version / `as_of` applicability cases;
-4. ISSUE_V1 deterministic artifact/fingerprint/integrity regression cases that can be expressed without paid providers;
-5. public synthetic failure-state cases for missing/stale/conflicting evidence where repository-safe fixtures already exist.
+- primary audit finding correctness on professionally labeled Issues;
+- high-risk finding recall and false-positive behavior;
+- Contract Evidence localization/coverage;
+- Legal Evidence citation validity/relevance against the supplied corpus;
+- secondary-review finding and omission/coverage behavior;
+- Issue-level review states where evidence is insufficient or legally uncertain.
 
-### Acceptance direction
+### Data boundary
 
-Stage 16.2 must:
+Private expert manifests, labels, observations and detailed diagnostics must remain external or under ignored `benchmark_private/`. Public Git may contain only schemas, protocol documentation, synthetic examples and sanitized aggregate evidence that cannot reconstruct private labels/contracts.
 
-- create explicit versioned public datasets rather than burying evaluation only inside pytest;
-- preserve task-level metrics/scope instead of inventing one cross-task score;
-- include deterministic case diagnostics;
-- keep all checked-in cases repository-safe;
-- reuse the Stage 16.1 suite runner rather than adding another evaluator;
-- preserve Stage 15 domain routing and Authority eligibility semantics;
-- keep provider calls entirely out of public CI.
+### Metric direction
 
-### Non-goals for 16.2
+Reuse the existing deterministic metric helpers where labels support them:
+
+```text
+binary classification -> precision / recall / F1
+set extraction        -> precision / recall / F1
+ranked retrieval      -> Recall@K / MRR where appropriate
+```
+
+High-risk recall and other professional metrics must identify the exact private dataset/version and label definition. Do not create a cross-task global legal-accuracy number.
+
+Thresholds must not be invented or lowered merely to make the first private run pass. Dataset quality, label agreement and ambiguity handling must be established before using a metric as a release gate.
+
+### Non-goals for 16.3
 
 Do not yet:
 
-- create or publish private expert labels;
-- run paid DeepSeek/Kimi UAT;
-- tune production prompts merely to improve benchmark numbers;
-- enlarge the legal corpus without independent corpus evidence;
-- change ISSUE_V1 topology;
+- commit private contracts or expert labels;
+- run or score paid real-provider UAT as if it were deterministic expert truth;
+- change DeepSeek/Kimi prompts merely to optimize benchmark numbers;
+- change legal corpus identity/version semantics;
 - begin Stage 17+.
 
 ## Stage 16 invariants
@@ -228,4 +317,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 16.1 is COMPLETE and validated. Stage 16.2 is the only NEXT implementation scope. Do not begin Stage 16.3+, Stage 17+, or merge Draft PR #13/#14/#15 without separate authorization.**
+**Stage 16.1 and Stage 16.2 are COMPLETE. Stage 16.3 is the only NEXT implementation scope. Do not begin Stage 16.4+, Stage 17+, or merge Draft PR #13/#14/#15/#16 without separate authorization.**

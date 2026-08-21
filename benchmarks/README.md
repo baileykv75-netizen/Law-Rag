@@ -10,7 +10,7 @@ Allowed benchmark material:
 - synthetic OCR/layout fixtures created for Law-Rag;
 - verified public legal evidence already permitted by `docs/DATA_POLICY.md`;
 - non-sensitive expected IDs, structured values and evaluator metadata;
-- public Stage 16 evaluation-suite manifests that reference only repository-safe public inputs.
+- public Stage 16 evaluation-suite/regression manifests that reference only repository-safe public inputs.
 
 Do not commit real contracts, private reviewer labels, private benchmark observations, customer data, runtime artifacts, logs, API keys, model caches or private databases.
 
@@ -55,7 +55,7 @@ The framework does **not** compute one aggregate "legal accuracy" score.
 
 Stage 11B adds a separate quality layer with evaluator version `stage11b-1.0.0`.
 
-Reusable metric helpers now support:
+Reusable metric helpers support:
 
 - binary classification precision / recall / F1;
 - micro-averaged set extraction precision / recall / F1;
@@ -64,13 +64,13 @@ Reusable metric helpers now support:
 - versioned threshold profiles with `GTE`, `LTE`, and `EQ` operators;
 - case-level structured failure diagnostics.
 
-The checked-in gate profile is:
+The historical checked-in gate profile is:
 
 ```text
 public/stage11b_quality_gates.json
 ```
 
-Normal CI rebuilds the public legal seed and FTS5 retrieval index, then runs the named public retrieval benchmark against the current code. Current deterministic gates are deliberately narrow:
+Normal CI rebuilds the public curated legal seed and FTS5 retrieval index, then runs the named public retrieval benchmark. These historical gates remain unchanged:
 
 ```text
 Stage 11A schema-smoke case pass rate       = 1.00
@@ -81,27 +81,28 @@ public retrieval MRR                        >= 0.80
 explicit-article exact-hit rate              = 1.00
 ```
 
-These are regression gates for the named repository-safe fixtures only. In particular, the 10-case retrieval dataset covers the current `CURATED_EXCERPT` legal seed; its score must never be described as general legal recall or production legal accuracy.
+They are regression gates for the named repository-safe fixtures only. In particular, the 10-case retrieval dataset covers the historical `CURATED_EXCERPT` seed; its score must never be described as general legal recall or production legal accuracy.
 
-Precision/recall/F1 helpers are available for future labeled audit/OCR/extraction datasets, including private expert benchmarks, but no public audit-finding precision/recall claim is made until such a labeled dataset actually exists.
+## Stage 16 evaluation suites
 
-## Stage 16.1 evaluation suites
-
-Stage 16 adds orchestration **above** the Stage 11 evaluators; it does not replace them.
+Stage 16 adds orchestration **above** the historical evaluators; it does not replace them.
 
 ```text
 EvaluationSuiteManifest
   -> BenchmarkDataset + BenchmarkObservationSet
-       -> existing Stage 11A evaluator
+       -> Stage 11A evaluator
   OR
   -> public QualityGateProfile
-       -> existing Stage 11B evaluator
+       -> Stage 11B evaluator
+  OR
+  -> public deterministic regression profile
+       -> Stage 16 evaluator
   -> sanitized EvaluationSuiteRunReport
 ```
 
-Suite schema version is `1.0.0`; suite evaluator version is `stage16a-1.0.0`.
+Suite schema version remains `1.0.0`. The active suite evaluator version after Stage 16.2 is `stage16b-1.0.0`.
 
-The suite layer has three explicit evidence classes:
+The evidence classes remain explicit:
 
 ```text
 PUBLIC_REGRESSION
@@ -111,37 +112,79 @@ REAL_PROVIDER_UAT
 
 They are intentionally not mixed into one overall score.
 
-### Public regression
+### Stage 16.1 historical smoke
 
-Checked-in `PUBLIC_REGRESSION` suite manifests and all of their inputs must stay under `benchmarks/public/`. They cannot contain `PRIVATE_EXTERNAL` cases.
+`public/stage16a_evaluation_suite.json` remains unchanged as the historical 16.1 orchestration smoke. It contains:
 
-The Stage 16.1 orchestration smoke is:
+1. Stage 11A schema smoke;
+2. Stage 11B historical public quality gates.
+
+Passing it proves only the historical orchestration mechanics.
+
+### Stage 16.2 expanded public suite
+
+Stage 16.2 adds:
 
 ```text
-public/stage16a_evaluation_suite.json
+public/stage16b_three_domain_retrieval.dataset.json
+public/stage16b_three_domain_regression.json
+public/stage16b_evaluation_suite.json
 ```
 
-It reuses the Stage 11A public schema smoke and Stage 11B quality profile only to prove orchestration mechanics. Passing it does not upgrade the scope of either underlying benchmark.
+The dataset promotes the nine cases from:
+
+```text
+legal_data/fixtures/stage15_domain_retrieval_benchmark.json
+```
+
+without changing their expected Authority identities. The runner compares the promoted dataset against the Stage 15 fixture semantically and fails closed if they diverge.
+
+The Stage 16.2 profile pins:
+
+```text
+Corpus Release: three-domain-core@1.0.0
+Articles:       1274
+```
+
+It also requires the selected Release Pack ID/version/domain/member catalog to match the current READY routing catalog. This prevents evaluating old release text against silently changed routing metadata.
+
+Stage 16.2 gates cover:
+
+```text
+scoped lexical Recall@5                     >= 0.90
+scoped lexical MRR                          >= 0.80
+scoped Recall@5 - broad Recall@5            >= 0.00
+scoped MRR - broad MRR                      >= 0.00
+scoped Authority compliance                  = 1.00
+expected Authority routing eligibility       = 1.00
+release article count                        = 1274
+UNMAPPED broad fallback                      = 1.00
+CROSS_DOMAIN Pack union                      = 1.00
+trademark as_of version-boundary exact rate  = 1.00
+```
+
+Authoritative Stage 16 CI #40 measured on the named nine-case dataset:
+
+```text
+scoped Recall@5                  1.00
+scoped MRR                       1.00
+broad Recall@5                   1.00
+broad MRR                        1.00
+scoped-broad Recall delta        0.00
+scoped-broad MRR delta           0.00
+all remaining invariant rates    1.00
+article count                    1274
+```
+
+These numbers mean only that the current deterministic code passes the named public regression evidence. They are **not** professional legal correctness, audit accuracy, or full Chinese-law retrieval coverage.
 
 ### Private expert
 
-`PRIVATE_EXPERT` suite manifests, datasets and observations must be external or under ignored `benchmark_private/`. Every expert benchmark case must declare `PRIVATE_EXTERNAL` provenance.
-
-The suite report intentionally keeps only summary counts, dataset identity/version and input SHA-256 fingerprints. Assertion-level expected/observed payloads stay in the underlying private benchmark boundary.
+`PRIVATE_EXPERT` suite manifests, datasets and observations must be external or under ignored `benchmark_private/`. Expert benchmark cases use `PRIVATE_EXTERNAL` provenance. Detailed labels and expected/observed values stay inside that private boundary.
 
 ### Real-provider UAT
 
-`REAL_PROVIDER_UAT` suite manifests and Observation Sets must also be external/ignored. A UAT dataset may reuse a public-safe benchmark or a private external dataset, but every UAT observation must identify:
-
-```text
-provider
-model
-SHA-256 artifact_fingerprint
-```
-
-The suite rejects `fake` as real-provider evidence.
-
-The Stage 16.1 evaluator never calls DeepSeek, Kimi or another provider. Later UAT work will produce Observation Sets separately and feed them into this deterministic evaluator.
+`REAL_PROVIDER_UAT` suite manifests and Observation Sets must also be external/ignored. Every UAT observation must identify a current real provider/model and SHA-256 artifact fingerprint. Fake provider/producer identities are invalid UAT evidence.
 
 ## CLIs
 
@@ -153,7 +196,7 @@ python -m app.benchmark_cli \
   --observations ../benchmarks/public/stage11a_schema_smoke.observations.json
 ```
 
-Stage 11B public quality gates:
+Historical Stage 11B public quality gates:
 
 ```text
 python -m app.quality_cli \
@@ -161,21 +204,20 @@ python -m app.quality_cli \
   --profile ../benchmarks/public/stage11b_quality_gates.json
 ```
 
-Stage 16 evaluation suite:
+Stage 16.2 direct public regression report:
+
+```text
+python -m app.public_regression_cli \
+  --repo-root .. \
+  --profile ../benchmarks/public/stage16b_three_domain_regression.json
+```
+
+Expanded Stage 16 public suite:
 
 ```text
 python -m app.evaluation_suite_cli \
   --repo-root .. \
-  --suite ../benchmarks/public/stage16a_evaluation_suite.json
+  --suite ../benchmarks/public/stage16b_evaluation_suite.json
 ```
 
-Optional sanitized report output:
-
-```text
-python -m app.evaluation_suite_cli \
-  --repo-root .. \
-  --suite <suite.json> \
-  --output <suite-report.json>
-```
-
-For private local evaluation, keep the suite manifest and its private inputs outside tracked paths. Private labels do not need to enter the repository or normal CI.
+Both Stage 16 CLIs support optional JSON output paths. Private local evaluation must keep private manifests/inputs outside tracked paths; private labels do not need to enter the repository or normal CI.
