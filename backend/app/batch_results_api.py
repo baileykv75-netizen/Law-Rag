@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
 
 from .batch_results import (
     BatchNotFoundError,
@@ -15,8 +16,19 @@ from .batch_results import (
 from .batch_results_models import BatchManifest, BatchResultSummary
 from .job_history import JobHistoryError, get_job_history, list_job_history
 from .job_history_models import JobHistoryItem, JobHistoryPage
+from .storage_management import (
+    JobCleanupNotAllowed,
+    StorageManagementError,
+    delete_job_storage,
+    storage_summary,
+)
+from .storage_management_models import JobCleanupResult, StorageSummary
 
 router = APIRouter(prefix="/api/batches", tags=["batch-results"])
+
+
+class JobCleanupRequest(BaseModel):
+    confirm_job_id: UUID
 
 
 @router.post("", response_model=BatchManifest, status_code=status.HTTP_201_CREATED)
@@ -57,6 +69,16 @@ def job_history_api(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
+@router.get("/history/storage", response_model=StorageSummary)
+def storage_summary_api() -> StorageSummary:
+    """Report local runtime storage without mutating job or legal data."""
+
+    try:
+        return storage_summary()
+    except (StorageManagementError, JobHistoryError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
 @router.get("/history/jobs/{job_id}", response_model=JobHistoryItem)
 def job_history_item_api(job_id: UUID) -> JobHistoryItem:
     try:
@@ -64,6 +86,20 @@ def job_history_item_api(job_id: UUID) -> JobHistoryItem:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except JobHistoryError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@router.delete("/history/jobs/{job_id}", response_model=JobCleanupResult)
+def delete_job_storage_api(job_id: UUID, request: JobCleanupRequest) -> JobCleanupResult:
+    """Delete one terminal Job's private runtime roots after explicit UUID confirmation."""
+
+    try:
+        return delete_job_storage(job_id, confirm_job_id=request.confirm_job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except JobCleanupNotAllowed as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (StorageManagementError, JobHistoryError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
