@@ -231,6 +231,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Verify whether the Windows system-tray runtime dependency is available without starting the local server.",
     )
+    parser.add_argument(
+        "--diagnose-runtime-encryption",
+        action="store_true",
+        help="Inspect Law-Rag managed runtime-encryption policy/state without enabling or disabling encryption.",
+    )
     parser.add_argument("--json", action="store_true", help="With a diagnostic mode, print machine-readable JSON.")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the local workstation in a browser.")
     parser.add_argument(
@@ -268,6 +273,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(_diagnostic_json(payload))
         if os.name == "nt":
             return 0 if probe.pystray_available else 6
+        return 0
+
+    if args.diagnose_runtime_encryption:
+        from .runtime_encryption import RuntimeEncryptionError, runtime_encryption_overview
+
+        try:
+            overview = runtime_encryption_overview()
+        except RuntimeEncryptionError as exc:
+            print(f"[ERROR] Runtime encryption state could not be inspected: {_format_exception_chain(exc)}")
+            return 7
+        payload = overview.model_dump(mode="json")
+        if args.json:
+            print(_diagnostic_json(payload))
+        else:
+            print("Law-Rag Runtime Encryption")
+            print(_diagnostic_json(payload))
         return 0
 
     if args.diagnose_ocr_runtime:
@@ -358,6 +379,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         except Exception as exc:
             print(f"[ERROR] Packaged legal baseline could not be installed safely: {_format_exception_chain(exc)}")
             return 2
+
+    from .runtime_encryption import (
+        RuntimeEncryptionRequiredError,
+        ensure_runtime_encryption_on_startup,
+    )
+
+    try:
+        encryption = ensure_runtime_encryption_on_startup()
+    except RuntimeEncryptionRequiredError as exc:
+        print(f"[ERROR] Required runtime encryption is unavailable: {_format_exception_chain(exc)}")
+        return 7
+    if encryption.state.value == "ENCRYPTED":
+        print("[Law-Rag] Job-private runtime roots are protected by Windows EFS; shared legal corpus remains unmanaged by this feature.")
+    elif encryption.mode.value != "OFF":
+        print(f"[Law-Rag] Runtime encryption state: {encryption.state.value}. {encryption.detail}")
+        for warning in encryption.warnings:
+            print(f"[Law-Rag] Runtime encryption warning: {warning}")
 
     report = inspect_startup_health()
     if not report.base_app_ready:
