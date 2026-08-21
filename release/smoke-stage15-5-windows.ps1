@@ -9,6 +9,8 @@ $MetadataPath = Join-Path $BundleDir "_internal\release\public-assets-metadata.j
 $PackagedLegal = Join-Path $BundleDir "_internal\public-assets\legal\legal.db"
 $PackagedRetrieval = Join-Path $BundleDir "_internal\public-assets\legal\retrieval.db"
 $Runtime = Join-Path $env:RUNNER_TEMP ("law-rag-stage15-5-runtime-" + [guid]::NewGuid().ToString("N"))
+$BootstrapStdout = Join-Path $env:RUNNER_TEMP ("law-rag-stage15-5-bootstrap-" + [guid]::NewGuid().ToString("N") + ".stdout.log")
+$BootstrapStderr = Join-Path $env:RUNNER_TEMP ("law-rag-stage15-5-bootstrap-" + [guid]::NewGuid().ToString("N") + ".stderr.log")
 
 if (-not (Test-Path $Exe)) { throw "Law-Rag.exe missing from Windows bundle." }
 foreach ($Path in @($MetadataPath, $PackagedLegal, $PackagedRetrieval)) {
@@ -69,12 +71,16 @@ try {
         throw "--diagnose-corpus mutated the runtime directory."
     }
 
-    $Process = Start-Process -FilePath $Exe -ArgumentList @("--no-browser", "--port", "$Port") -PassThru
+    $Process = Start-Process -FilePath $Exe -ArgumentList @("--no-browser", "--port", "$Port") -RedirectStandardOutput $BootstrapStdout -RedirectStandardError $BootstrapStderr -PassThru
     try {
         $BaseUrl = "http://127.0.0.1:$Port"
         $Ready = $false
         for ($Attempt = 1; $Attempt -le 40; $Attempt++) {
-            if ($Process.HasExited) { throw "Law-Rag.exe exited during Stage 15.5 bootstrap smoke. Exit=$($Process.ExitCode)" }
+            if ($Process.HasExited) {
+                $Stdout = if (Test-Path $BootstrapStdout) { Get-Content $BootstrapStdout -Raw } else { "" }
+                $Stderr = if (Test-Path $BootstrapStderr) { Get-Content $BootstrapStderr -Raw } else { "" }
+                throw "Law-Rag.exe exited during Stage 15.5 bootstrap smoke. Exit=$($Process.ExitCode)`nSTDOUT:`n$Stdout`nSTDERR:`n$Stderr"
+            }
             try {
                 $Health = Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/api/health" -TimeoutSec 2
                 if ($Health.StatusCode -eq 200) { $Ready = $true; break }
@@ -126,5 +132,8 @@ finally {
     if ($null -eq $PreviousHttpsProxy) { Remove-Item Env:HTTPS_PROXY -ErrorAction SilentlyContinue } else { $env:HTTPS_PROXY = $PreviousHttpsProxy }
     if ($null -eq $PreviousAllProxy) { Remove-Item Env:ALL_PROXY -ErrorAction SilentlyContinue } else { $env:ALL_PROXY = $PreviousAllProxy }
     if ($null -eq $PreviousNoProxy) { Remove-Item Env:NO_PROXY -ErrorAction SilentlyContinue } else { $env:NO_PROXY = $PreviousNoProxy }
+    foreach ($Path in @($BootstrapStdout, $BootstrapStderr)) {
+        if (Test-Path $Path) { Remove-Item $Path -Force }
+    }
     if (Test-Path $Runtime) { Remove-Item $Runtime -Recurse -Force }
 }
