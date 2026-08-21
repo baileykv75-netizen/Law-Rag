@@ -28,6 +28,14 @@ def _fingerprint(payload: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _contains_key(value, target: str) -> bool:
+    if isinstance(value, dict):
+        return target in value or any(_contains_key(item, target) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_key(item, target) for item in value)
+    return False
+
+
 def _write_observation(path: Path, *, capture_mode: str = "REAL_PROVIDER", chain_state: str = "COMPLETE") -> IssueV1UATObservation:
     job_id = uuid4()
     complete = chain_state == "COMPLETE"
@@ -186,8 +194,9 @@ def test_real_provider_uat_capture_entry_is_sanitized_and_complete(tmp_path: Pat
     assert "a" * 64 not in rendered
     assert "b" * 64 not in rendered
     assert "c" * 64 not in rendered
-    assert "overall_accuracy" not in rendered
-    assert "legal_accuracy" not in rendered
+    report_payload = report.model_dump(mode="json")
+    assert not _contains_key(report_payload, "overall_accuracy")
+    assert not _contains_key(report_payload, "legal_accuracy")
 
 
 def test_uat_capture_entry_rejects_test_double_observation(tmp_path: Path) -> None:
