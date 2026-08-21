@@ -24,12 +24,13 @@ class JobHistoryError(RuntimeError):
     pass
 
 
-def _job_roots(root: Path, job_id: UUID) -> tuple[Path, Path, Path]:
+def _job_roots(root: Path, job_id: UUID) -> tuple[Path, ...]:
     value = str(job_id)
     return (
         root / "jobs" / value,
         root / "uploads" / value,
         root / "rendered" / value,
+        root / "exports" / value,
     )
 
 
@@ -57,7 +58,7 @@ def _safe_tree_bytes(path: Path) -> int:
     return total
 
 
-def _latest_mtime(paths: tuple[Path, Path, Path]) -> datetime | None:
+def _latest_mtime(paths: tuple[Path, ...]) -> datetime | None:
     latest: float | None = None
     for root in paths:
         if not root.exists() or root.is_symlink():
@@ -108,8 +109,8 @@ def _pipeline(job_id: UUID, job_dir: Path) -> tuple[PipelineReport | None, str |
 
 
 def _history_item(root: Path, job_id: UUID) -> JobHistoryItem:
-    job_dir, upload_dir, rendered_dir = _job_roots(root, job_id)
-    roots = (job_dir, upload_dir, rendered_dir)
+    roots = _job_roots(root, job_id)
+    job_dir = roots[0]
     warning_parts: list[str] = []
     integrity = JobHistoryIntegrity.OK
 
@@ -142,7 +143,10 @@ def _history_item(root: Path, job_id: UUID) -> JobHistoryItem:
         pipeline_status = pipeline.status.value
         progress_percent = pipeline.progress_percent
         started_at = pipeline.started_at
-        updated_at = pipeline.updated_at
+        updated_at = max(
+            [value for value in (pipeline.updated_at, _latest_mtime(roots)) if value is not None],
+            default=None,
+        )
         completed_at = pipeline.completed_at
     else:
         terminal = False
@@ -172,6 +176,8 @@ def _history_item(root: Path, job_id: UUID) -> JobHistoryItem:
 
 def _discover_job_ids(root: Path) -> set[UUID]:
     result: set[UUID] = set()
+    # Exports are job-owned but are not an authoritative source of job identity.
+    # A stray export without jobs/uploads/rendered must not resurrect a deleted Job.
     for category in ("jobs", "uploads", "rendered"):
         parent = root / category
         if not parent.is_dir() or parent.is_symlink():
