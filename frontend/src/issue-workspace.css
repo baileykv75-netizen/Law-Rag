@@ -93,6 +93,29 @@
   line-height: 1.5;
 }
 .quiet-state { margin: 8px 0; color: #8a94a3; font-size: 9px; line-height: 1.5; }
+.report-export-controls {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  max-width: 520px;
+}
+.report-export-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.report-export-actions button {
+  min-width: 92px;
+  padding: 7px 11px;
+  border: 1px solid #b8c4d2;
+  border-radius: 4px;
+  background: #fff;
+  color: #34435a;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.report-export-actions button:hover:not(:disabled) { border-color: #71859d; background: #f7f9fb; }
+.report-export-actions button:disabled { cursor: not-allowed; opacity: .48; }
+.report-export-controls small { color: #748196; font-size: 8px; line-height: 1.45; }
+.report-export-controls small.is-review { color: #8b641f; }
 
 @media (max-width: 1180px) {
   .issue-coverage-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -103,4 +126,5 @@
   .coverage-global-warning,
   .legacy-workspace-notice { margin-left: 10px; margin-right: 10px; }
   .issue-evidence-counts { grid-template-columns: 1fr; }
+  .report-export-actions button { flex: 1 1 120px; }
 }
