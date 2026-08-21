@@ -119,19 +119,44 @@ def start_system_tray(
     return TrayHandle(icon=tray_icon, thread=thread)
 
 
+def _recover_storage_cleanup() -> None:
+    """Finish crash-interrupted Stage 17.3 cleanup before serving requests.
+
+    The release launcher always configures LAW_RAG_RUNTIME_DIR. Keeping this a
+    no-op when the variable is absent avoids touching a developer/source-tree
+    runtime merely because a lifecycle unit test runs.
+    """
+
+    if not os.getenv("LAW_RAG_RUNTIME_DIR", "").strip():
+        return
+    from .storage_management import reconcile_storage_cleanup_transactions
+
+    completed, warnings = reconcile_storage_cleanup_transactions()
+    if completed:
+        print(f"[Law-Rag] Completed {completed} interrupted storage cleanup transaction(s) after restart.")
+    for warning in warnings:
+        print(f"[Law-Rag] Storage cleanup recovery warning: {warning}")
+
+
 def run_server_with_desktop_lifecycle(
     server: ServerLike,
     url: str,
     *,
     enable_tray: bool,
     tray_starter: Callable[[str, Callable[[], None]], TrayHandle | None] = start_system_tray,
+    cleanup_recovery: Callable[[], None] = _recover_storage_cleanup,
 ) -> None:
-    """Run the local server and always tear down the tray on server exit."""
+    """Recover safe cleanup, run the local server, and always tear down the tray."""
 
     tray: TrayHandle | None = None
 
     def request_shutdown() -> None:
         server.should_exit = True
+
+    # Cleanup transactions move only Job-owned roots. Recovery must complete
+    # before the API begins serving history/results so users never see a
+    # half-deleted Job or stale batch reference after a crash.
+    cleanup_recovery()
 
     if enable_tray:
         tray = tray_starter(url, request_shutdown)
