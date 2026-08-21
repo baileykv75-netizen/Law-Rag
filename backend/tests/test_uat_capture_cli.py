@@ -35,13 +35,14 @@ def test_uat_capture_cli_real_provider_without_confirmation_fails_before_job_rea
 ) -> None:
     job_id = uuid4()
     output = tmp_path / "observation.json"
+    repo_root = Path(__file__).resolve().parents[2]
     monkeypatch.setattr(
         sys,
         "argv",
         [
             "uat-capture",
             "--repo-root",
-            str(tmp_path),
+            str(repo_root),
             "--job-id",
             str(job_id),
             "--output",
