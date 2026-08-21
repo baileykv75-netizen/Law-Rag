@@ -81,6 +81,12 @@ def _format_exception_chain(exc: BaseException) -> str:
     return " <- ".join(parts)
 
 
+def _diagnostic_json(payload: object) -> str:
+    """Render machine-readable diagnostics safely on legacy Windows code pages."""
+
+    return json.dumps(payload, ensure_ascii=True, indent=2)
+
+
 def _port_available(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.5)
@@ -240,7 +246,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         probe = probe_ocr_runtime(import_modules=True, run_native_check=True)
         if args.json:
-            print(json.dumps(probe.model_dump(), ensure_ascii=False, indent=2))
+            print(_diagnostic_json(probe.model_dump()))
         else:
             _print_ocr_probe(probe)
         return 0 if probe.ready else 3
@@ -250,7 +256,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         probe = probe_ocr_models()
         if args.json:
-            print(json.dumps(probe.model_dump(), ensure_ascii=False, indent=2))
+            print(_diagnostic_json(probe.model_dump()))
         else:
             _print_ocr_model_probe(probe)
         return 0 if probe.ready else 4
@@ -274,7 +280,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "confidences": [block.confidence for block in blocks],
         }
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            print(_diagnostic_json(payload))
         else:
             print("Law-Rag Offline OCR Inference")
             print(f"block_count: {len(blocks)}")
@@ -289,11 +295,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             ready = False
             payload = {"ready": False, "error": _format_exception_chain(exc)}
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            print(_diagnostic_json(payload))
         else:
             print("Law-Rag Offline Legal Corpus")
             print(f"ready: {'YES' if ready else 'NO'}")
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            print(_diagnostic_json(payload))
         return 0 if ready else 5
 
     from .startup_diagnostics import inspect_startup_health
@@ -301,7 +307,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.diagnose:
         report = inspect_startup_health()
         if args.json:
-            print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+            print(_diagnostic_json(report.model_dump(mode="json")))
         else:
             _print_health(report)
         return 0 if report.base_app_ready else 2
