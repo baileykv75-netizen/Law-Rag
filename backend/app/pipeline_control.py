@@ -156,11 +156,12 @@ def assert_provider_allowed(job_id: UUID) -> PipelineControl:
 def begin_provider_call(job_id: UUID, provider: str) -> PipelineControl:
     """Atomically cross every local guard before one outbound model request.
 
-    Provider approval/cancellation is checked first. A shared Stage 18.3 budget
-    reservation is then persisted before `provider.generate(...)` can execute.
-    Therefore LOCAL_ONLY / unapproved / cancelled work consumes no provider-call
-    budget, while every request allowed to reach the external network is counted
-    conservatively even if the process later crashes or model output is invalid.
+    Provider approval/cancellation is checked first. The active-provider marker
+    is safely persisted before a Stage 18.3 budget reservation is created. If
+    that reservation fails, the active marker is rolled back before returning.
+    Once this function returns successfully, the caller is allowed to execute
+    exactly one external `provider.generate(...)` request and that request has a
+    durable call-ledger reservation.
     """
 
     with _lock_for(job_id):
@@ -178,21 +179,27 @@ def begin_provider_call(job_id: UUID, provider: str) -> PipelineControl:
                 "外部模型调用需要明确确认。",
             )
 
+        control.active_provider = provider
+        control.active_provider_started_at = _now()
+        control = _persist(control)
         try:
             from .resource_budget import ResourceBudgetError, ResourceBudgetExceeded, reserve_provider_call
 
             reserve_provider_call(job_id, provider=provider)
         except ResourceBudgetExceeded as exc:
+            control.active_provider = None
+            control.active_provider_started_at = None
+            _persist(control)
             raise ProviderBoundaryPaused(exc.code, exc.detail) from exc
         except (ResourceBudgetError, FileNotFoundError) as exc:
+            control.active_provider = None
+            control.active_provider_started_at = None
+            _persist(control)
             raise ProviderBoundaryPaused(
                 "RESOURCE_BUDGET_INVALID",
                 f"本地资源预算状态无法安全验证，未发送外部模型请求：{exc}",
             ) from exc
-
-        control.active_provider = provider
-        control.active_provider_started_at = _now()
-        return _persist(control)
+        return control
 
 
 def finish_provider_call(job_id: UUID, provider: str) -> PipelineControl:
@@ -204,9 +211,6 @@ def finish_provider_call(job_id: UUID, provider: str) -> PipelineControl:
 
                 mark_latest_provider_call_returned(job_id, provider)
             except (ResourceBudgetError, FileNotFoundError) as exc:
-                # The request has already crossed the provider boundary. Losing
-                # its accounting state would make later cost/token claims false,
-                # so stop the pipeline instead of silently continuing.
                 control.active_provider = None
                 control.active_provider_started_at = None
                 _persist(control)
