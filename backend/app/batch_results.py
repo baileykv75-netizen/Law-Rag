@@ -14,11 +14,16 @@ from .batch_results_models import (
     BatchResultSummary,
     SeverityCounts,
 )
+from .issue_primary_audit_models import IssuePrimaryAuditState
+from .issue_workspace import load_issue_workspace_summary
+from .job_architecture import JobArchitectureError, resolve_job_architecture
+from .job_architecture_models import JobAuditArchitecture
 from .models import DocumentInspection
 from .pipeline import PipelineError, load_pipeline_report
 from .review_report import ReviewReportError, load_review_report
 from .safe_persistence import atomic_write_text
 from .storage import runtime_dir
+from .workspace_models import WorkspaceOverallState
 
 
 class BatchResultError(RuntimeError):
@@ -113,7 +118,7 @@ def _document(job_id: UUID) -> DocumentInspection:
         raise BatchResultError(f"Document metadata is invalid for job {job_id}.") from exc
 
 
-def _severity_counts(review) -> SeverityCounts:
+def _legacy_severity_counts(review) -> SeverityCounts:
     counts = SeverityCounts()
     for finding in review.primary_findings:
         severity = finding.severity.value.lower()
@@ -122,15 +127,212 @@ def _severity_counts(review) -> SeverityCounts:
     return counts
 
 
-def _priority(counts: SeverityCounts, *, human_review: bool, omissions: int, material: bool) -> int:
-    return (
-        (1000 if human_review else 0)
-        + counts.critical * 200
-        + counts.high * 50
-        + counts.medium * 10
-        + counts.low * 2
-        + omissions * 25
-        + (100 if material else 0)
+def _issue_severity_counts(workspace) -> SeverityCounts:
+    """Count only supported primary risk findings, not every planned Issue."""
+
+    counts = SeverityCounts()
+    for issue in workspace.issues:
+        if issue.primary_state != IssuePrimaryAuditState.SUPPORTED_FINDING or issue.primary_severity is None:
+            continue
+        severity = issue.primary_severity.value.lower()
+        if hasattr(counts, severity):
+            setattr(counts, severity, getattr(counts, severity) + 1)
+    return counts
+
+
+def _priority(
+    counts: SeverityCounts,
+    *,
+    human_review: bool,
+    omissions: int,
+    material_disagreements: int,
+    insufficient_evidence: int,
+) -> int:
+    """Deterministic work-queue ordering only; never a legal risk score.
+
+    Category presence is intentionally lexicographic. One item in a higher
+    category always outranks any number (up to the Stage 13 bound) of lower
+    categories. Counts are used only as a bounded tie-breaker after the
+    category ordering has been established.
+    """
+
+    flags = (
+        (131_072 if human_review else 0)
+        + (65_536 if omissions > 0 else 0)
+        + (32_768 if material_disagreements > 0 else 0)
+        + (16_384 if counts.critical > 0 else 0)
+        + (8_192 if counts.high > 0 else 0)
+        + (4_096 if insufficient_evidence > 0 else 0)
+        + (2_048 if counts.medium > 0 else 0)
+        + (1_024 if counts.low > 0 else 0)
+    )
+    tie_breaker = min(
+        1_023,
+        omissions
+        + material_disagreements
+        + counts.critical
+        + counts.high
+        + insufficient_evidence
+        + counts.medium
+        + counts.low
+        + counts.info,
+    )
+    return flags + tie_breaker
+
+
+def _invalid_result(
+    job_id: UUID,
+    filename: str,
+    *,
+    progress: int,
+    pipeline_status: str | None,
+    architecture: str | None,
+    code: str,
+    detail: str,
+) -> BatchJobResult:
+    return BatchJobResult(
+        job_id=job_id,
+        filename=filename,
+        state=BatchJobState.INVALID,
+        progress_percent=progress,
+        pipeline_status=pipeline_status,
+        architecture=architecture,
+        failure_code=code,
+        failure_detail=detail,
+        needs_attention=True,
+        priority_rank=500_000,
+    )
+
+
+def _summarize_issue_v1(job_id: UUID, document: DocumentInspection, status: str) -> BatchJobResult:
+    try:
+        workspace = load_issue_workspace_summary(job_id)
+    except Exception as exc:
+        return _invalid_result(
+            job_id,
+            document.filename,
+            progress=100,
+            pipeline_status=status,
+            architecture=JobAuditArchitecture.ISSUE_V1.value,
+            code="ISSUE_RESULT_INVALID",
+            detail=f"Stage 13 审计流水线已完成，但 Issue V1 权威结果无法安全读取：{type(exc).__name__}。",
+        )
+
+    if workspace.overall_state == WorkspaceOverallState.INVALID:
+        return _invalid_result(
+            job_id,
+            document.filename,
+            progress=100,
+            pipeline_status=status,
+            architecture=JobAuditArchitecture.ISSUE_V1.value,
+            code="ISSUE_RESULT_INVALID",
+            detail="Stage 13 审计流水线已完成，但权威 Issue 产物存在完整性或 freshness 异常。",
+        )
+    if workspace.overall_state == WorkspaceOverallState.INCOMPLETE or workspace.coverage is None:
+        return _invalid_result(
+            job_id,
+            document.filename,
+            progress=100,
+            pipeline_status=status,
+            architecture=JobAuditArchitecture.ISSUE_V1.value,
+            code="ISSUE_RESULT_INCOMPLETE",
+            detail="Stage 13 审计流水线标记为完成，但 AuditPlan / Issue Review 链仍不完整。",
+        )
+
+    counts = _issue_severity_counts(workspace)
+    review = workspace.review
+    coverage = workspace.coverage
+    human_review = workspace.overall_state == WorkspaceOverallState.HUMAN_REVIEW_REQUIRED
+    omissions = review.possible_omission_count
+    material_count = review.material_disagreement_count
+    insufficient = review.insufficient_evidence_count
+    rank = _priority(
+        counts,
+        human_review=human_review,
+        omissions=omissions,
+        material_disagreements=material_count,
+        insufficient_evidence=insufficient,
+    )
+    attention = bool(
+        human_review
+        or omissions
+        or material_count
+        or counts.critical
+        or counts.high
+        or insufficient
+    )
+    reviewed_coverage = coverage.reviewed_with_issue_count + coverage.reviewed_no_specific_issue_count
+    return BatchJobResult(
+        job_id=job_id,
+        filename=document.filename,
+        state=BatchJobState.COMPLETE,
+        progress_percent=100,
+        pipeline_status=status,
+        architecture=JobAuditArchitecture.ISSUE_V1.value,
+        final_review_state=workspace.overall_state.value,
+        human_review_required=human_review,
+        finding_counts=counts,
+        issue_count=coverage.issue_count,
+        possible_omissions=omissions,
+        material_disagreement=material_count > 0,
+        material_disagreement_count=material_count,
+        insufficient_evidence_count=insufficient,
+        review_required_count=review.review_required_count,
+        planning_coverage_complete=coverage.coverage_complete,
+        planning_coverage_reviewed_count=reviewed_coverage,
+        planning_coverage_total_count=coverage.canonical_object_count,
+        human_review_resolved_count=review.human_review_resolved_required_count,
+        human_review_outstanding_count=review.human_review_outstanding_required_count,
+        human_review_stale_count=review.human_review_stale_latest_count,
+        needs_attention=attention,
+        priority_rank=rank,
+    )
+
+
+def _summarize_legacy_rc2(job_id: UUID, document: DocumentInspection, status: str) -> BatchJobResult:
+    try:
+        review = load_review_report(job_id)
+    except (FileNotFoundError, ReviewReportError):
+        return _invalid_result(
+            job_id,
+            document.filename,
+            progress=100,
+            pipeline_status=status,
+            architecture=JobAuditArchitecture.LEGACY_RC2.value,
+            code="REVIEW_REPORT_INVALID",
+            detail="Legacy RC2 审计流水线已完成，但 review-report.json 无法安全读取。",
+        )
+
+    counts = _legacy_severity_counts(review)
+    human_review = review.final_state.value == "HUMAN_REVIEW_REQUIRED"
+    material = review.comparison.overall_state.value in {
+        "MATERIAL_DISAGREEMENT",
+        "REQUIRES_MORE_EVIDENCE",
+    }
+    omissions = len(review.possible_primary_omissions)
+    rank = _priority(
+        counts,
+        human_review=human_review,
+        omissions=omissions,
+        material_disagreements=1 if material else 0,
+        insufficient_evidence=0,
+    )
+    attention = bool(human_review or counts.critical or counts.high or material or omissions)
+    return BatchJobResult(
+        job_id=job_id,
+        filename=document.filename,
+        state=BatchJobState.COMPLETE,
+        progress_percent=100,
+        pipeline_status=status,
+        architecture=JobAuditArchitecture.LEGACY_RC2.value,
+        final_review_state=review.final_state.value,
+        human_review_required=human_review,
+        finding_counts=counts,
+        possible_omissions=omissions,
+        material_disagreement=material,
+        material_disagreement_count=1 if material else 0,
+        needs_attention=attention,
+        priority_rank=rank,
     )
 
 
@@ -146,7 +348,7 @@ def _summarize_job(job_id: UUID) -> BatchJobResult:
             failure_code="DOCUMENT_METADATA_INVALID",
             failure_detail="本地文档元数据无法安全读取。",
             needs_attention=True,
-            priority_rank=5000,
+            priority_rank=500_000,
         )
 
     try:
@@ -164,6 +366,32 @@ def _summarize_job(job_id: UUID) -> BatchJobResult:
             priority_rank=2500,
         )
 
+    try:
+        architecture_summary = resolve_job_architecture(job_id)
+        architecture = architecture_summary.architecture
+    except (JobArchitectureError, FileNotFoundError):
+        return _invalid_result(
+            job_id,
+            document.filename,
+            progress=pipeline.progress_percent,
+            pipeline_status=pipeline.status.value,
+            architecture=None,
+            code="ARCHITECTURE_UNRESOLVED",
+            detail="无法安全确认该任务应读取 Legacy RC2 还是 Issue V1 审计结果。",
+        )
+
+    if architecture == JobAuditArchitecture.CONFLICT:
+        return _invalid_result(
+            job_id,
+            document.filename,
+            progress=pipeline.progress_percent,
+            pipeline_status=pipeline.status.value,
+            architecture=architecture.value,
+            code="ARCHITECTURE_CONFLICT",
+            detail="该任务的新旧审计架构状态冲突；结果页拒绝猜测哪套报告具有权威性。",
+        )
+
+    architecture_value = architecture.value
     status = pipeline.status.value
     if status == "FAILED":
         return BatchJobResult(
@@ -172,6 +400,7 @@ def _summarize_job(job_id: UUID) -> BatchJobResult:
             state=BatchJobState.FAILED,
             progress_percent=pipeline.progress_percent,
             pipeline_status=status,
+            architecture=architecture_value,
             failure_code=pipeline.failure_code,
             failure_detail=pipeline.failure_detail,
             needs_attention=True,
@@ -184,6 +413,7 @@ def _summarize_job(job_id: UUID) -> BatchJobResult:
             state=BatchJobState.CANCELLED,
             progress_percent=pipeline.progress_percent,
             pipeline_status=status,
+            architecture=architecture_value,
             failure_code=pipeline.failure_code,
             failure_detail=pipeline.failure_detail,
             needs_attention=False,
@@ -200,6 +430,7 @@ def _summarize_job(job_id: UUID) -> BatchJobResult:
             state=BatchJobState.WAITING,
             progress_percent=pipeline.progress_percent,
             pipeline_status=status,
+            architecture=architecture_value,
             failure_code=pipeline.failure_code,
             failure_detail=pipeline.failure_detail,
             needs_attention=True,
@@ -212,46 +443,12 @@ def _summarize_job(job_id: UUID) -> BatchJobResult:
             state=BatchJobState.PROCESSING,
             progress_percent=pipeline.progress_percent,
             pipeline_status=status,
+            architecture=architecture_value,
         )
 
-    try:
-        review = load_review_report(job_id)
-    except (FileNotFoundError, ReviewReportError):
-        return BatchJobResult(
-            job_id=job_id,
-            filename=document.filename,
-            state=BatchJobState.INVALID,
-            progress_percent=100,
-            pipeline_status=status,
-            failure_code="REVIEW_REPORT_INVALID",
-            failure_detail="审计流水线已完成，但复核报告无法安全读取。",
-            needs_attention=True,
-            priority_rank=4500,
-        )
-
-    counts = _severity_counts(review)
-    human_review = review.final_state.value == "HUMAN_REVIEW_REQUIRED"
-    material = review.comparison.overall_state.value in {
-        "MATERIAL_DISAGREEMENT",
-        "REQUIRES_MORE_EVIDENCE",
-    }
-    omissions = len(review.possible_primary_omissions)
-    rank = _priority(counts, human_review=human_review, omissions=omissions, material=material)
-    attention = bool(human_review or counts.critical or counts.high or material or omissions)
-    return BatchJobResult(
-        job_id=job_id,
-        filename=document.filename,
-        state=BatchJobState.COMPLETE,
-        progress_percent=100,
-        pipeline_status=status,
-        final_review_state=review.final_state.value,
-        human_review_required=human_review,
-        finding_counts=counts,
-        possible_omissions=omissions,
-        material_disagreement=material,
-        needs_attention=attention,
-        priority_rank=rank,
-    )
+    if architecture == JobAuditArchitecture.ISSUE_V1:
+        return _summarize_issue_v1(job_id, document, status)
+    return _summarize_legacy_rc2(job_id, document, status)
 
 
 def summarize_batch(batch_id: UUID) -> BatchResultSummary:
@@ -269,6 +466,9 @@ def summarize_batch(batch_id: UUID) -> BatchResultSummary:
         failed_jobs=sum(item.state in {BatchJobState.FAILED, BatchJobState.INVALID} for item in jobs),
         human_review_required_jobs=sum(item.human_review_required for item in jobs),
         processing_jobs=sum(item.state == BatchJobState.PROCESSING for item in jobs),
+        issue_v1_jobs=sum(item.architecture == JobAuditArchitecture.ISSUE_V1.value for item in jobs),
+        legacy_rc2_jobs=sum(item.architecture == JobAuditArchitecture.LEGACY_RC2.value for item in jobs),
+        coverage_incomplete_jobs=sum(item.planning_coverage_complete is False for item in jobs),
     )
 
 

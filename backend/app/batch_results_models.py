@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 BATCH_SCHEMA_VERSION = "1.0.0"
-BATCH_RESULT_SCHEMA_VERSION = "1.1.0"
+BATCH_RESULT_SCHEMA_VERSION = "1.2.0"
 
 
 class BatchManifest(BaseModel):
@@ -42,11 +42,22 @@ class BatchJobResult(BaseModel):
     pipeline_status: str | None = None
     failure_code: str | None = None
     failure_detail: str | None = None
+    architecture: str | None = None
     final_review_state: str | None = None
     human_review_required: bool = False
     finding_counts: SeverityCounts = Field(default_factory=SeverityCounts)
+    issue_count: int = Field(default=0, ge=0)
     possible_omissions: int = Field(default=0, ge=0)
     material_disagreement: bool = False
+    material_disagreement_count: int = Field(default=0, ge=0)
+    insufficient_evidence_count: int = Field(default=0, ge=0)
+    review_required_count: int = Field(default=0, ge=0)
+    planning_coverage_complete: bool | None = None
+    planning_coverage_reviewed_count: int = Field(default=0, ge=0)
+    planning_coverage_total_count: int = Field(default=0, ge=0)
+    human_review_resolved_count: int = Field(default=0, ge=0)
+    human_review_outstanding_count: int = Field(default=0, ge=0)
+    human_review_stale_count: int = Field(default=0, ge=0)
     needs_attention: bool = False
     priority_rank: int = Field(default=0, ge=0)
 
@@ -63,3 +74,6 @@ class BatchResultSummary(BaseModel):
     failed_jobs: int = Field(ge=0)
     human_review_required_jobs: int = Field(ge=0)
     processing_jobs: int = Field(ge=0)
+    issue_v1_jobs: int = Field(default=0, ge=0)
+    legacy_rc2_jobs: int = Field(default=0, ge=0)
+    coverage_incomplete_jobs: int = Field(default=0, ge=0)

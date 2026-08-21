@@ -231,7 +231,7 @@ This selective-call policy is no longer the active Stage 9 design.
 ## D-031 — Stage 9 uses one universal secondary-model call per contract
 
 **Date:** 2026-08-15  
-**Status:** accepted
+**Status:** accepted for Legacy RC2; superseded as the new-job production topology by D-035
 
 Stage 9 prioritizes audit reliability and implementation clarity over token minimization. Every contract that has a valid Stage 8 primary report receives exactly one secondary-model review by default.
 
@@ -255,7 +255,7 @@ Both external transmissions must remain explicit to the user, and provider-speci
 ## D-032 — Kimi K3 is the default Stage 9 secondary provider
 
 **Date:** 2026-08-15  
-**Status:** accepted
+**Status:** accepted for Legacy RC2 provider behavior; Issue V1 scheduling is governed by D-035
 
 The secondary provider is Moonshot AI Kimi. The official Kimi model/API documentation was re-verified during Stage 9B. The default model is `kimi-k3`, with the domestic API base `https://api.moonshot.cn/v1` and local secret `MOONSHOT_API_KEY`.
 
@@ -268,7 +268,7 @@ The provider remains behind `SecondaryReviewProvider`; no Kimi-specific SDK obje
 ## D-033 — Stage 10 workstation navigation is provider-free and bounded to persisted artifacts
 
 **Date:** 2026-08-15  
-**Status:** accepted
+**Status:** accepted; extended to Issue V1 by D-035
 
 The professional workstation is a presentation/review layer over persisted Stage 2–9 artifacts. Opening a job, filtering findings, rendering a page, resolving a Contract Evidence ID, opening Legal Evidence, or reading human-review history must never implicitly execute OCR, legal retrieval, DeepSeek, Kimi or the constrained Agent.
 
@@ -279,7 +279,7 @@ Complete-job and partial-job regression tests deliberately fail if workspace loa
 ## D-034 — Human review is append-only, fingerprint-bound, and cannot mutate audit evidence/results
 
 **Date:** 2026-08-15  
-**Status:** accepted
+**Status:** accepted; Issue V1 target/fingerprint semantics extended by D-035
 
 Stage 10 stores human decisions separately in:
 
@@ -292,3 +292,64 @@ A human decision is an additional review record, not an edit to the audit result
 If `review-report.json` later changes, earlier human revisions remain in history and are returned as stale. They are never silently promoted to approval of the changed context.
 
 Human review writes are restricted to `human-review.json`. Regression coverage asserts that `review-report.json`, `contract.json`, `audit-rules.json`, `ai-audit.json`, `secondary-review.json`, `legal.db` and `retrieval.db` remain byte-for-byte unchanged after a human decision. No external provider call is allowed from human-review GET/POST actions.
+
+## D-035 — Issue V1 is the authoritative production architecture for new jobs
+
+**Date:** 2026-08-18  
+**Status:** accepted
+
+Stage 13G makes `ISSUE_V1` the application-owned production architecture for new jobs. The authoritative topology is:
+
+```text
+canonical contract
+ -> deterministic rules
+ -> Audit Planner + explicit canonical-object coverage
+ -> issue-based Legal RAG
+ -> one bounded DeepSeek primary request per AuditPlan Issue
+ -> one bounded Kimi finding + coverage review per AuditPlan Issue
+ -> deterministic one-to-one Issue comparison
+ -> issue-review-report.json
+ -> append-only Issue human review
+```
+
+`LEGACY_RC2` remains a supported historical architecture for persisted Stage 8/9 jobs. Its `ai-audit.json`, `secondary-review.json` and `review-report.json` schemas remain readable and must not be fabricated from Issue V1 artifacts. Likewise, Issue V1 schemas must not be fabricated from legacy reports.
+
+Runtime architecture resolution is explicit:
+
+```text
+ISSUE_V1
+LEGACY_RC2
+CONFLICT
+```
+
+Conflicting provenance fails closed. An explicit unfinished-RC2 migration preserves the exact old pipeline state in an integrity-checked snapshot before switching authority; historical Stage 8/9 reports remain historical and non-authoritative after migration.
+
+For Issue V1, Human Review binds to `AuditPlan.issue_id` and the current `issue-review-report.json` artifact fingerprint. Historical finding/omission revisions remain unchanged and readable. Only fresh final human decisions can close mandatory review, and incomplete planning coverage cannot be waived by Issue-level decisions.
+
+Results, Workspace and the current Developer diagnostic surface must resolve architecture before choosing artifacts. Stage 13 Developer diagnostics are GET-only; historical execution tools remain isolated under Legacy/RC2.
+
+## D-036 — Do not add a global Kimi coverage-synthesis pass without demonstrated evidence
+
+**Date:** 2026-08-18  
+**Status:** accepted
+
+Stage 13 does not add a second, cross-Issue/global Kimi coverage-synthesis pass merely for model symmetry.
+
+Stage 13G regression evidence shows:
+
+- every canonical clause/block has explicit Audit Planner coverage;
+- every AuditPlan Issue passes one-to-one through Issue Legal RAG, DeepSeek, Kimi and deterministic comparison;
+- Kimi already performs a dedicated coverage review for each planned Issue and can emit `POSSIBLE_OMISSION` from supplied bounded evidence;
+- incomplete planning coverage prevents the review workflow from presenting complete closure;
+- the provider-free end-to-end regression did not reveal a systematic cross-Issue omission missed by the current topology.
+
+An additional global Kimi call would add provider cost, latency, privacy/transmission surface and another reconciliation state without a demonstrated quality gain. This decision must be revisited if later expert or benchmark evidence—especially Stage 16—shows systematic cross-Issue/global omissions that the current Planner + per-Issue coverage review does not detect.
+
+## D-037 — Stage 13 read-only diagnostics must remain separated from execution controls
+
+**Date:** 2026-08-18  
+**Status:** accepted
+
+The default `/developer` Stage 13 diagnostic surface reads persisted authoritative artifacts only through GET endpoints. Opening diagnostics must not create an AuditPlan, rerun Legal RAG, call DeepSeek/Kimi or mutate review state.
+
+Missing, stale/conflicting and invalid artifacts remain explicit diagnostic states rather than being fabricated as success. Historical Stage 1–9 execution/debug tools may remain available, but must stay visibly isolated in the Legacy/RC2 area because some of those controls intentionally perform POST/provider work.

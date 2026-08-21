@@ -9,11 +9,16 @@ $Exe = Join-Path $BundleDir "Law-Rag.exe"
 $SmokePdf = Join-Path $PSScriptRoot ".build\smoke-native.pdf"
 $Runtime = Join-Path $env:RUNNER_TEMP ("law-rag-stage13a-runtime-" + [guid]::NewGuid().ToString("N"))
 $PreviousRuntime = $env:LAW_RAG_RUNTIME_DIR
+$PreviousDeepSeekKey = $env:DEEPSEEK_API_KEY
 
 if (-not (Test-Path $Exe)) { throw "Law-Rag.exe not found at $Exe" }
 if (-not (Test-Path $SmokePdf)) { throw "Synthetic native PDF smoke fixture not found at $SmokePdf" }
 
 $env:LAW_RAG_RUNTIME_DIR = $Runtime
+# A synthetic key is intentionally present so the smoke proves REQUIRE_APPROVAL,
+# not missing configuration, is what blocks the first outbound Planner request.
+# The pipeline is never approved, so this value is never transmitted.
+$env:DEEPSEEK_API_KEY = "law-rag-stage13g-synthetic-boundary-key"
 $Process = $null
 
 function Start-LawRag {
@@ -21,7 +26,7 @@ function Start-LawRag {
     $BaseUrl = "http://127.0.0.1:$Port"
     for ($Attempt = 1; $Attempt -le 40; $Attempt++) {
         if ($Process.HasExited) {
-            throw "Law-Rag.exe exited during Stage 13A startup. Exit code: $($Process.ExitCode)"
+            throw "Law-Rag.exe exited during Stage 13 provider-boundary startup. Exit code: $($Process.ExitCode)"
         }
         try {
             $Health = Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/api/health" -TimeoutSec 2
@@ -34,7 +39,7 @@ function Start-LawRag {
         }
     }
     Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
-    throw "Stage 13A packaged server did not become ready on $BaseUrl"
+    throw "Stage 13 packaged server did not become ready on $BaseUrl"
 }
 
 function Wait-PipelineStatus {
@@ -50,11 +55,11 @@ function Wait-PipelineStatus {
         $Last = $Pipeline
         if ($Expected -contains $Pipeline.status) { return $Pipeline }
         if ($Pipeline.status -eq "FAILED") {
-            throw "Stage 13A pipeline failed unexpectedly: $($Pipeline.failure_code) $($Pipeline.failure_detail)"
+            throw "Stage 13 pipeline failed unexpectedly: $($Pipeline.failure_code) $($Pipeline.failure_detail)"
         }
         Start-Sleep -Milliseconds 500
     }
-    throw "Stage 13A pipeline did not reach expected status $($Expected -join ', '); last=$($Last.status)/$($Last.failure_code)"
+    throw "Stage 13 pipeline did not reach expected status $($Expected -join ', '); last=$($Last.status)/$($Last.failure_code)"
 }
 
 try {
@@ -62,11 +67,11 @@ try {
     $Process = $Started.Process
     $BaseUrl = $Started.BaseUrl
 
-    # This smoke intentionally uses no provider key. REQUIRE_APPROVAL must win
-    # before provider health/generation, proving the packaged product owns the
-    # outbound boundary instead of relying on a missing-key accident.
+    # REQUIRE_APPROVAL must win before the Audit Planner's first outbound call.
+    # The configured key is synthetic and must remain unused because approval is
+    # never granted in this smoke.
     $Upload = Invoke-RestMethod -Uri "$BaseUrl/api/documents" -Method Post -Form @{ file = Get-Item $SmokePdf } -TimeoutSec 20
-    if (-not $Upload.job_id) { throw "Stage 13A upload did not return job_id." }
+    if (-not $Upload.job_id) { throw "Stage 13 upload did not return job_id." }
 
     $PipelineBody = @{
         as_of = (Get-Date).ToString("yyyy-MM-dd")
@@ -76,16 +81,16 @@ try {
     Invoke-RestMethod -Uri "$BaseUrl/api/documents/$($Upload.job_id)/pipeline" -Method Post -ContentType "application/json" -Body $PipelineBody -TimeoutSec 10 | Out-Null
 
     $Paused = Wait-PipelineStatus -BaseUrl $BaseUrl -JobId $Upload.job_id -Expected @("PAUSED_BEFORE_PROVIDER")
-    if ($Paused.current_stage -ne "PRIMARY_AUDIT" -or $Paused.failure_code -ne "PROVIDER_APPROVAL_REQUIRED") {
-        throw "Packaged Stage 13A pipeline did not pause at the DeepSeek provider boundary."
+    if ($Paused.current_stage -ne "AUDIT_PLAN" -or $Paused.failure_code -ne "PROVIDER_APPROVAL_REQUIRED") {
+        throw "Packaged Stage 13 pipeline did not pause before the Audit Planner's first provider call."
     }
-    if ($Paused.progress_percent -lt 55) {
-        throw "Packaged Stage 13A provider boundary was reached before required local stages completed."
+    if ($Paused.progress_percent -ne 48) {
+        throw "Packaged Stage 13 provider boundary must occur after local RULES at 48 percent; observed $($Paused.progress_percent)."
     }
 
     $Control = Invoke-RestMethod -Uri "$BaseUrl/api/documents/$($Upload.job_id)/pipeline/control" -Method Get -TimeoutSec 10
     if ($Control.provider_mode -ne "REQUIRE_APPROVAL" -or $Control.provider_approved -or $Control.active_provider) {
-        throw "Stage 13A persisted control state is inconsistent before approval."
+        throw "Stage 13 persisted control state is inconsistent before approval."
     }
 
     $Cancel = Invoke-RestMethod -Uri "$BaseUrl/api/documents/$($Upload.job_id)/pipeline/cancel" -Method Post -TimeoutSec 10
@@ -94,16 +99,16 @@ try {
     }
     $Cancelled = Wait-PipelineStatus -BaseUrl $BaseUrl -JobId $Upload.job_id -Expected @("CANCELLED")
     if ($Cancelled.failure_code -ne "PIPELINE_CANCELLED") {
-        throw "Packaged Stage 13A cancellation did not persist the expected terminal state."
+        throw "Packaged Stage 13 cancellation did not persist the expected terminal state."
     }
 
     Invoke-RestMethod -Uri "$BaseUrl/api/documents/$($Upload.job_id)/pipeline/resume" -Method Post -TimeoutSec 10 | Out-Null
     $PausedAgain = Wait-PipelineStatus -BaseUrl $BaseUrl -JobId $Upload.job_id -Expected @("PAUSED_BEFORE_PROVIDER")
-    if ($PausedAgain.failure_code -ne "PROVIDER_APPROVAL_REQUIRED") {
-        throw "Explicit resume bypassed the original provider approval policy."
+    if ($PausedAgain.current_stage -ne "AUDIT_PLAN" -or $PausedAgain.progress_percent -ne 48 -or $PausedAgain.failure_code -ne "PROVIDER_APPROVAL_REQUIRED") {
+        throw "Explicit resume bypassed or moved the original Audit Planner provider approval boundary."
     }
 
-    Write-Host "[Law-Rag] Stage 13A packaged provider-boundary pause/cancel/resume smoke passed without provider keys or paid calls."
+    Write-Host "[Law-Rag] Packaged Stage 13 Audit Planner boundary pause/cancel/resume smoke passed with a synthetic unused key and no paid calls."
 }
 finally {
     if ($Process -and -not $Process.HasExited) {
@@ -115,6 +120,12 @@ finally {
     }
     else {
         $env:LAW_RAG_RUNTIME_DIR = $PreviousRuntime
+    }
+    if ($null -eq $PreviousDeepSeekKey) {
+        Remove-Item Env:DEEPSEEK_API_KEY -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:DEEPSEEK_API_KEY = $PreviousDeepSeekKey
     }
     if (Test-Path $Runtime) { Remove-Item $Runtime -Recurse -Force }
 }

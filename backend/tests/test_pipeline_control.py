@@ -12,6 +12,7 @@ from app.main import app
 from app.pipeline import _mark_done, _mark_running
 from app.pipeline_control import (
     PipelineCancellationRequested,
+    assert_provider_allowed,
     begin_provider_call,
     ensure_pipeline_control,
     finish_provider_call,
@@ -20,7 +21,13 @@ from app.pipeline_control import (
     request_pipeline_cancel,
 )
 from app.pipeline_control_models import ProviderExecutionMode
-from app.pipeline_models import PipelineReport, PipelineStage, PipelineStatus
+from app.pipeline_models import (
+    PipelineReport,
+    PipelineStage,
+    PipelineStageRecord,
+    PipelineStageState,
+    PipelineStatus,
+)
 from app.pipeline_recovery import reconcile_interrupted_pipelines
 from app.safe_persistence import atomic_write_text
 
@@ -65,25 +72,47 @@ def _patch_local_stages(monkeypatch, calls: list[object]) -> None:
     monkeypatch.setattr(pipeline, "_run_rules_stage", _complete_stage(PipelineStage.RULES, calls))
 
 
-def _patch_primary_context(monkeypatch, calls: list[object]) -> None:
-    """Simulate Stage 8 local context construction before its outbound hooks."""
+def _patch_planner_boundary(monkeypatch, calls: list[object]) -> None:
+    """Simulate Stage 13B local Planner input construction before the first outbound call."""
 
     import app.pipeline as pipeline
 
-    def fake_primary(job_id, request, *, provider_override=None, provider_gate=None, before_provider_generate=None):
-        calls.append("PRIMARY_LOCAL_CONTEXT")
-        assert provider_gate is not None
-        assert before_provider_generate is not None
-        provider_gate()
-        calls.append("PRIMARY_GATE_ALLOWED")
-        before_provider_generate()
-        calls.append(PipelineStage.PRIMARY_AUDIT)
-        return object()
+    def planner_stage(report: PipelineReport) -> None:
+        _mark_running(report, PipelineStage.AUDIT_PLAN, "building local Planner context")
+        calls.append("PLANNER_LOCAL_CONTEXT")
+        assert_provider_allowed(report.job_id)
+        calls.append(PipelineStage.AUDIT_PLAN)
+        _mark_done(report, PipelineStage.AUDIT_PLAN, detail="planner done")
 
-    monkeypatch.setattr(pipeline, "run_primary_ai_audit", fake_primary)
+    monkeypatch.setattr(pipeline, "_run_audit_plan_stage", planner_stage)
 
 
-def test_require_approval_finishes_local_work_and_context_without_provider_call(tmp_path: Path, monkeypatch) -> None:
+def _patch_stage13_after_planner(monkeypatch, calls: list[object]) -> None:
+    import app.pipeline as pipeline
+
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_legal_context_stage",
+        _complete_stage(PipelineStage.ISSUE_LEGAL_CONTEXT, calls),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_primary_stage",
+        _complete_stage(PipelineStage.ISSUE_PRIMARY_AUDIT, calls),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_secondary_stage",
+        _complete_stage(PipelineStage.ISSUE_SECONDARY_REVIEW, calls),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_issue_review_stage",
+        _complete_stage(PipelineStage.ISSUE_REVIEW_REPORT, calls),
+    )
+
+
+def test_require_approval_finishes_local_work_and_planner_context_without_provider_call(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
     _seed_job(tmp_path, job_id)
@@ -92,13 +121,15 @@ def test_require_approval_finishes_local_work_and_context_without_provider_call(
 
     calls: list[object] = []
     _patch_local_stages(monkeypatch, calls)
-    _patch_primary_context(monkeypatch, calls)
+    _patch_planner_boundary(monkeypatch, calls)
 
-    def forbidden_provider_stage(*args, **kwargs):
-        raise AssertionError("secondary/review stages must not run before explicit approval")
+    def forbidden_later_stage(*args, **kwargs):
+        raise AssertionError("later Stage 13 stages must not run before explicit approval")
 
-    monkeypatch.setattr(pipeline, "_run_secondary_stage", forbidden_provider_stage)
-    monkeypatch.setattr(pipeline, "_run_review_stage", forbidden_provider_stage)
+    monkeypatch.setattr(pipeline, "_run_issue_legal_context_stage", forbidden_later_stage)
+    monkeypatch.setattr(pipeline, "_run_issue_primary_stage", forbidden_later_stage)
+    monkeypatch.setattr(pipeline, "_run_issue_secondary_stage", forbidden_later_stage)
+    monkeypatch.setattr(pipeline, "_run_issue_review_stage", forbidden_later_stage)
 
     response = client.post(
         f"/api/documents/{job_id}/pipeline",
@@ -111,31 +142,28 @@ def test_require_approval_finishes_local_work_and_context_without_provider_call(
     assert response.status_code == 202
 
     paused = _wait(job_id, {"PAUSED_BEFORE_PROVIDER"})
-    assert paused["current_stage"] == "PRIMARY_AUDIT"
+    assert paused["current_stage"] == "AUDIT_PLAN"
     assert paused["failure_code"] == "PROVIDER_APPROVAL_REQUIRED"
-    assert paused["progress_percent"] == 55
+    assert paused["progress_percent"] == 48
     assert calls == [
         PipelineStage.OCR,
         PipelineStage.STRUCTURE,
         PipelineStage.RULES,
-        "PRIMARY_LOCAL_CONTEXT",
+        "PLANNER_LOCAL_CONTEXT",
     ]
     control = get_pipeline_control(job_id)
     assert control.active_provider is None
 
 
-def test_local_only_stops_after_local_context_and_can_be_approved_later(tmp_path: Path, monkeypatch) -> None:
+def test_local_only_stops_at_planner_boundary_and_can_be_approved_later(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
     _seed_job(tmp_path, job_id)
 
-    import app.pipeline as pipeline
-
     calls: list[object] = []
     _patch_local_stages(monkeypatch, calls)
-    _patch_primary_context(monkeypatch, calls)
-    monkeypatch.setattr(pipeline, "_run_secondary_stage", _complete_stage(PipelineStage.SECONDARY_REVIEW, calls))
-    monkeypatch.setattr(pipeline, "_run_review_stage", _complete_stage(PipelineStage.REVIEW_REPORT, calls))
+    _patch_planner_boundary(monkeypatch, calls)
+    _patch_stage13_after_planner(monkeypatch, calls)
 
     response = client.post(
         f"/api/documents/{job_id}/pipeline",
@@ -144,32 +172,31 @@ def test_local_only_stops_after_local_context_and_can_be_approved_later(tmp_path
     assert response.status_code == 202
     paused = _wait(job_id, {"PAUSED_BEFORE_PROVIDER"})
     assert paused["failure_code"] == "LOCAL_ONLY_PROVIDER_DISABLED"
-    assert PipelineStage.PRIMARY_AUDIT not in calls
-    assert "PRIMARY_LOCAL_CONTEXT" in calls
+    assert PipelineStage.AUDIT_PLAN not in calls
+    assert "PLANNER_LOCAL_CONTEXT" in calls
 
     approved = client.post(f"/api/documents/{job_id}/pipeline/approve-provider")
     assert approved.status_code == 202
     completed = _wait(job_id, {"COMPLETE"})
     assert completed["progress_percent"] == 100
-    assert calls[-3:] == [
-        PipelineStage.PRIMARY_AUDIT,
-        PipelineStage.SECONDARY_REVIEW,
-        PipelineStage.REVIEW_REPORT,
+    assert calls[-5:] == [
+        PipelineStage.AUDIT_PLAN,
+        PipelineStage.ISSUE_LEGAL_CONTEXT,
+        PipelineStage.ISSUE_PRIMARY_AUDIT,
+        PipelineStage.ISSUE_SECONDARY_REVIEW,
+        PipelineStage.ISSUE_REVIEW_REPORT,
     ]
 
 
-def test_cancelled_pipeline_requires_explicit_resume_and_does_not_bypass_gate(tmp_path: Path, monkeypatch) -> None:
+def test_cancelled_pipeline_requires_explicit_resume_and_does_not_bypass_planner_gate(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
     _seed_job(tmp_path, job_id)
 
-    import app.pipeline as pipeline
-
     calls: list[object] = []
     _patch_local_stages(monkeypatch, calls)
-    _patch_primary_context(monkeypatch, calls)
-    monkeypatch.setattr(pipeline, "_run_secondary_stage", _complete_stage(PipelineStage.SECONDARY_REVIEW, calls))
-    monkeypatch.setattr(pipeline, "_run_review_stage", _complete_stage(PipelineStage.REVIEW_REPORT, calls))
+    _patch_planner_boundary(monkeypatch, calls)
+    _patch_stage13_after_planner(monkeypatch, calls)
 
     client.post(
         f"/api/documents/{job_id}/pipeline",
@@ -188,6 +215,7 @@ def test_cancelled_pipeline_requires_explicit_resume_and_does_not_bypass_gate(tm
     resumed = client.post(f"/api/documents/{job_id}/pipeline/resume")
     assert resumed.status_code == 202
     paused_again = _wait(job_id, {"PAUSED_BEFORE_PROVIDER"})
+    assert paused_again["current_stage"] == "AUDIT_PLAN"
     assert paused_again["failure_code"] == "PROVIDER_APPROVAL_REQUIRED"
 
 
@@ -197,17 +225,17 @@ def test_cancel_after_provider_boundary_blocks_next_provider(tmp_path: Path, mon
     (tmp_path / "jobs" / str(job_id)).mkdir(parents=True)
     ensure_pipeline_control(job_id, ProviderExecutionMode.AUTO_CONTINUE)
 
-    started = begin_provider_call(job_id, "deepseek")
-    assert started.active_provider == "deepseek"
+    started = begin_provider_call(job_id, "deepseek-planner")
+    assert started.active_provider == "deepseek-planner"
 
     cancelled = request_pipeline_cancel(job_id)
     assert cancelled.cancel_requested is True
-    assert cancelled.active_provider == "deepseek"
+    assert cancelled.active_provider == "deepseek-planner"
 
     with pytest.raises(PipelineCancellationRequested):
-        begin_provider_call(job_id, "kimi")
+        begin_provider_call(job_id, "deepseek")
 
-    finished = finish_provider_call(job_id, "deepseek")
+    finished = finish_provider_call(job_id, "deepseek-planner")
     assert finished.active_provider is None
     assert finished.cancel_requested is True
 
@@ -222,6 +250,8 @@ def test_control_get_for_legacy_job_is_read_only(tmp_path: Path, monkeypatch) ->
 
     now = pipeline._now()
     report = PipelineReport(
+        schema_version="1.2.0",
+        engine_version="stage13a-1.0.0",
         job_id=job_id,
         status=PipelineStatus.FAILED,
         current_stage=PipelineStage.PRIMARY_AUDIT,
@@ -231,7 +261,14 @@ def test_control_get_for_legacy_job_is_read_only(tmp_path: Path, monkeypatch) ->
         updated_at=now,
         failure_code="legacy",
         failure_detail="legacy",
-        stages=pipeline._initial_stages(),
+        stages=[
+            PipelineStageRecord(
+                stage=PipelineStage.PRIMARY_AUDIT,
+                state=PipelineStageState.FAILED,
+                label="检索法律依据并进行主审",
+                progress_percent=75,
+            )
+        ],
     )
     atomic_write_text(job_dir / "pipeline.json", report.model_dump_json(indent=2))
 
@@ -253,8 +290,8 @@ def test_restart_turns_persisted_cancel_request_into_cancelled(tmp_path: Path, m
     report = PipelineReport(
         job_id=job_id,
         status=PipelineStatus.CANCEL_REQUESTED,
-        current_stage=PipelineStage.PRIMARY_AUDIT,
-        progress_percent=55,
+        current_stage=PipelineStage.AUDIT_PLAN,
+        progress_percent=48,
         as_of=date(2026, 8, 17),
         started_at=now,
         updated_at=now,
@@ -262,7 +299,7 @@ def test_restart_turns_persisted_cancel_request_into_cancelled(tmp_path: Path, m
     )
     atomic_write_text(job_dir / "pipeline.json", report.model_dump_json(indent=2))
     ensure_pipeline_control(job_id, ProviderExecutionMode.AUTO_CONTINUE)
-    begin_provider_call(job_id, "deepseek")
+    begin_provider_call(job_id, "deepseek-planner")
     request_pipeline_cancel(job_id)
 
     assert reconcile_interrupted_pipelines() == 1

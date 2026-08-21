@@ -119,6 +119,10 @@ def job_issue_secondary_review_path(job_id: UUID) -> Path:
     return _AtomicArtifactPath(job_output_dir(job_id) / "issue-secondary-review.json")
 
 
+def job_issue_review_report_path(job_id: UUID) -> Path:
+    return _AtomicArtifactPath(job_output_dir(job_id) / "issue-review-report.json")
+
+
 def job_ai_audit_path(job_id: UUID) -> Path:
     return job_output_dir(job_id) / "ai-audit.json"
 

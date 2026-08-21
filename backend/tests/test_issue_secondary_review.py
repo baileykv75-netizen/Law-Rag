@@ -236,5 +236,5 @@ def test_stage13f_oversized_context_is_not_sent_to_kimi(tmp_path, monkeypatch) -
 
 
 def test_stage13f_api_route_is_mounted() -> None:
-    paths = {route.path for route in app.routes}
+    paths = app.openapi()["paths"]
     assert "/api/documents/{job_id}/issue-secondary-review" in paths

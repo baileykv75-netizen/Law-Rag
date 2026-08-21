@@ -54,13 +54,24 @@ function Assert-BundleContents {
         throw "Bundle contains banned private/runtime directories: $Found"
     }
 
+    $BannedJobArtifactNames = @(
+        "human-review.json",
+        "pipeline.json",
+        "pipeline-control.json",
+        "job-architecture.json",
+        "audit-plan.json",
+        "issue-legal-context.json",
+        "issue-primary-audit.json",
+        "issue-secondary-review.json",
+        "issue-review-report.json",
+        "ai-audit.json",
+        "secondary-review.json",
+        "review-report.json"
+    )
     $BannedFiles = Get-ChildItem -Path $BundleDir -Recurse -File | Where-Object {
         $Name = $_.Name.ToLowerInvariant()
+        $BannedJobArtifactNames -contains $Name -or
         $Name -eq ".env" -or
-        $Name -eq "human-review.json" -or
-        $Name -eq "ai-audit.json" -or
-        $Name -eq "secondary-review.json" -or
-        $Name -eq "review-report.json" -or
         $Name -like "source.pdf" -or
         $Name -like "source.jpg" -or
         $Name -like "source.jpeg" -or
@@ -102,9 +113,11 @@ try {
         throw "Law-Rag packaged server did not become ready on $BaseUrl"
     }
 
-    $Root = Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/" -TimeoutSec 5
-    if ($Root.StatusCode -ne 200 -or $Root.Content -notmatch '<div id="root"></div>') {
-        throw "Packaged frontend root did not return the Vite/React shell."
+    foreach ($Route in @("/", "/results", "/workspace", "/developer")) {
+        $Page = Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl$Route" -TimeoutSec 5
+        if ($Page.StatusCode -ne 200 -or $Page.Content -notmatch '<div id="root"></div>') {
+            throw "Packaged frontend route $Route did not return the Vite/React shell."
+        }
     }
 
     $MissingApi = $null
@@ -119,8 +132,8 @@ try {
     }
 
     # Exercise the packaged native PDF ingestion path, then render the uploaded
-    # page through the Stage 10 source-page API. This proves the collected
-    # PDFium DLL works from the actual onedir executable, without OCR/provider calls.
+    # page through the source-page API. This proves the collected PDFium DLL
+    # works from the actual onedir executable, without OCR/provider calls.
     $Upload = Invoke-RestMethod -Uri "$BaseUrl/api/documents" -Method Post -Form @{ file = Get-Item $SmokePdf } -TimeoutSec 15
     if (-not $Upload.job_id -or $Upload.page_count -ne 1) {
         throw "Packaged native PDF upload did not return a one-page job."
@@ -130,7 +143,7 @@ try {
         throw "Packaged PDFium source-page rendering did not return image/png."
     }
 
-    Write-Host "[Law-Rag] Packaged diagnostics, API, React shell, native PDF ingestion, PDFium rendering, and private-data scan passed."
+    Write-Host "[Law-Rag] Packaged diagnostics, all four UI routes, API, native PDF ingestion, PDFium rendering, and private-data scan passed."
 }
 finally {
     if (-not $Process.HasExited) {

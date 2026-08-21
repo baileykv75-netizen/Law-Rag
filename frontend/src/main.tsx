@@ -1,23 +1,21 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App'
 import BatchResultsApp from './BatchResultsApp'
+import DeveloperApp from './DeveloperApp'
 import IntakeApp from './IntakeApp'
-import LegalKnowledgePanel from './LegalKnowledgePanel'
-import LegalRetrievalPanel from './LegalRetrievalPanel'
-import PrimaryAuditPanel from './PrimaryAuditPanel'
 import ProviderSetupGate from './ProviderSetupGate'
-import SecondaryReviewPanel from './SecondaryReviewPanel'
 import WorkspaceApp from './WorkspaceApp'
 import './styles.css'
 import './workspace.css'
 import './source-viewer.css'
 import './audit-workstation.css'
+import './issue-workspace.css'
 import './human-review.css'
 import './workstation-polish.css'
 import './intake.css'
 import './provider-setup.css'
 import './batch-results.css'
+import './developer.css'
 
 const pathname = window.location.pathname
 const isWorkspaceRoute = pathname === '/workspace' || pathname.startsWith('/workspace/')
@@ -33,18 +31,7 @@ createRoot(document.getElementById('root')!).render(
         <BatchResultsApp />
       </ProviderSetupGate>
     ) : isDeveloperRoute ? (
-      <>
-        <div className="workspace-launch-strip">
-          <a href="/">← 返回合同导入</a>
-          <a href="/workspace">打开专业审计工作台 →</a>
-        </div>
-        <style>{'.hero .notice { display: none; }'}</style>
-        <App />
-        <LegalKnowledgePanel />
-        <LegalRetrievalPanel />
-        <PrimaryAuditPanel />
-        <SecondaryReviewPanel />
-      </>
+      <DeveloperApp />
     ) : (
       <ProviderSetupGate>
         <IntakeApp />

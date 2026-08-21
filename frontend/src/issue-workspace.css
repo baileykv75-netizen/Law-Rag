@@ -1,0 +1,106 @@
+.issue-coverage-strip {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 18px 12px;
+  border: 1px solid #d9e0e8;
+  background: #d9e0e8;
+}
+.issue-coverage-strip > div {
+  min-width: 0;
+  padding: 12px 13px;
+  background: #fff;
+}
+.issue-coverage-strip > div.needs-attention { background: #fff8e8; }
+.issue-coverage-strip span,
+.issue-coverage-strip small { display: block; color: #7d8898; font-size: 8px; line-height: 1.4; }
+.issue-coverage-strip strong { display: block; margin: 4px 0 3px; color: #28364d; font-size: 16px; line-height: 1.2; }
+.issue-coverage-strip .eyebrow { font-size: 8px; letter-spacing: .08em; }
+.coverage-global-warning,
+.legacy-workspace-notice {
+  margin: 0 18px 12px;
+  padding: 9px 11px;
+  border: 1px solid #e6d092;
+  background: #fff8e4;
+  color: #765b18;
+  font-size: 9px;
+  line-height: 1.55;
+}
+.legacy-workspace-notice { border-color: #d9dee6; background: #f7f8fa; color: #677489; }
+.issue-review-metrics article.needs-attention { background: #fff7e7; }
+.issue-evidence-counts {
+  grid-template-columns: 1fr 1fr;
+}
+.issue-evidence-counts > div {
+  padding: 6px 7px;
+  background: #f6f8fa;
+}
+.issue-evidence-counts span { color: #556379; font-size: 9px; font-weight: 700; }
+.issue-plan-block {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-left: 3px solid #9aabbf;
+  background: #f7f9fb;
+}
+.issue-plan-block > strong { color: #4a596f; font-size: 9px; }
+.issue-plan-block ul,
+.issue-plan-block ol { margin: 6px 0 0 17px; padding: 0; color: #536176; font-size: 9px; line-height: 1.55; }
+.issue-legal-hit-list { display: grid; gap: 6px; margin-top: 9px; }
+.issue-legal-hit-list button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid #dbe1e9;
+  border-radius: 3px;
+  background: #f9fafb;
+  color: #47566c;
+  text-align: left;
+  cursor: pointer;
+}
+.issue-legal-hit-list button:hover { border-color: #8fa0b5; background: #fff; }
+.issue-legal-hit-list strong { font-size: 9px; }
+.issue-legal-hit-list span { color: #677489; font-size: 9px; line-height: 1.45; white-space: pre-wrap; }
+.issue-legal-hit-list small { color: #8a94a3; font-size: 8px; }
+.issue-review-context h4 { margin: 8px 0 4px; color: #34435a; font-size: 11px; }
+.issue-omission-box {
+  margin-top: 9px;
+  padding: 8px;
+  border: 1px solid #e3cfe6;
+  background: #fcf7fc;
+}
+.issue-omission-box strong { color: #784c7e; font-size: 9px; }
+.issue-omission-box p { margin-bottom: 0; }
+.issue-human-boundary { margin-top: 2px; }
+.human-decision-pill {
+  padding: 3px 5px;
+  border-radius: 3px;
+  background: #eaf2ec;
+  color: #4e7359;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+.human-decision-pill.is-stale { background: #fff0dc; color: #9a6222; }
+.issue-human-decision-panel { margin-top: 2px; }
+.issue-human-required {
+  margin: 0;
+  padding: 7px 8px;
+  border-left: 3px solid #b77a2c;
+  background: #fff8e9;
+  color: #76581d;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.quiet-state { margin: 8px 0; color: #8a94a3; font-size: 9px; line-height: 1.5; }
+
+@media (max-width: 1180px) {
+  .issue-coverage-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .issue-coverage-strip { grid-template-columns: 1fr 1fr; margin-left: 10px; margin-right: 10px; }
+  .coverage-global-warning,
+  .legacy-workspace-notice { margin-left: 10px; margin-right: 10px; }
+  .issue-evidence-counts { grid-template-columns: 1fr; }
+}
