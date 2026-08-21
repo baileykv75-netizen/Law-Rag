@@ -86,7 +86,7 @@
 
 .history-summary {
   max-width: 1180px;
-  margin: 0 auto 22px;
+  margin: 0 auto 14px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
@@ -115,7 +115,52 @@
   font-size: 12px;
 }
 
+.storage-breakdown {
+  max-width: 1180px;
+  margin: 0 auto 22px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #dbe5f1;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.storage-breakdown > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.storage-breakdown span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.storage-breakdown strong {
+  color: #334155;
+  font-size: 12px;
+}
+
+.storage-breakdown > p {
+  grid-column: 1 / -1;
+  margin: 2px 4px 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.storage-breakdown > p.storage-warning {
+  color: #92400e;
+}
+
 .history-error,
+.history-notice,
 .history-list,
 .history-pagination {
   max-width: 1180px;
@@ -123,13 +168,23 @@
   margin-right: auto;
 }
 
-.history-error {
+.history-error,
+.history-notice {
   margin-bottom: 16px;
   padding: 14px 16px;
-  border: 1px solid #fecaca;
   border-radius: 12px;
+}
+
+.history-error {
+  border: 1px solid #fecaca;
   background: #fff1f2;
   color: #9f1239;
+}
+
+.history-notice {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
 }
 
 .history-list {
@@ -237,7 +292,7 @@
 }
 
 .history-card-actions {
-  min-width: 126px;
+  min-width: 142px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -256,9 +311,30 @@
   text-decoration: none;
 }
 
+.history-delete {
+  border: 1px solid #fecaca;
+  border-radius: 9px;
+  background: #fff;
+  color: #b91c1c;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.history-delete:hover:not(:disabled) {
+  background: #fff1f2;
+}
+
+.history-delete:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .history-card-actions span {
   color: #94a3b8;
   font-size: 10px;
+  text-align: right;
 }
 
 .history-empty {
@@ -289,7 +365,8 @@
 }
 
 @media (max-width: 840px) {
-  .history-summary {
+  .history-summary,
+  .storage-breakdown {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -299,6 +376,10 @@
 
   .history-card-actions {
     align-items: flex-start;
+  }
+
+  .history-card-actions span {
+    text-align: left;
   }
 
   .history-meta {
@@ -312,7 +393,8 @@
     flex-direction: column;
   }
 
-  .history-summary {
+  .history-summary,
+  .storage-breakdown {
     grid-template-columns: 1fr 1fr;
   }
 
