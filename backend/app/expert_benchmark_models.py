@@ -121,6 +121,10 @@ class ExpertLabelQualitySummary(BaseModel):
     adjudicated_case_count: int = Field(ge=0)
     ambiguous_case_count: int = Field(ge=0)
     usable_case_count: int = Field(ge=0)
+    agreement_rate: float = Field(ge=0, le=1)
+    adjudication_rate: float = Field(ge=0, le=1)
+    ambiguity_rate: float = Field(ge=0, le=1)
+    usable_rate: float = Field(ge=0, le=1)
     minimum_reviewer_count_required: int = Field(ge=2)
     minimum_reviewer_count_observed: int = Field(ge=0)
 
