@@ -161,28 +161,35 @@ def _article_from_row(row: sqlite3.Row) -> LegalArticle:
 def get_summary(db_path: Path) -> LegalStoreSummary:
     if not db_path.exists():
         return LegalStoreSummary(ready=False)
-    with connect(db_path) as connection:
-        initialize_schema(connection)
-        authority_count = connection.execute("SELECT COUNT(*) AS n FROM authorities").fetchone()["n"]
-        version_count = connection.execute("SELECT COUNT(*) AS n FROM authority_versions").fetchone()["n"]
-        article_count = connection.execute("SELECT COUNT(*) AS n FROM legal_articles").fetchone()["n"]
-        effective_count = connection.execute(
-            "SELECT COUNT(*) AS n FROM authority_versions WHERE status = ?",
-            (VersionStatus.EFFECTIVE.value,),
-        ).fetchone()["n"]
-        excerpt_count = connection.execute(
-            "SELECT COUNT(*) AS n FROM authority_versions WHERE coverage_type = ?",
-            (CoverageType.CURATED_EXCERPT.value,),
-        ).fetchone()["n"]
-        return LegalStoreSummary(
-            ready=True,
-            schema_version=LEGAL_SCHEMA_VERSION,
-            authority_count=authority_count,
-            version_count=version_count,
-            article_count=article_count,
-            effective_version_count=effective_count,
-            excerpt_version_count=excerpt_count,
-        )
+    connection = connect(db_path)
+    try:
+        with connection:
+            initialize_schema(connection)
+            authority_count = connection.execute("SELECT COUNT(*) AS n FROM authorities").fetchone()["n"]
+            version_count = connection.execute("SELECT COUNT(*) AS n FROM authority_versions").fetchone()["n"]
+            article_count = connection.execute("SELECT COUNT(*) AS n FROM legal_articles").fetchone()["n"]
+            effective_count = connection.execute(
+                "SELECT COUNT(*) AS n FROM authority_versions WHERE status = ?",
+                (VersionStatus.EFFECTIVE.value,),
+            ).fetchone()["n"]
+            excerpt_count = connection.execute(
+                "SELECT COUNT(*) AS n FROM authority_versions WHERE coverage_type = ?",
+                (CoverageType.CURATED_EXCERPT.value,),
+            ).fetchone()["n"]
+            return LegalStoreSummary(
+                ready=True,
+                schema_version=LEGAL_SCHEMA_VERSION,
+                authority_count=authority_count,
+                version_count=version_count,
+                article_count=article_count,
+                effective_version_count=effective_count,
+                excerpt_version_count=excerpt_count,
+            )
+    finally:
+        # sqlite3.Connection.__exit__ only commits/rolls back; it does not close.
+        # Release the file handle explicitly so staged legal.db files can be
+        # atomically replaced on Windows as well as POSIX systems.
+        connection.close()
 
 
 def list_authorities(db_path: Path) -> list[AuthoritySummary]:
