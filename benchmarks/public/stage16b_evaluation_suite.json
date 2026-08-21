@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0.0",
+  "suite_id": "law-rag-stage16-public-evaluation",
+  "suite_version": "1.1.0",
+  "title": "Stage 16 public deterministic evaluation suite",
+  "description": "Expanded repository-safe Stage 16 public suite. It preserves the Stage 11 schema/quality evidence and adds Stage 16.2 three-domain routing, retrieval and as_of regression gates. No paid/network provider is invoked.",
+  "suite_class": "PUBLIC_REGRESSION",
+  "entries": [
+    {
+      "entry_id": "stage11-schema-smoke",
+      "kind": "BENCHMARK",
+      "scope": "All nine Stage 11 benchmark task families using fictional/public-safe observations; evaluator mechanics only.",
+      "dataset_path": "benchmarks/public/stage11a_schema_smoke.dataset.json",
+      "observations_path": "benchmarks/public/stage11a_schema_smoke.observations.json"
+    },
+    {
+      "entry_id": "stage11-public-quality-gates",
+      "kind": "PUBLIC_QUALITY_PROFILE",
+      "scope": "Historical Stage 11B public deterministic quality profile including schema-smoke integrity and curated-seed lexical retrieval gates.",
+      "quality_profile_path": "benchmarks/public/stage11b_quality_gates.json"
+    },
+    {
+      "entry_id": "stage16b-three-domain-regression",
+      "kind": "PUBLIC_REGRESSION_PROFILE",
+      "scope": "Frozen three-domain-core@1.0.0 routing, lexical retrieval, Authority scope and trademark as_of version-boundary regression.",
+      "public_regression_profile_path": "benchmarks/public/stage16b_three_domain_regression.json"
+    }
+  ]
+}
