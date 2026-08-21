@@ -70,6 +70,12 @@ try {
     if (Test-Path $Runtime) {
         throw "--diagnose-corpus mutated the runtime directory."
     }
+    if ((Get-FileHash -Algorithm SHA256 $PackagedLegal).Hash.ToLowerInvariant() -ne $PackagedLegalHash) {
+        throw "--diagnose-corpus mutated packaged legal.db bytes."
+    }
+    if ((Get-FileHash -Algorithm SHA256 $PackagedRetrieval).Hash.ToLowerInvariant() -ne $PackagedRetrievalHash) {
+        throw "--diagnose-corpus mutated packaged retrieval.db bytes."
+    }
 
     $Process = Start-Process -FilePath $Exe -ArgumentList @("--no-browser", "--port", "$Port") -RedirectStandardOutput $BootstrapStdout -RedirectStandardError $BootstrapStderr -PassThru
     try {
