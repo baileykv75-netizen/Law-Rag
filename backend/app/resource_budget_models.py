@@ -22,6 +22,7 @@ class ResourceBudgetState(str, Enum):
 
 class ProviderCallLedgerState(str, Enum):
     STARTED = "STARTED"
+    RETURNED_PENDING_RECONCILIATION = "RETURNED_PENDING_RECONCILIATION"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
@@ -111,6 +112,7 @@ class ResourceBudgetOverview(BaseModel):
     completed_calls: int = Field(ge=0)
     failed_calls: int = Field(ge=0)
     in_flight_calls: int = Field(ge=0)
+    returned_pending_calls: int = Field(ge=0)
     prompt_tokens_known: int = Field(ge=0)
     completion_tokens_known: int = Field(ge=0)
     total_tokens_known: int = Field(ge=0)
