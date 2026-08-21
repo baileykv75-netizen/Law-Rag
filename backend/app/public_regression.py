@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -65,10 +66,7 @@ def load_three_domain_dataset(path: Path) -> ThreeDomainRetrievalDataset:
 
 
 def _normalized_case(case: Any) -> dict[str, Any]:
-    if hasattr(case, "model_dump"):
-        payload = case.model_dump(mode="json")
-    else:
-        payload = case
+    payload = case.model_dump(mode="json") if hasattr(case, "model_dump") else case
     return {
         "case_id": payload["case_id"],
         "topic": payload["topic"],
@@ -116,8 +114,77 @@ def _release_manifest_paths(repo_root: Path, release_path: Path) -> tuple[dict[s
     return release, paths
 
 
-def _build_release_store(repo_root: Path, release_path: Path, legal_db: Path, index_db: Path) -> dict[str, Any]:
+def _canonical_release_packs(release: dict[str, Any]) -> list[dict[str, Any]]:
+    return sorted(
+        [
+            {
+                "pack_id": str(pack.get("pack_id") or ""),
+                "pack_version": str(pack.get("pack_version") or ""),
+                "domain_tags": sorted(str(tag) for tag in pack.get("domain_tags", [])),
+                "authority_manifest_paths": sorted(
+                    str(path).replace("\\", "/") for path in pack.get("authority_manifest_paths", [])
+                ),
+            }
+            for pack in release.get("packs", [])
+        ],
+        key=lambda item: item["pack_id"],
+    )
+
+
+def _canonical_ready_packs(corpus_root: Path) -> list[dict[str, Any]]:
+    ready = [
+        item
+        for item in discover_corpus_packs(corpus_root)
+        if item.manifest.status == CorpusPackStatus.READY
+    ]
+    return sorted(
+        [
+            {
+                "pack_id": item.manifest.pack_id,
+                "pack_version": item.manifest.pack_version,
+                "domain_tags": sorted(item.manifest.domain_tags),
+                "authority_manifest_paths": sorted(
+                    path.replace("\\", "/") for path in item.manifest.authority_manifest_paths
+                ),
+            }
+            for item in ready
+        ],
+        key=lambda item: item["pack_id"],
+    )
+
+
+def _validate_release_routing_catalog(
+    repo_root: Path,
+    release: dict[str, Any],
+    profile: PublicRegressionProfile,
+) -> None:
+    actual_identity = (str(release.get("corpus_id") or ""), str(release.get("corpus_version") or ""))
+    expected_identity = (profile.expected_corpus_id, profile.expected_corpus_version)
+    if actual_identity != expected_identity:
+        raise PublicRegressionError(
+            "Public regression Corpus Release identity mismatch: "
+            f"expected {expected_identity[0]}@{expected_identity[1]}, "
+            f"observed {actual_identity[0]}@{actual_identity[1]}."
+        )
+    release_packs = _canonical_release_packs(release)
+    ready_packs = _canonical_ready_packs(repo_root / "legal_data")
+    if release_packs != ready_packs:
+        raise PublicRegressionError(
+            "The selected Corpus Release Pack catalog no longer matches the READY routing catalog. "
+            "Do not evaluate an old release against silently changed Pack routing metadata; "
+            "publish/version the new regression profile explicitly."
+        )
+
+
+def _build_release_store(
+    repo_root: Path,
+    release_path: Path,
+    legal_db: Path,
+    index_db: Path,
+    profile: PublicRegressionProfile,
+) -> dict[str, Any]:
     release, manifests = _release_manifest_paths(repo_root, release_path)
+    _validate_release_routing_catalog(repo_root, release, profile)
     registry = repo_root / "legal_data" / "source_registry.json"
     for index, manifest in enumerate(manifests):
         report = import_manifest(
@@ -174,12 +241,18 @@ def _ratio(numerator: int | float, denominator: int | float) -> float:
     return 0.0 if denominator == 0 else float(numerator) / float(denominator)
 
 
-def _routing_smokes(legal_db: Path, index_db: Path) -> tuple[dict[str, float], list[QualityDiagnostic]]:
+def _routing_smokes(
+    repo_root: Path,
+    legal_db: Path,
+    index_db: Path,
+) -> tuple[dict[str, float], list[QualityDiagnostic]]:
     diagnostics: list[QualityDiagnostic] = []
+    corpus_root = repo_root / "legal_data"
 
     broad_route = route_issue_to_corpus_packs(
         _issue("stage16-unmapped", "其他合同问题", "一般性合同风险"),
         ContractType.UNKNOWN,
+        corpus_root=corpus_root,
     )
     broad_ok = (
         broad_route.domain == LegalDomain.UNMAPPED
@@ -205,6 +278,7 @@ def _routing_smokes(legal_db: Path, index_db: Path) -> tuple[dict[str, float], l
     cross_route = route_issue_to_corpus_packs(
         _issue("stage16-cross-domain", "商标许可与个人信息处理", "商标许可 个人信息"),
         ContractType.TECHNOLOGY,
+        corpus_root=corpus_root,
     )
     expected_cross_packs = {"cn-enterprise-compliance-core", "cn-intellectual-property-core"}
     cross_ok = (
@@ -227,10 +301,11 @@ def _routing_smokes(legal_db: Path, index_db: Path) -> tuple[dict[str, float], l
     ip_route = route_issue_to_corpus_packs(
         _issue("stage16-trademark-version", "商标注册", "商标法第一条"),
         ContractType.UNKNOWN,
+        corpus_root=corpus_root,
     )
     version_checks = [
-        ("2026-12-31", "effective-2019-11-01"),
-        ("2027-01-01", "effective-2027-01-01"),
+        (date(2026, 12, 31), "effective-2019-11-01"),
+        (date(2027, 1, 1), "effective-2027-01-01"),
     ]
     version_hits = 0
     for as_of, expected_version in version_checks:
@@ -239,7 +314,7 @@ def _routing_smokes(legal_db: Path, index_db: Path) -> tuple[dict[str, float], l
             index_db,
             RetrievalRequest(
                 query="商标法第一条",
-                as_of=__import__("datetime").date.fromisoformat(as_of),
+                as_of=as_of,
                 authority_id_hint="prc-trademark-law",
                 article_token_hint="第一条",
                 top_k=5,
@@ -255,7 +330,7 @@ def _routing_smokes(legal_db: Path, index_db: Path) -> tuple[dict[str, float], l
                 QualityDiagnostic(
                     layer="LEGAL_RETRIEVAL",
                     category="AS_OF_VERSION_BOUNDARY_MISMATCH",
-                    case_id=f"trademark-{as_of}",
+                    case_id=f"trademark-{as_of.isoformat()}",
                     message="Trademark exact-citation retrieval resolved the wrong Authority Version at an as_of boundary.",
                     expected=expected_version,
                     observed=(candidate.version_id if candidate is not None else None),
@@ -283,7 +358,8 @@ def _run_three_domain_retrieval(
     work_dir.mkdir(parents=True, exist_ok=True)
     legal_db = work_dir / "legal.db"
     index_db = work_dir / "retrieval.db"
-    store = _build_release_store(repo_root, release_path, legal_db, index_db)
+    store = _build_release_store(repo_root, release_path, legal_db, index_db, profile)
+    corpus_root = repo_root / "legal_data"
 
     broad_hits = scoped_hits = 0
     broad_rr = scoped_rr = 0.0
@@ -299,7 +375,11 @@ def _run_three_domain_retrieval(
             raise PublicRegressionError(
                 f"Unsupported contract_type in public regression case {case.case_id}: {case.contract_type}"
             ) from exc
-        route = route_issue_to_corpus_packs(_issue(case.case_id, case.topic, case.query), contract_type)
+        route = route_issue_to_corpus_packs(
+            _issue(case.case_id, case.topic, case.query),
+            contract_type,
+            corpus_root=corpus_root,
+        )
         if case.expected_authority_id in route.eligible_authority_ids:
             route_eligible += 1
         else:
@@ -371,7 +451,7 @@ def _run_three_domain_retrieval(
     broad_recall = _ratio(broad_hits, case_count)
     scoped_mrr = _ratio(scoped_rr, case_count)
     broad_mrr = _ratio(broad_rr, case_count)
-    smoke_values, smoke_diagnostics = _routing_smokes(legal_db, index_db)
+    smoke_values, smoke_diagnostics = _routing_smokes(repo_root, legal_db, index_db)
     diagnostics.extend(smoke_diagnostics)
 
     metric_values = {
@@ -438,7 +518,7 @@ def _run_three_domain_retrieval(
         "regression_dataset_sha256": _file_sha256(dataset_path),
         "promoted_stage15_fixture_sha256": _file_sha256(source_fixture_path),
         "corpus_release_sha256": _file_sha256(release_path),
-        "routing_catalog_sha256": routing_catalog_fingerprint(repo_root / "legal_data"),
+        "routing_catalog_sha256": routing_catalog_fingerprint(corpus_root),
     }
     return report, fingerprints
 
