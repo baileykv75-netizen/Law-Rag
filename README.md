@@ -34,7 +34,7 @@ Law-Rag does not use a third model to vote on DeepSeek/Kimi disagreement. Unsupp
 
 ## Status
 
-**Stage 15 is complete and revalidated. Stage 16.1 — versioned evaluation-suite architecture and evidence-class isolation — is active.**
+**Stage 16.1 is COMPLETE and validated. Stage 16.2 — public deterministic regression corpus expansion — is NEXT.**
 
 Stage 15 delivered:
 
@@ -55,11 +55,11 @@ Stage 15 delivered:
 Authoritative Stage 15 closeout validation:
 
 ```text
-Law-Rag Stage 15 CI #123 (32456205510)                 SUCCESS
+Law-Rag Stage 15 CI #123 (32456205510)                  SUCCESS
 Law-Rag Stage 15.5 Windows Baseline CI #9 (32456205586) SUCCESS
 ```
 
-Stage 16.1 adds a deterministic orchestration layer above the existing Stage 11 benchmark/quality evaluators. It keeps three evidence classes explicit:
+Stage 16.1 added a deterministic orchestration layer above the existing Stage 11 benchmark/quality evaluators and keeps three evidence classes explicit:
 
 ```text
 PUBLIC_REGRESSION
@@ -68,6 +68,24 @@ REAL_PROVIDER_UAT
 ```
 
 The suite evaluator consumes existing observations and never calls DeepSeek, Kimi, OCR, or another provider itself. Public regression data stays under `benchmarks/public/`; private expert labels and real-provider UAT observations stay external or under ignored `benchmark_private/`. Suite reports are summary-only and do not embed expert labels, assertion payloads, private contract text, raw provider responses, or an invented cross-task `overall_accuracy`/`legal_accuracy` score.
+
+Authoritative Stage 16.1 implementation validation:
+
+```text
+Stage 16 implementation head
+  de9fb64d3b03316eb3427f0137fc0c9086d145f3
+
+Law-Rag Stage 16 CI #9 (32457699628)                    SUCCESS
+  backend pytest: 428 passed, 5 skipped, 1 warning
+  existing public deterministic quality gates: PASS
+  Stage 16 public evaluation suite: 2 / 2 entries PASS
+  frontend production build: PASS
+
+Law-Rag Stage 15 regression CI #127 (32457699622)      SUCCESS
+Stage 15.5 Windows workflow on Stage 16.1 PR            SKIPPED as intended
+```
+
+Stage 16.2 will promote the strongest existing public deterministic Stage 13–15 regression evidence into explicit versioned benchmark datasets/suite entries, beginning with the Stage 15 three-domain retrieval benchmark and deterministic routing/versioning invariants. It must not introduce paid provider calls or private expert labels.
 
 See [`docs/STAGE16_EVALUATION.md`](docs/STAGE16_EVALUATION.md) and [`CURRENT_TASK.md`](CURRENT_TASK.md).
 
