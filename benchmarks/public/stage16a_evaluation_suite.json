@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "suite_id": "law-rag-stage16a-public-evaluation-smoke",
+  "suite_version": "1.0.0",
+  "title": "Stage 16.1 public evaluation-suite orchestration smoke",
+  "description": "Public-safe orchestration smoke proving that the Stage 16 suite layer can reuse the existing Stage 11 benchmark evaluator and Stage 11B deterministic quality gates without calling external model providers. This suite is harness/regression evidence only, not a professional legal-accuracy benchmark.",
+  "suite_class": "PUBLIC_REGRESSION",
+  "entries": [
+    {
+      "entry_id": "stage11-schema-smoke",
+      "kind": "BENCHMARK",
+      "scope": "All nine Stage 11 benchmark task families using fictional/public-safe observations; evaluator mechanics only.",
+      "dataset_path": "benchmarks/public/stage11a_schema_smoke.dataset.json",
+      "observations_path": "benchmarks/public/stage11a_schema_smoke.observations.json"
+    },
+    {
+      "entry_id": "stage11-public-quality-gates",
+      "kind": "PUBLIC_QUALITY_PROFILE",
+      "scope": "Existing public deterministic quality profile including schema-smoke integrity and checked-in lexical retrieval regression gates.",
+      "quality_profile_path": "benchmarks/public/stage11b_quality_gates.json"
+    }
+  ]
+}
