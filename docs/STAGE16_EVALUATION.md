@@ -2,9 +2,21 @@
 
 ## Purpose
 
-Stage 16 measures and hardens the Stage 13–15 production architecture. It does not introduce a second contract-analysis pipeline and does not let an evaluator call model providers on its own.
+Stage 16 measures and hardens the proven Stage 13–15 production architecture. It does not introduce a second contract-analysis pipeline and does not let public evaluation silently execute paid/network model providers.
 
-Stage 16.1 adds a versioned orchestration layer above the existing Stage 11 benchmark and quality evaluators.
+The stage keeps three kinds of evidence separate:
+
+```text
+PUBLIC_REGRESSION
+PRIVATE_EXPERT
+REAL_PROVIDER_UAT
+```
+
+No cross-task `overall_accuracy` or `legal_accuracy` number is produced.
+
+## Stage 16.1 — Evaluation-suite architecture
+
+Stage 16.1 added a versioned orchestration layer above the existing Stage 11 benchmark and quality evaluators:
 
 ```text
 EvaluationSuiteManifest
@@ -21,132 +33,243 @@ EvaluationSuiteManifest
   -> sanitized EvaluationSuiteRunReport
 ```
 
-The suite layer therefore preserves the original separation between **truth**, **observations**, and **evaluation**.
+The suite layer preserves the separation between truth, observations and evaluation.
 
-## Evidence classes
+### Evidence boundaries
 
-A suite has exactly one evidence class.
+`PUBLIC_REGRESSION` material lives under `benchmarks/public/` and cannot contain `PRIVATE_EXTERNAL` cases.
 
-### PUBLIC_REGRESSION
+`PRIVATE_EXPERT` manifests/datasets/observations remain external or under ignored `benchmark_private/`; detailed expected/observed labels remain in that private boundary.
 
-Repository-safe deterministic regression evidence.
+`REAL_PROVIDER_UAT` manifests/observations also remain external/ignored. Every UAT observation identifies a current real provider, model and SHA-256 artifact fingerprint; fake producer/provider identities are rejected.
 
-Rules:
+### Sanitized suite report
 
-- manifest must be under `benchmarks/public/`;
-- benchmark dataset/observations must be under `benchmarks/public/`;
-- a checked-in dataset cannot contain `PRIVATE_EXTERNAL` cases;
-- public quality profiles are allowed only in this class;
-- no provider secret or paid/network call is required.
+`EvaluationSuiteRunReport` records identity, version, pass/fail counts, evaluator versions and source fingerprints. It intentionally omits private labels, assertion payloads, contract text, raw provider responses, hidden reasoning and credentials.
 
-A pass means only that the named checked-in regression evidence still passes.
-
-### PRIVATE_EXPERT
-
-Professionally labeled evaluation data.
-
-Rules:
-
-- manifest and benchmark inputs must be external or under ignored `benchmark_private/`;
-- every benchmark case must declare `PRIVATE_EXTERNAL` provenance;
-- detailed expected/observed labels stay in the private benchmark report boundary;
-- the suite-level report contains summary counts and SHA-256 input fingerprints rather than assertion payloads.
-
-This keeps professional reviewer truth useful for metrics without making it public repository material.
-
-### REAL_PROVIDER_UAT
-
-Explicit paid/network observations from the current production provider path.
-
-Rules:
-
-- suite manifest is external/ignored;
-- Observation Sets are external/ignored;
-- the dataset may reuse public-safe benchmark truth or private external truth;
-- every observation must identify a non-fake provider and model;
-- every observation must include a SHA-256 artifact fingerprint;
-- the suite evaluator only consumes those observations and never creates them.
-
-Real-provider execution itself belongs to a later Stage 16 substage. Keeping execution separate from scoring makes normal CI deterministic, secret-free, and network-independent.
-
-## Sanitized suite report
-
-`EvaluationSuiteRunReport` records:
-
-- suite ID/version/class;
-- suite-manifest fingerprint;
-- per-entry pass/fail;
-- underlying evaluator version;
-- dataset/profile identity and version;
-- number of cases or gates passed/failed;
-- SHA-256 fingerprints of evaluation inputs;
-- privacy-safe provider/model/artifact summaries for real-provider UAT.
-
-It intentionally does **not** include:
-
-- assertion expected/observed payloads;
-- expert label text;
-- contract text;
-- raw provider responses;
-- hidden model reasoning;
-- credentials;
-- a cross-task `overall_accuracy` or `legal_accuracy` score.
-
-When deeper diagnostics are required, reviewers inspect the underlying benchmark/quality report inside the data boundary appropriate to that suite.
-
-## Public Stage 16.1 smoke
-
-The checked-in public orchestration smoke is:
+Historical Stage 16.1 smoke:
 
 ```text
 benchmarks/public/stage16a_evaluation_suite.json
 ```
 
-It contains two entries:
+It remains unchanged and contains the Stage 11 schema smoke plus the historical Stage 11B public quality profile.
 
-1. existing Stage 11A nine-task schema smoke;
-2. existing Stage 11B public deterministic quality profile.
-
-This intentionally reuses existing evidence. Stage 16.1 proves orchestration and isolation only; corpus expansion and new quality claims belong to later Stage 16 substages.
-
-Run from `backend/`:
+Final Stage 16.1 closeout validation:
 
 ```text
-python -m app.evaluation_suite_cli \
+head 706ce85bc5b472896d33dcf4d926501755656247
+Law-Rag Stage 16 CI #15 (32458037391)  SUCCESS
+Law-Rag Stage 15 CI #130 (32458037327) SUCCESS
+```
+
+## Stage 16.2 — Public deterministic regression corpus
+
+Stage 16.2 promotes repository-safe deterministic evidence that previously lived mainly in Stage 15 pytest/fixtures into explicit versioned Stage 16 regression artifacts.
+
+### Public artifacts
+
+```text
+benchmarks/public/stage16b_three_domain_retrieval.dataset.json
+benchmarks/public/stage16b_three_domain_regression.json
+benchmarks/public/stage16b_evaluation_suite.json
+```
+
+New backend layer:
+
+```text
+PublicRegressionProfile
+  -> deterministic named runner
+  -> QualityRunReport + source fingerprints
+  -> PUBLIC_REGRESSION_PROFILE suite entry
+```
+
+The historical Stage 11B quality profile is not redefined. Stage 16.2 therefore adds a new evaluation layer without changing what older Stage 11 evidence meant.
+
+### Promoted Stage 15 dataset
+
+The nine Stage 16.2 cases are promoted from:
+
+```text
+legal_data/fixtures/stage15_domain_retrieval_benchmark.json
+```
+
+The promoted dataset contains the same case ID, topic, query, contract type, `as_of` date and expected Authority identity for every case. At runtime the runner compares the promoted dataset to the source fixture and fails closed on any semantic difference.
+
+A future change to benchmark truth therefore requires an explicit new dataset/source version; it cannot be hidden under the same Stage 16.2 identity.
+
+### Pinned corpus + routing reproducibility
+
+The regression profile pins:
+
+```text
+Corpus Release: three-domain-core@1.0.0
+3 READY Packs
+14 Authorities
+15 Versions
+1274 unique Articles
+```
+
+The runner rebuilds a scratch legal database and FTS5 retrieval index from the selected immutable Corpus Release.
+
+Before scoring, it also compares the Release Pack catalog with the current READY routing catalog using:
+
+```text
+pack_id
+pack_version
+domain_tags
+authority_manifest_paths
+```
+
+A mismatch fails closed. This prevents an old release from being scored against silently changed Pack-routing metadata and reported as if it were directly comparable.
+
+### Deterministic regression dimensions
+
+The Stage 16.2 profile measures:
+
+```text
+three-domain scoped lexical Recall@5
+three-domain scoped lexical MRR
+three-domain broad lexical Recall@5
+three-domain broad lexical MRR
+scoped-vs-broad Recall/MRR deltas
+scoped candidate Authority compliance
+expected Authority route eligibility
+frozen release Article count
+UNMAPPED all-READY-Pack fallback
+CROSS_DOMAIN IP + enterprise Pack union
+trademark exact as_of version boundary
+```
+
+The trademark boundary explicitly verifies:
+
+```text
+2026-12-31 -> effective-2019-11-01
+2027-01-01 -> effective-2027-01-01
+```
+
+### Stage 16.2 gates
+
+```text
+scoped Recall@5                              >= 0.90
+scoped MRR                                   >= 0.80
+scoped Recall@5 - broad Recall@5             >= 0.00
+scoped MRR - broad MRR                       >= 0.00
+Authority-scope compliance                    = 1.00
+expected Authority routing eligibility        = 1.00
+release article count                         = 1274
+UNMAPPED broad fallback                       = 1.00
+CROSS_DOMAIN Pack union                       = 1.00
+trademark as_of version-boundary exact rate   = 1.00
+```
+
+### Direct report CLI
+
+From `backend/`:
+
+```text
+python -m app.public_regression_cli \
   --repo-root .. \
-  --suite ../benchmarks/public/stage16a_evaluation_suite.json
+  --profile ../benchmarks/public/stage16b_three_domain_regression.json
 ```
 
-The CLI exits:
+The CLI prints the complete scoped metric report and source fingerprints. Exit codes are:
 
 ```text
-0  all suite entries passed
-1  valid suite executed but at least one entry failed
-2  invalid suite/input/policy boundary
+0  all configured regression gates passed
+1  valid profile executed but one or more gates failed
+2  invalid profile/input/reproducibility boundary
 ```
 
-## Stage 16.1 non-goals
+### Expanded suite
 
-Stage 16.1 does not:
-
-- call DeepSeek or Kimi;
-- add expert labels;
-- enlarge the legal corpus;
-- tune retrieval thresholds;
-- change ISSUE_V1 prompts or comparison semantics;
-- change provider approval/cancellation;
-- change Windows packaging;
-- implement later desktop/history/export/installer work.
-
-## Next Stage 16 sequence
-
-After Stage 16.1 is validated:
+The Stage 16.2 suite is:
 
 ```text
-16.2  expand public deterministic regression corpus and integrate Stage 15 three-domain retrieval evidence
-16.3  define/run private expert benchmark and scoped professional metrics
-16.4  capture current ISSUE_V1 real-provider UAT observations under explicit opt-in
-16.5  assemble the Stage 16 release-quality evidence matrix and final regression
+benchmarks/public/stage16b_evaluation_suite.json
 ```
 
-Every substage must preserve the distinction between public regression evidence, private expert truth, and provider-specific UAT evidence.
+It contains:
+
+1. unchanged Stage 11A schema smoke;
+2. unchanged historical Stage 11B quality profile;
+3. Stage 16.2 three-domain public regression profile.
+
+The Stage 16.1 `stage16a` suite remains available as historical evidence.
+
+### Authoritative Stage 16.2 implementation validation
+
+Validated implementation head:
+
+```text
+e04111f03ac2a67d6a818ffdeea3a9b9a94b821e
+```
+
+Validation:
+
+```text
+Law-Rag Stage 16 CI #40 (32458988693) SUCCESS
+backend pytest                            434 passed, 5 skipped, 1 warning
+historical Stage 11B gates               PASS
+Stage 16.2 direct regression gates       10 / 10 PASS
+Stage 16b evaluation-suite entries       3 / 3 PASS
+frontend production build                PASS
+```
+
+Direct metric values:
+
+```text
+scoped lexical Recall@5                         1.00
+scoped lexical MRR                              1.00
+broad lexical Recall@5                          1.00
+broad lexical MRR                               1.00
+scoped Recall@5 - broad Recall@5                0.00
+scoped MRR - broad MRR                          0.00
+scoped candidate Authority compliance           1.00
+expected Authority routing eligibility          1.00
+frozen release Article count                    1274
+UNMAPPED broad fallback                         1.00
+CROSS_DOMAIN Pack union                         1.00
+trademark as_of version-boundary exact rate     1.00
+```
+
+These results apply only to the named nine-case public regression dataset and pinned corpus/routing configuration. They are **not** professional legal accuracy, audit-finding precision/recall, or full Chinese-law retrieval coverage.
+
+Source fingerprints from the authoritative run are retained for the profile, promoted dataset, Stage 15 source fixture, Corpus Release and routing catalog.
+
+## Stage 16.3 — Private expert benchmark — NEXT
+
+Public deterministic evidence cannot establish whether legal/audit judgments are professionally correct. Stage 16.3 therefore owns the private expert benchmark protocol and scoped professional metrics.
+
+The intended private evaluation boundary includes professionally labeled Issue-level truth for dimensions such as:
+
+- primary audit finding correctness;
+- high-risk finding recall and false positives;
+- Contract Evidence localization/coverage;
+- Legal Evidence citation validity/relevance within the supplied corpus;
+- Kimi secondary finding/coverage behavior;
+- correct preservation of insufficient-evidence and legal-uncertainty states.
+
+Private contracts, labels, observations and detailed diagnostics remain external or under ignored `benchmark_private/`. Only schemas/protocol documentation, synthetic examples and privacy-safe aggregate evidence may enter public Git.
+
+Metric helpers may reuse Stage 11 infrastructure where labels support it:
+
+```text
+binary classification -> precision / recall / F1
+set extraction        -> precision / recall / F1
+ranked retrieval      -> Recall@K / MRR when appropriate
+```
+
+Every professional metric must identify its exact private dataset/version and label definition. Dataset quality, expert agreement and ambiguity handling must be established before a metric becomes a release gate. Thresholds must not be invented or lowered simply to produce a passing result.
+
+Stage 16.3 does not yet own real-provider UAT execution; that remains Stage 16.4.
+
+## Remaining sequence
+
+```text
+16.3  private expert benchmark protocol + scoped professional metrics
+16.4  real-provider ISSUE_V1 UAT observation capture
+16.5  release-quality evidence matrix + final regression
+```
+
+Every substage must preserve the distinction between public deterministic regression, private expert truth and provider-specific UAT evidence.
