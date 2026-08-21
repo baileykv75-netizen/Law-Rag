@@ -22,10 +22,17 @@ from .evaluation_suite_models import (
 from .public_regression import PublicRegressionError, run_public_regression_profile
 from .quality import QualityError, load_quality_gate_profile, run_public_quality_profile
 from .quality_models import QUALITY_EVALUATOR_VERSION
+from .uat_capture import UATCaptureError, load_issue_v1_uat_observation
+from .uat_capture_models import UATCaptureMode, UATChainState, UATProviderStage
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
-_FAKE_TOKEN_RE = re.compile(r"(^|[-_.])fake($|[-_.])", re.IGNORECASE)
+_FAKE_TOKEN_RE = re.compile(r"(^|[-_.])(fake|test|stub|mock|double|dummy)($|[-_.])", re.IGNORECASE)
 _REAL_UAT_PROVIDERS = frozenset({"deepseek", "kimi"})
+_UAT_STAGE_ARTIFACT = {
+    UATProviderStage.PLANNER: "audit-plan.json",
+    UATProviderStage.PRIMARY: "issue-primary-audit.json",
+    UATProviderStage.SECONDARY: "issue-secondary-review.json",
+}
 
 
 class EvaluationSuiteError(RuntimeError):
@@ -186,9 +193,9 @@ def _uat_producer_summaries(observations: BenchmarkObservationSet) -> list[Evalu
             raise EvaluationSuiteError(
                 "REAL_PROVIDER_UAT provider must be one of the current production providers: deepseek or kimi."
             )
-        if _looks_fake(producer_id) or _looks_fake(provider):
+        if _looks_fake(producer_id) or _looks_fake(provider) or _looks_fake(model):
             raise EvaluationSuiteError(
-                "Fake producer identities/providers cannot be accepted as REAL_PROVIDER_UAT evidence."
+                "Fake producer identities/providers/models cannot be accepted as REAL_PROVIDER_UAT evidence."
             )
         if not _SHA256_RE.fullmatch(artifact_fingerprint):
             raise EvaluationSuiteError(
@@ -349,6 +356,127 @@ def _run_public_regression_entry(
     )
 
 
+def _uat_capture_producer_summaries(observation) -> list[EvaluationProducerSummary]:
+    artifacts = {item.artifact: item for item in observation.artifacts}
+    summaries: dict[tuple[str, str, str], EvaluationProducerSummary] = {}
+    stages_seen: set[UATProviderStage] = set()
+
+    for call in observation.provider_calls:
+        provider = call.provider.strip().lower()
+        model = call.model.strip()
+        expected_provider = "kimi" if call.stage == UATProviderStage.SECONDARY else "deepseek"
+        if provider != expected_provider:
+            raise EvaluationSuiteError(
+                f"UAT_CAPTURE expected {expected_provider} for {call.stage.value}, got {call.provider!r}."
+            )
+        if provider not in _REAL_UAT_PROVIDERS or _looks_fake(provider) or _looks_fake(model):
+            raise EvaluationSuiteError("Fake or non-production provider/model identity in UAT_CAPTURE evidence.")
+        artifact_name = _UAT_STAGE_ARTIFACT[call.stage]
+        artifact = artifacts.get(artifact_name)
+        if artifact is None:
+            raise EvaluationSuiteError(
+                f"UAT_CAPTURE provider stage {call.stage.value} is missing authoritative {artifact_name} provenance."
+            )
+        fingerprint = artifact.embedded_fingerprint or artifact.file_sha256
+        key = (provider, model, fingerprint)
+        summaries[key] = EvaluationProducerSummary(
+            provider=provider,
+            model=model,
+            artifact_fingerprint=fingerprint,
+        )
+        stages_seen.add(call.stage)
+
+    if UATProviderStage.PLANNER not in stages_seen:
+        raise EvaluationSuiteError("UAT_CAPTURE must preserve at least one Audit Planner provider call.")
+    return [summaries[key] for key in sorted(summaries)]
+
+
+def _run_uat_capture_entry(
+    entry: EvaluationSuiteEntry,
+    *,
+    repo_root: Path,
+    suite_path: Path,
+) -> EvaluationSuiteEntryResult:
+    assert entry.uat_observation_path is not None
+    observation_path = _resolve_reference(
+        entry.uat_observation_path,
+        repo_root=repo_root,
+        suite_path=suite_path,
+    )
+    _require_file(observation_path, label="UAT capture observation")
+    if _path_class(observation_path, repo_root) != "PRIVATE":
+        raise EvaluationSuiteError(
+            "UAT_CAPTURE observations must remain external or under ignored benchmark_private/."
+        )
+    try:
+        observation = load_issue_v1_uat_observation(observation_path)
+    except UATCaptureError as exc:
+        raise EvaluationSuiteError(str(exc)) from exc
+
+    if observation.capture_mode != UATCaptureMode.REAL_PROVIDER:
+        raise EvaluationSuiteError(
+            "UAT_CAPTURE suite entries accept only explicitly captured REAL_PROVIDER observations."
+        )
+    if observation.architecture != "ISSUE_V1":
+        raise EvaluationSuiteError("UAT_CAPTURE currently accepts only architecture=ISSUE_V1.")
+    if len(observation.issue_coverage) != observation.audit_plan_issue_count:
+        raise EvaluationSuiteError("UAT_CAPTURE Issue coverage count does not reconcile with the AuditPlan count.")
+    issue_ids = [item.issue_id for item in observation.issue_coverage]
+    if len(issue_ids) != len(set(issue_ids)):
+        raise EvaluationSuiteError("UAT_CAPTURE contains duplicate Issue coverage records.")
+
+    if observation.chain_state == UATChainState.COMPLETE:
+        if (
+            observation.primary_completed_issue_count != observation.audit_plan_issue_count
+            or observation.secondary_completed_issue_count != observation.audit_plan_issue_count
+            or observation.compared_issue_count != observation.audit_plan_issue_count
+        ):
+            raise EvaluationSuiteError("A COMPLETE UAT_CAPTURE must reconcile all authoritative Issue counts.")
+        if not all(item.primary_result_present and item.secondary_result_present and item.comparison_present for item in observation.issue_coverage):
+            raise EvaluationSuiteError("A COMPLETE UAT_CAPTURE must preserve complete Issue result/comparison coverage.")
+    elif observation.chain_state == UATChainState.PRIMARY_INTERRUPTED:
+        if observation.secondary_completed_issue_count != 0 or observation.compared_issue_count != 0:
+            raise EvaluationSuiteError("PRIMARY_INTERRUPTED UAT_CAPTURE cannot contain downstream completion counts.")
+    elif observation.chain_state == UATChainState.SECONDARY_INTERRUPTED:
+        if observation.primary_completed_issue_count != observation.audit_plan_issue_count:
+            raise EvaluationSuiteError("SECONDARY_INTERRUPTED UAT_CAPTURE requires complete primary Issue coverage.")
+        if observation.compared_issue_count != 0:
+            raise EvaluationSuiteError("SECONDARY_INTERRUPTED UAT_CAPTURE cannot contain final comparisons.")
+
+    producers = _uat_capture_producer_summaries(observation)
+    source_fingerprints = {
+        "uat_observation_sha256": _file_sha256(observation_path),
+        "uat_observation_fingerprint": observation.observation_fingerprint,
+    }
+    for artifact in observation.artifacts:
+        source_fingerprints[f"artifact.{artifact.artifact}.file_sha256"] = artifact.file_sha256
+        if artifact.embedded_fingerprint:
+            source_fingerprints[
+                f"artifact.{artifact.artifact}.embedded_fingerprint"
+            ] = artifact.embedded_fingerprint
+
+    complete = observation.chain_state == UATChainState.COMPLETE
+    return EvaluationSuiteEntryResult(
+        entry_id=entry.entry_id,
+        kind=entry.kind,
+        passed=complete,
+        evaluator_version=observation.capture_version,
+        identity_id=observation.architecture,
+        identity_version=observation.capture_version,
+        unit_label="uat_capture",
+        unit_count=1,
+        passed_count=1 if complete else 0,
+        failed_count=0 if complete else 1,
+        source_fingerprints=source_fingerprints,
+        producers=producers,
+        warnings=[
+            f"Captured provider chain state: {observation.chain_state.value}.",
+            "UAT_CAPTURE pass means the captured ISSUE_V1 provider chain reached COMPLETE; it is not a professional legal-correctness judgment.",
+            "Detailed job, Issue, request and raw-response provenance remains only in the private observation file.",
+        ],
+    )
+
+
 def run_evaluation_suite(
     repo_root: Path,
     suite_path: Path,
@@ -385,6 +513,14 @@ def run_evaluation_suite(
                 suite_path=suite_path,
                 work_dir=work_dir / f"regression-{index}",
             )
+        elif entry.kind == EvaluationSuiteEntryKind.UAT_CAPTURE:
+            if manifest.suite_class != EvaluationSuiteClass.REAL_PROVIDER_UAT:
+                raise EvaluationSuiteError("UAT_CAPTURE is valid only in REAL_PROVIDER_UAT suites.")
+            result = _run_uat_capture_entry(
+                entry,
+                repo_root=repo_root,
+                suite_path=suite_path,
+            )
         else:
             raise EvaluationSuiteError(f"Unsupported evaluation suite entry kind: {entry.kind}")
         results.append(result)
@@ -397,7 +533,7 @@ def run_evaluation_suite(
             "PRIVATE_EXPERT labels and detailed diagnostics remain outside tracked Git paths; this suite report is summary-only."
         ),
         EvaluationSuiteClass.REAL_PROVIDER_UAT: (
-            "REAL_PROVIDER_UAT evidence is provider/model specific and must not be interpreted as deterministic reproducibility of model behavior."
+            "REAL_PROVIDER_UAT evidence is provider/model specific and must not be interpreted as deterministic reproducibility of model behavior or professional correctness."
         ),
     }[manifest.suite_class]
 

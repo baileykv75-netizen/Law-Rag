@@ -14,8 +14,8 @@ Stage 15.1–15.5 COMPLETE / official three-domain corpus + domain-aware RAG + W
 Stage 16.1      COMPLETE / versioned evaluation-suite architecture + evidence-class isolation
 Stage 16.2      COMPLETE / public deterministic three-domain regression corpus + gates
 Stage 16.3      COMPLETE / private expert protocol + label audit + scoped metric evaluator validated
-Stage 16.4      NEXT     / real-provider ISSUE_V1 UAT observation capture
-Stage 16.5      PENDING  / Stage 16 release-quality evidence matrix + final regression
+Stage 16.4      IN PROGRESS / capture + suite mechanics VALIDATED; READY_FOR_REAL_UAT; paid/network UAT NOT RUN
+Stage 16.5      PENDING / Stage 16 release-quality evidence matrix + final regression
 ```
 
 Stage 16 measures and hardens the proven Stage 13–15 product. It does **not** redesign the production review topology.
@@ -375,41 +375,99 @@ base: stage16-2-public-regression-corpus
 
 PR #17 is not authorized for merge.
 
-## Stage 16.4 — Real-provider ISSUE_V1 UAT observation capture — NEXT
+## Stage 16.4 — Real-provider ISSUE_V1 UAT observation capture — IN PROGRESS / READY_FOR_REAL_UAT
 
 ### Goal
 
 Capture explicit, reproducible **real DeepSeek/Kimi observations** from the current production `ISSUE_V1` path without confusing provider behavior with expert truth or deterministic regression.
 
-### Required focus
+### Provider-free capture mechanics — VALIDATED
 
-Stage 16.4 should define one bounded opt-in UAT capture path that:
-
-1. reuses the current production Audit Planner / Issue Legal RAG / DeepSeek / Kimi / deterministic comparison topology rather than creating a second model pipeline;
-2. requires explicit provider configuration and the existing persisted provider-approval/cancellation boundary;
-3. records exact provider/model identity and SHA-256 fingerprints of authoritative input/output artifacts;
-4. preserves one-to-one AuditPlan Issue coverage and checkpoint/restart semantics;
-5. stores detailed UAT observations only outside Git or under ignored private paths;
-6. emits only sanitized, non-secret provenance/summary data suitable for Stage 16 evidence assembly;
-7. remains clearly separate from `PRIVATE_EXPERT` labels and does not treat model agreement as correctness.
-
-### Validation direction
-
-Public CI must test Stage 16.4 capture mechanics with fake/local provider doubles only. **Actual paid/network UAT must be explicit opt-in and must never run in ordinary CI.**
-
-The real UAT run should identify at minimum:
+Stage 16.4 now provides a bounded, read-only capture path over an already-executed production `ISSUE_V1` job:
 
 ```text
-architecture = ISSUE_V1
-provider
-model
-request/artifact fingerprints
-AuditPlan / Issue Legal Context fingerprints
-primary / secondary / comparison artifact fingerprints
-completion / interruption state
+existing production ISSUE_V1 artifacts
+ -> validate job/run/fingerprint/Issue/stage-state provenance
+ -> private IssueV1UATObservation
+ -> sanitized IssueV1UATSanitizedReport
+ -> optional REAL_PROVIDER_UAT / UAT_CAPTURE evaluation-suite entry
 ```
 
-No raw API key, private contract text, hidden chain-of-thought or unrestricted provider payload may enter the public repository.
+Implemented boundaries:
+
+- the capture reader never invokes Audit Planner, DeepSeek, Kimi, OCR or another provider/network boundary;
+- detailed observations may live only outside Git or under ignored `benchmark_private/` and are append-only;
+- `TEST_DOUBLE` and `REAL_PROVIDER` capture modes remain explicit;
+- `REAL_PROVIDER` requires explicit operator confirmation and rejects fake/test/stub/mock/double/dummy provider/model identities;
+- current real-provider identity mapping is Planner/Primary -> DeepSeek and Secondary -> Kimi;
+- canonical job identity, `as_of`, semantic mode, contract source/content fingerprints and AuditPlan schema/planner version must reconcile;
+- Legal Context must cover exactly the AuditPlan Issue set;
+- Primary, Secondary and final comparison counts/Issue identities must reconcile with the AuditPlan;
+- AuditPlan -> Legal Context -> Primary -> Secondary -> final report fingerprint links are validated;
+- provider-call Issue identity, raw-response SHA-256 and persisted-result linkage are validated;
+- pipeline stage records must agree with COMPLETE / PRIMARY_INTERRUPTED / SECONDARY_INTERRUPTED artifact states;
+- contradictory or stale provenance fails closed rather than being normalized;
+- sanitized output omits job IDs, Issue IDs, request IDs, raw-response hashes, private text, credentials and hidden reasoning;
+- Stage 16 evaluation suites now have a dedicated `UAT_CAPTURE` entry valid only in `REAL_PROVIDER_UAT` suites;
+- `UAT_CAPTURE passed=true` means only that a captured production provider chain reached COMPLETE with consistent provenance; it does not mean legal correctness.
+
+CLI capture of an already-executed real job:
+
+```text
+python -m app.uat_capture_cli \
+  --repo-root .. \
+  --job-id <existing-issue-v1-job-uuid> \
+  --output <external-or-benchmark_private/observation.json> \
+  --mode REAL_PROVIDER \
+  --confirm-real-provider-uat
+```
+
+The confirmation flag does not itself call a provider. It only permits an already-persisted provider run to be labeled/captured as explicit real-provider UAT evidence after all guards pass.
+
+Detailed operating procedure: `docs/REAL_PROVIDER_UAT.md`.
+
+### Provider-free validation baseline
+
+Validated provider-free implementation head:
+
+```text
+1775eb2fef049835cb29160d128a004e5ba75f2e
+```
+
+Validation:
+
+```text
+Law-Rag Stage 16 CI #104
+run 32463233240
+SUCCESS
+
+backend pytest
+466 passed, 5 skipped, 1 third-party warning
+
+historical Stage 11B public quality gates
+PASS
+
+Stage 16.2 direct public regression
+PASS
+
+Stage 16b public evaluation suite
+PASS
+
+frontend production build
+PASS
+```
+
+The regression set covers successful complete capture, Primary/Secondary interrupted checkpoints, private/sanitized boundaries, append-only behavior, explicit real-provider opt-in, fake-provider rejection, stale fingerprints, `as_of`/semantic mismatch, legacy-stage rejection, Issue coverage mismatch, observation tamper detection, pipeline/artifact stage-state contradictions, CLI confirmation forwarding, and `UAT_CAPTURE` evaluation-suite integration.
+
+Public CI remains provider-free. Synthetic `REAL_PROVIDER`-shaped test fixtures exercise schema/evidence isolation only and are **not** real UAT observations.
+
+### Remaining Stage 16.4 closure action — explicit real-provider run
+
+No paid/network DeepSeek/Kimi UAT has been executed as part of this stage yet.
+
+The remaining closure action is an explicitly authorized production `ISSUE_V1` run against a bounded selected UAT contract, followed by private capture through the validated reader. That action may transmit the selected contract evidence to configured DeepSeek/Kimi APIs and may incur provider cost, so it must not be inferred from ordinary development instructions or executed by CI.
+
+Until such an explicit real-provider run is authorized, executed and captured, Stage 16.4 remains **IN PROGRESS / READY_FOR_REAL_UAT**, not `COMPLETE`.
 
 ### Non-goals for 16.4
 
@@ -419,7 +477,16 @@ Do not yet:
 - invent release thresholds from a tiny UAT sample;
 - tune prompts merely to improve one UAT run;
 - redesign `ISSUE_V1`;
-- begin Stage 17+.
+- begin Stage 16.5 or Stage 17+.
+
+Draft PR #18 is the stacked Stage 16.4 validation carrier:
+
+```text
+head: stage16-4-real-provider-uat
+base: stage16-3-private-expert-benchmark
+```
+
+PR #18 remains Draft and is not authorized for merge.
 
 ## Stage 16 invariants
 
@@ -447,4 +514,4 @@ Stage 19  installer + code signing + safe updates + final documentation
 
 ## Current implementation boundary
 
-**Stage 16.1–16.3 are COMPLETE. Stage 16.4 is the only NEXT implementation scope. Do not begin Stage 16.5+, Stage 17+, or merge Draft PR #13/#14/#15/#16/#17 without separate authorization.**
+**Stage 16.1–16.3 are COMPLETE. Stage 16.4 provider-free capture/evaluation mechanics are VALIDATED and READY_FOR_REAL_UAT, but actual paid/network UAT is NOT RUN. Stage 16.4 remains the only active scope. Do not begin Stage 16.5+, Stage 17+, or merge Draft PR #13/#14/#15/#16/#17/#18 without separate authorization.**
