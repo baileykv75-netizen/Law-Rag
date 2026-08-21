@@ -11,6 +11,7 @@ _RELEASE_KEYS = (
     "LAW_RAG_LEGAL_DB",
     "LAW_RAG_RETRIEVAL_DB",
     "LAW_RAG_FRONTEND_DIST",
+    "LAW_RAG_RELEASE_ASSET_ROOT",
 )
 
 
@@ -19,7 +20,7 @@ def _clear_release_env(monkeypatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
-def test_release_environment_uses_asset_root_and_separate_writable_runtime(tmp_path: Path, monkeypatch) -> None:
+def test_release_environment_uses_writable_runtime_for_legal_assets(tmp_path: Path, monkeypatch) -> None:
     _clear_release_env(monkeypatch)
     asset_root = tmp_path / "bundle-assets"
     runtime = tmp_path / "custom-runtime"
@@ -29,9 +30,25 @@ def test_release_environment_uses_asset_root_and_separate_writable_runtime(tmp_p
     configured = configure_release_environment()
 
     assert configured["LAW_RAG_RUNTIME_DIR"] == str(runtime)
+    assert configured["LAW_RAG_LEGAL_DB"] == str(runtime / "legal" / "legal.db")
+    assert configured["LAW_RAG_RETRIEVAL_DB"] == str(runtime / "legal" / "retrieval.db")
+    assert configured["LAW_RAG_FRONTEND_DIST"] == str(asset_root / "frontend-dist")
+    assert not runtime.exists()
+
+
+def test_release_diagnostic_environment_can_read_immutable_packaged_legal_assets(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _clear_release_env(monkeypatch)
+    asset_root = tmp_path / "bundle-assets"
+    runtime = tmp_path / "custom-runtime"
+    monkeypatch.setenv("LAW_RAG_RELEASE_ASSET_ROOT", str(asset_root))
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(runtime))
+
+    configured = configure_release_environment(use_packaged_legal=True)
+
     assert configured["LAW_RAG_LEGAL_DB"] == str(asset_root / "public-assets" / "legal" / "legal.db")
     assert configured["LAW_RAG_RETRIEVAL_DB"] == str(asset_root / "public-assets" / "legal" / "retrieval.db")
-    assert configured["LAW_RAG_FRONTEND_DIST"] == str(asset_root / "frontend-dist")
     assert not runtime.exists()
 
 
@@ -62,8 +79,6 @@ def test_release_diagnose_is_non_mutating_and_never_prints_provider_secret_value
 
     assert code in {0, 2}
     assert "checks" in payload
-    # Diagnostic remediation may name the environment variables, but it must
-    # never serialize the configured secret values themselves.
     assert deepseek_secret not in output
     assert kimi_secret not in output
     assert not runtime.exists()
