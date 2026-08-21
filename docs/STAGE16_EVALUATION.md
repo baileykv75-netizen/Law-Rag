@@ -371,28 +371,105 @@ No real professionally labeled benchmark was committed or executed. Consequently
 
 Detailed policy: `docs/STAGE16_EXPERT_BENCHMARK.md`.
 
-## Stage 16.4 — Real-provider ISSUE_V1 UAT — NEXT
+## Stage 16.4 — Real-provider ISSUE_V1 UAT — IN PROGRESS / READY_FOR_REAL_UAT
 
-Stage 16.4 owns explicit capture of current production DeepSeek/Kimi behavior under the existing `ISSUE_V1` provider boundary.
+Stage 16.4 owns explicit capture of current production DeepSeek/Kimi behavior under the existing `ISSUE_V1` provider boundary. The provider-free capture/evaluation mechanics are validated; no paid/network real-provider observation has been executed yet.
 
-The capture path must:
+### Read-only capture path
 
-- reuse the production Planner -> Issue Legal RAG -> DeepSeek -> Kimi -> deterministic comparison chain;
-- require existing provider configuration and explicit approval/cancellation semantics;
-- record provider/model identity and authoritative artifact/request SHA-256 fingerprints;
-- preserve one-to-one AuditPlan Issue coverage and existing checkpoint/restart rules;
-- keep detailed UAT observations external or under ignored private paths;
-- emit only sanitized provenance/summary suitable for Stage 16 evidence assembly;
-- never treat model agreement as professional correctness.
+Stage 16.4 reuses the production topology and adds no second model pipeline:
 
-Normal public CI may test UAT-capture mechanics with provider doubles only. Actual paid/network calls are explicit opt-in and never part of ordinary CI.
+```text
+existing production ISSUE_V1 job
+  -> validate pipeline + authoritative artifacts
+  -> private IssueV1UATObservation
+  -> sanitized IssueV1UATSanitizedReport
+  -> optional REAL_PROVIDER_UAT / UAT_CAPTURE suite entry
+```
 
-Stage 16.4 remains separate from `PRIVATE_EXPERT`; expert truth and real-provider observations are different evidence classes.
+The capture reader validates:
+
+- exact job identity;
+- `as_of` and semantic retrieval mode;
+- contract source/content fingerprints;
+- AuditPlan schema/planner identity;
+- AuditPlan -> Legal Context -> Primary -> Secondary -> final-report fingerprint linkage;
+- exact AuditPlan Issue-set coverage;
+- Primary/Secondary/comparison count reconciliation;
+- provider-call Issue/result linkage and SHA-256 response hashes;
+- pipeline stage-state agreement with COMPLETE / PRIMARY_INTERRUPTED / SECONDARY_INTERRUPTED checkpoints;
+- current real-provider identity mapping: Planner/Primary -> DeepSeek, Secondary -> Kimi.
+
+Tracked repository output, stale/contradictory provenance and fake provider identities fail closed.
+
+### Private/sanitized split
+
+Detailed observations stay external or under ignored `benchmark_private/` and are append-only. They may contain job IDs, Issue IDs, provider request IDs, response hashes and per-Issue provenance.
+
+Sanitized reports omit job IDs, Issue IDs, request IDs, raw-response hashes, private contract/legal text, credentials and hidden reasoning. They retain only provider/model summaries, aggregate counts and artifact/observation fingerprints.
+
+### UAT_CAPTURE evaluation-suite entry
+
+Stage 16.4 extends the suite with:
+
+```text
+REAL_PROVIDER_UAT
+  + UAT_CAPTURE
+      -> private IssueV1UATObservation
+      -> sanitized EvaluationSuiteEntryResult
+```
+
+`UAT_CAPTURE` is invalid in public/private-expert suite classes and rejects `TEST_DOUBLE` observations. Its pass semantics are deliberately narrow:
+
+```text
+COMPLETE             -> passed = true
+PRIMARY_INTERRUPTED  -> passed = false, evidence retained
+SECONDARY_INTERRUPTED-> passed = false, evidence retained
+```
+
+A passing UAT capture means only that the observed production provider chain completed with internally consistent provenance. It does **not** establish legal correctness, expert agreement, reproducibility of stochastic model behavior, or a release threshold.
+
+### Capture CLI
+
+After an explicitly authorized production provider run has already occurred:
+
+```text
+python -m app.uat_capture_cli \
+  --repo-root .. \
+  --job-id <existing-issue-v1-job-uuid> \
+  --output <external-or-benchmark_private/observation.json> \
+  --mode REAL_PROVIDER \
+  --confirm-real-provider-uat
+```
+
+The capture CLI does not initiate DeepSeek/Kimi. It only labels and validates already-persisted provider evidence.
+
+### Provider-free validation
+
+```text
+head 1775eb2fef049835cb29160d128a004e5ba75f2e
+Law-Rag Stage 16 CI #104 (32463233240) SUCCESS
+backend pytest                            466 passed, 5 skipped, 1 warning
+historical Stage 11B gates               PASS
+Stage 16.2 direct public regression      PASS
+Stage 16b public evaluation suite        PASS
+frontend production build                PASS
+```
+
+Public tests use fake/local or synthetic provider-shaped fixtures only and explicitly block outbound HTTP. Those fixtures are mechanics evidence, not real-provider UAT.
+
+Detailed operating policy: `docs/REAL_PROVIDER_UAT.md`.
+
+### Remaining closure action
+
+Actual paid/network UAT is still pending explicit operator authorization. The remaining action is to select a bounded UAT contract appropriate for provider transmission, execute the normal production `ISSUE_V1` chain with configured DeepSeek/Kimi providers and existing approval/cancellation controls, and capture the resulting job privately.
+
+Because that operation may transmit selected contract evidence and incur API cost, it must never be inferred from public CI or ordinary development continuation. Until it occurs, Stage 16.4 remains **READY_FOR_REAL_UAT**, not `COMPLETE`.
 
 ## Remaining sequence
 
 ```text
-16.4  real-provider ISSUE_V1 UAT observation capture
+16.4  explicit real-provider ISSUE_V1 UAT run + private capture
 16.5  release-quality evidence matrix + final regression
 ```
 
