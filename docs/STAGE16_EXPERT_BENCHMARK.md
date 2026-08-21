@@ -47,6 +47,22 @@ Public Git may contain only:
 - synthetic tests of the evaluation mechanics;
 - sanitized aggregate evidence that cannot reconstruct private cases, contracts or expert labels.
 
+## Relationship to the Stage 16 suite layer
+
+The Stage 16 `PRIVATE_EXPERT` suite class continues to support privacy-safe orchestration of private `BenchmarkDataset + BenchmarkObservationSet` inputs.
+
+Stage 16.3 adds a companion professional metric evaluator because expert-label quality and scoped precision/recall/F1 require information beyond generic assertion pass/fail:
+
+```text
+ExpertBenchmarkProtocol
+  + BenchmarkDataset
+  + BenchmarkObservationSet
+  + ExpertLabelAuditArtifact
+  -> ExpertBenchmarkRunReport
+```
+
+This is intentionally not introduced as a threshold-bearing `EvaluationSuiteEntry` yet. Stage 16.3 defines measurement semantics, but no real expert dataset has established a defensible release threshold. Turning an arbitrary metric value into suite PASS/FAIL before that review would manufacture release evidence rather than measure it.
+
 ## Expert label lifecycle
 
 Each private case has one label-audit record with one of three states:
@@ -62,7 +78,7 @@ AMBIGUOUS
   professional truth remains materially uncertain
 ```
 
-`AMBIGUOUS` is not silently converted into a positive or negative label. It remains visible in label-quality counts and is excluded from professional performance metrics.
+`AMBIGUOUS` is not silently converted into a positive or negative label. It remains visible in label-quality counts/rates and is excluded from professional performance metrics.
 
 ### Label fingerprint
 
@@ -154,6 +170,35 @@ Metrics therefore stay tied to a named protocol and private dataset version. Sta
 
 High-risk recall, citation/evidence metrics or other professional claims must identify the exact metric definition and private dataset/protocol fingerprints that produced them.
 
+## Expert-truth quality summary
+
+The evaluator reports the quality of the expert truth set alongside the system metrics:
+
+```text
+total_case_count
+agreed_case_count
+adjudicated_case_count
+ambiguous_case_count
+usable_case_count
+agreement_rate
+adjudication_rate
+ambiguity_rate
+usable_rate
+minimum_reviewer_count_required
+minimum_reviewer_count_observed
+```
+
+The rates use the complete audited dataset as their denominator:
+
+```text
+agreement_rate    = AGREED / total cases
+adjudication_rate = ADJUDICATED / total cases
+ambiguity_rate    = AMBIGUOUS / total cases
+usable_rate       = (AGREED + ADJUDICATED) / total cases
+```
+
+These are **label-quality descriptors**, not system-performance scores. A professional precision/recall/F1 value must be interpreted with the ambiguity/adjudication profile of the exact private truth set that produced it.
+
 ## Sanitized aggregate report
 
 `ExpertBenchmarkRunReport` contains only:
@@ -161,7 +206,7 @@ High-risk recall, citation/evidence metrics or other professional claims must id
 - evaluator identity;
 - protocol ID/version;
 - dataset ID/version;
-- label-quality counts;
+- label-quality counts and rates;
 - scoped aggregate metric counts and precision/recall/F1;
 - SHA-256 fingerprints for protocol, dataset, observations and label audit;
 - explicit warnings/limitations.
@@ -204,7 +249,7 @@ The runner performs no DeepSeek/Kimi request. It consumes an existing Observatio
 
 Public pytest fixtures may create synthetic files in a temporary private directory solely to verify protocol mechanics. They are not professional labels and must never be cited as Law-Rag legal accuracy.
 
-The Stage 16.3 regression tests cover at least:
+The Stage 16.3 regression tests cover:
 
 - valid aggregate binary/set metrics;
 - visible `AMBIGUOUS` exclusion;
@@ -215,6 +260,39 @@ The Stage 16.3 regression tests cover at least:
 - stale label-fingerprint rejection;
 - rejection of partial set truth;
 - rejection of degenerate one-class binary truth.
+
+The synthetic test's own precision/recall/F1 values are chosen to exercise arithmetic and privacy behavior. They are **not** a benchmark result for Law-Rag.
+
+## Validation
+
+Validated implementation head:
+
+```text
+3393caa150e2baee459ca0969e8f17ee451d6156
+```
+
+```text
+Law-Rag Stage 16 CI #62
+run 32460155009
+SUCCESS
+
+backend pytest
+443 passed, 5 skipped, 1 third-party warning
+
+historical Stage 11B public quality gates
+PASS
+
+Stage 16.2 direct public regression
+PASS
+
+Stage 16b public evaluation suite
+PASS
+
+frontend production build
+PASS
+```
+
+No real professionally labeled dataset was committed or executed as part of this validation.
 
 ## Release-gate boundary
 
@@ -231,6 +309,8 @@ No release threshold is invented before a real professionally labeled dataset ha
 
 A future release gate must explicitly version its dataset, protocol, metric definition and threshold rationale. Thresholds must not be lowered merely to make a model run pass.
 
+Therefore, as of Stage 16.3 completion, Law-Rag has **no claimed professional audit-accuracy number, high-risk recall value, citation-relevance score or expert-derived release threshold**. The infrastructure required to calculate such scoped metrics safely is validated; the real private expert evidence is still absent.
+
 ## Non-goals
 
 Stage 16.3 does not:
@@ -243,4 +323,4 @@ Stage 16.3 does not:
 - redesign `ISSUE_V1`;
 - begin Stage 17+.
 
-Stage 16.4 will separately own explicit real-provider UAT observation capture.
+Stage 16.4 separately owns explicit real-provider UAT observation capture.
