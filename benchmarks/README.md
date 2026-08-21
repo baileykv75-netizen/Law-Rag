@@ -9,7 +9,8 @@ Allowed benchmark material:
 - fully fictional/synthetic contracts and expected labels;
 - synthetic OCR/layout fixtures created for Law-Rag;
 - verified public legal evidence already permitted by `docs/DATA_POLICY.md`;
-- non-sensitive expected IDs, structured values and evaluator metadata.
+- non-sensitive expected IDs, structured values and evaluator metadata;
+- public Stage 16 evaluation-suite manifests that reference only repository-safe public inputs.
 
 Do not commit real contracts, private reviewer labels, private benchmark observations, customer data, runtime artifacts, logs, API keys, model caches or private databases.
 
@@ -84,6 +85,64 @@ These are regression gates for the named repository-safe fixtures only. In parti
 
 Precision/recall/F1 helpers are available for future labeled audit/OCR/extraction datasets, including private expert benchmarks, but no public audit-finding precision/recall claim is made until such a labeled dataset actually exists.
 
+## Stage 16.1 evaluation suites
+
+Stage 16 adds orchestration **above** the Stage 11 evaluators; it does not replace them.
+
+```text
+EvaluationSuiteManifest
+  -> BenchmarkDataset + BenchmarkObservationSet
+       -> existing Stage 11A evaluator
+  OR
+  -> public QualityGateProfile
+       -> existing Stage 11B evaluator
+  -> sanitized EvaluationSuiteRunReport
+```
+
+Suite schema version is `1.0.0`; suite evaluator version is `stage16a-1.0.0`.
+
+The suite layer has three explicit evidence classes:
+
+```text
+PUBLIC_REGRESSION
+PRIVATE_EXPERT
+REAL_PROVIDER_UAT
+```
+
+They are intentionally not mixed into one overall score.
+
+### Public regression
+
+Checked-in `PUBLIC_REGRESSION` suite manifests and all of their inputs must stay under `benchmarks/public/`. They cannot contain `PRIVATE_EXTERNAL` cases.
+
+The Stage 16.1 orchestration smoke is:
+
+```text
+public/stage16a_evaluation_suite.json
+```
+
+It reuses the Stage 11A public schema smoke and Stage 11B quality profile only to prove orchestration mechanics. Passing it does not upgrade the scope of either underlying benchmark.
+
+### Private expert
+
+`PRIVATE_EXPERT` suite manifests, datasets and observations must be external or under ignored `benchmark_private/`. Every expert benchmark case must declare `PRIVATE_EXTERNAL` provenance.
+
+The suite report intentionally keeps only summary counts, dataset identity/version and input SHA-256 fingerprints. Assertion-level expected/observed payloads stay in the underlying private benchmark boundary.
+
+### Real-provider UAT
+
+`REAL_PROVIDER_UAT` suite manifests and Observation Sets must also be external/ignored. A UAT dataset may reuse a public-safe benchmark or a private external dataset, but every UAT observation must identify:
+
+```text
+provider
+model
+SHA-256 artifact_fingerprint
+```
+
+The suite rejects `fake` as real-provider evidence.
+
+The Stage 16.1 evaluator never calls DeepSeek, Kimi or another provider. Later UAT work will produce Observation Sets separately and feed them into this deterministic evaluator.
+
 ## CLIs
 
 From `backend/`, Stage 11A evaluator:
@@ -102,4 +161,21 @@ python -m app.quality_cli \
   --profile ../benchmarks/public/stage11b_quality_gates.json
 ```
 
-For private local evaluation, point benchmark dataset/observation inputs to external ignored paths. Private labels do not need to enter the repository or normal CI.
+Stage 16 evaluation suite:
+
+```text
+python -m app.evaluation_suite_cli \
+  --repo-root .. \
+  --suite ../benchmarks/public/stage16a_evaluation_suite.json
+```
+
+Optional sanitized report output:
+
+```text
+python -m app.evaluation_suite_cli \
+  --repo-root .. \
+  --suite <suite.json> \
+  --output <suite-report.json>
+```
+
+For private local evaluation, keep the suite manifest and its private inputs outside tracked paths. Private labels do not need to enter the repository or normal CI.
