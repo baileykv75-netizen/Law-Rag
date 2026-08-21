@@ -59,9 +59,12 @@ class FakeServer:
     def __init__(self):
         self.should_exit = False
         self.run_called = False
+        self.events: list[str] | None = None
 
     def run(self):
         self.run_called = True
+        if self.events is not None:
+            self.events.append("server-run")
 
 
 def test_tray_menu_opens_local_workstation_and_requests_shutdown(monkeypatch) -> None:
@@ -109,6 +112,7 @@ def test_server_lifecycle_tray_shutdown_sets_uvicorn_should_exit() -> None:
         "http://127.0.0.1:8000/",
         enable_tray=True,
         tray_starter=tray_starter,
+        cleanup_recovery=lambda: None,
     )
 
     assert server.should_exit is True
@@ -127,7 +131,32 @@ def test_server_lifecycle_without_tray_preserves_plain_server_path() -> None:
         "http://127.0.0.1:8000/",
         enable_tray=False,
         tray_starter=forbidden_tray,
+        cleanup_recovery=lambda: None,
     )
 
     assert server.run_called is True
     assert server.should_exit is False
+
+
+def test_storage_cleanup_recovery_runs_before_tray_and_server() -> None:
+    server = FakeServer()
+    events: list[str] = []
+    server.events = events
+
+    class Handle:
+        def stop(self):
+            events.append("tray-stop")
+
+    def tray_starter(_url, _request_shutdown):
+        events.append("tray-start")
+        return Handle()
+
+    run_server_with_desktop_lifecycle(
+        server,
+        "http://127.0.0.1:8000/",
+        enable_tray=True,
+        tray_starter=tray_starter,
+        cleanup_recovery=lambda: events.append("cleanup-recovery"),
+    )
+
+    assert events == ["cleanup-recovery", "tray-start", "server-run", "tray-stop"]
