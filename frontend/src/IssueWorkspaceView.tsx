@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import IssueAuditQueuePane from './IssueAuditQueuePane'
 import IssueReviewContextPane from './IssueReviewContextPane'
+import ReportExportControls from './ReportExportControls'
 import SourceViewerPane from './SourceViewerPane'
 import type {
   ArtifactState,
@@ -97,6 +98,7 @@ export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
   const reviewedCoverageCount = coverage
     ? coverage.reviewed_with_issue_count + coverage.reviewed_no_specific_issue_count
     : 0
+  const reportExportEnabled = summary.overall_state === 'COMPLETE' || summary.overall_state === 'HUMAN_REVIEW_REQUIRED'
 
   return (
     <>
@@ -112,6 +114,11 @@ export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
               {summary.source_available ? '源文件可用' : '源文件异常'}
             </span>
           </div>
+          <ReportExportControls
+            jobId={summary.job_id}
+            enabled={reportExportEnabled}
+            outstandingHumanReview={summary.review.human_review_outstanding_required_count}
+          />
         </div>
         <div className={`overall-state ${stateClass(summary.overall_state)}`}>
           <span>Stage 13G 最终状态</span>
