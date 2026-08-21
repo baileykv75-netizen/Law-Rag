@@ -5,7 +5,7 @@ from enum import Enum
 from pydantic import BaseModel, Field, model_validator
 
 EVALUATION_SUITE_SCHEMA_VERSION = "1.0.0"
-EVALUATION_SUITE_EVALUATOR_VERSION = "stage16b-1.0.0"
+EVALUATION_SUITE_EVALUATOR_VERSION = "stage16d-1.0.0"
 
 
 class EvaluationSuiteClass(str, Enum):
@@ -18,6 +18,7 @@ class EvaluationSuiteEntryKind(str, Enum):
     BENCHMARK = "BENCHMARK"
     PUBLIC_QUALITY_PROFILE = "PUBLIC_QUALITY_PROFILE"
     PUBLIC_REGRESSION_PROFILE = "PUBLIC_REGRESSION_PROFILE"
+    UAT_CAPTURE = "UAT_CAPTURE"
 
 
 class EvaluationSuiteEntry(BaseModel):
@@ -28,14 +29,19 @@ class EvaluationSuiteEntry(BaseModel):
     observations_path: str | None = Field(default=None, min_length=1, max_length=1000)
     quality_profile_path: str | None = Field(default=None, min_length=1, max_length=1000)
     public_regression_profile_path: str | None = Field(default=None, min_length=1, max_length=1000)
+    uat_observation_path: str | None = Field(default=None, min_length=1, max_length=1000)
 
     @model_validator(mode="after")
     def validate_kind_paths(self) -> "EvaluationSuiteEntry":
         if self.kind == EvaluationSuiteEntryKind.BENCHMARK:
             if not self.dataset_path or not self.observations_path:
                 raise ValueError("BENCHMARK entries require dataset_path and observations_path.")
-            if self.quality_profile_path is not None or self.public_regression_profile_path is not None:
-                raise ValueError("BENCHMARK entries cannot define profile paths.")
+            if (
+                self.quality_profile_path is not None
+                or self.public_regression_profile_path is not None
+                or self.uat_observation_path is not None
+            ):
+                raise ValueError("BENCHMARK entries cannot define profile or UAT-capture paths.")
         elif self.kind == EvaluationSuiteEntryKind.PUBLIC_QUALITY_PROFILE:
             if not self.quality_profile_path:
                 raise ValueError("PUBLIC_QUALITY_PROFILE entries require quality_profile_path.")
@@ -43,8 +49,9 @@ class EvaluationSuiteEntry(BaseModel):
                 self.dataset_path is not None
                 or self.observations_path is not None
                 or self.public_regression_profile_path is not None
+                or self.uat_observation_path is not None
             ):
-                raise ValueError("PUBLIC_QUALITY_PROFILE entries cannot define benchmark or regression paths.")
+                raise ValueError("PUBLIC_QUALITY_PROFILE entries cannot define benchmark, regression or UAT paths.")
         elif self.kind == EvaluationSuiteEntryKind.PUBLIC_REGRESSION_PROFILE:
             if not self.public_regression_profile_path:
                 raise ValueError(
@@ -54,8 +61,19 @@ class EvaluationSuiteEntry(BaseModel):
                 self.dataset_path is not None
                 or self.observations_path is not None
                 or self.quality_profile_path is not None
+                or self.uat_observation_path is not None
             ):
-                raise ValueError("PUBLIC_REGRESSION_PROFILE entries cannot define benchmark/quality paths.")
+                raise ValueError("PUBLIC_REGRESSION_PROFILE entries cannot define benchmark/quality/UAT paths.")
+        elif self.kind == EvaluationSuiteEntryKind.UAT_CAPTURE:
+            if not self.uat_observation_path:
+                raise ValueError("UAT_CAPTURE entries require uat_observation_path.")
+            if (
+                self.dataset_path is not None
+                or self.observations_path is not None
+                or self.quality_profile_path is not None
+                or self.public_regression_profile_path is not None
+            ):
+                raise ValueError("UAT_CAPTURE entries cannot define benchmark or public-profile paths.")
         return self
 
 
@@ -89,6 +107,10 @@ class EvaluationSuiteManifest(BaseModel):
             raise ValueError(
                 "Public quality/regression profile entries are valid only in PUBLIC_REGRESSION suites."
             )
+        if self.suite_class != EvaluationSuiteClass.REAL_PROVIDER_UAT and any(
+            entry.kind == EvaluationSuiteEntryKind.UAT_CAPTURE for entry in self.entries
+        ):
+            raise ValueError("UAT_CAPTURE entries are valid only in REAL_PROVIDER_UAT suites.")
         return self
 
 
