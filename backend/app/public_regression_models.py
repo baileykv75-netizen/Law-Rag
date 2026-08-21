@@ -31,7 +31,6 @@ class ThreeDomainRetrievalDataset(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     scope: str = Field(min_length=1, max_length=3000)
     source_fixture_path: str = Field(min_length=1, max_length=1000)
-    source_fixture_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     cases: list[ThreeDomainRetrievalCase] = Field(min_length=1)
 
     @model_validator(mode="after")
