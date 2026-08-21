@@ -4,7 +4,7 @@ on:
   push:
     branches: ['stage16-*']
   pull_request:
-    branches: ['stage16-*']
+    branches: ['stage15-*', 'stage16-*']
   workflow_dispatch:
 
 permissions:
