@@ -33,6 +33,10 @@ type DraftProvider = {
   retry_backoff_seconds: string
 }
 
+type Props = {
+  onChanged?: () => void | Promise<void>
+}
+
 function label(provider: ProviderName) {
   return provider === 'deepseek' ? 'DeepSeek · 主审' : 'Kimi · 二审'
 }
@@ -60,7 +64,7 @@ function numberValue(value: string, labelText: string): number {
   return parsed
 }
 
-export default function ProviderAdvancedSettings() {
+export default function ProviderAdvancedSettings({ onChanged }: Props) {
   const [overview, setOverview] = useState<RuntimeOverview | null>(null)
   const [drafts, setDrafts] = useState<Partial<Record<ProviderName, DraftProvider>>>({})
   const [confirmCustom, setConfirmCustom] = useState(false)
@@ -100,6 +104,10 @@ export default function ProviderAdvancedSettings() {
     }))
   }
 
+  const notifyChanged = async () => {
+    if (onChanged) await onChanged()
+  }
+
   const save = async () => {
     const deepseek = drafts.deepseek
     const kimi = drafts.kimi
@@ -131,7 +139,8 @@ export default function ProviderAdvancedSettings() {
       next.providers.forEach((provider) => { nextDrafts[provider.provider] = draftFromProvider(provider) })
       setDrafts(nextDrafts)
       setConfirmCustom(false)
-      setMessage('运行参数已保存到本地；保存动作未测试连接，也未调用模型。')
+      await notifyChanged()
+      setMessage('运行参数已保存到本地；上方 Provider 地址已同步刷新。保存动作未测试连接，也未调用模型。')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '无法保存高级设置。')
     } finally {
@@ -151,7 +160,8 @@ export default function ProviderAdvancedSettings() {
       next.providers.forEach((provider) => { nextDrafts[provider.provider] = draftFromProvider(provider) })
       setDrafts(nextDrafts)
       setConfirmCustom(false)
-      setMessage('已移除本地运行参数覆盖；现在按环境变量兼容配置或内置默认值解析。未触发网络请求。')
+      await notifyChanged()
+      setMessage('已移除本地运行参数覆盖；上方 Provider 地址已同步刷新。现在按环境变量兼容配置或内置默认值解析，未触发网络请求。')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '无法恢复默认运行参数。')
     } finally {
