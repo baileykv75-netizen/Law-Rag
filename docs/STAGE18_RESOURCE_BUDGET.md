@@ -197,4 +197,18 @@ Stage 18.3 tests are provider-free. They cover:
 - local API round trip;
 - symlink rejection.
 
+Validated implementation evidence:
+
+```text
+head 72e3819be3bfab3796e7242d4fcf68a0979cdd4f
+Law-Rag Stage 18 CI #50
+run 32549130409
+SUCCESS
+backend 519 passed, 5 skipped, 1 third-party warning
+frontend PASS
+Stage 16 public gates/regression/suite PASS
+release evidence matrix PASS
+runtime encryption truthfulness PASS
+```
+
 Real DeepSeek/Kimi paid/network UAT remains deferred to the final acceptance boundary after Stage 19 engineering.
