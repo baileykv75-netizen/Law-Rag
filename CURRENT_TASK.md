@@ -231,7 +231,7 @@ stage18-3-cost-resource-controls
 
 Draft PR #26 is a stacked validation carrier and must remain unmerged without separate authorization.
 
-Validated implementation head before this status-only closeout:
+Validated implementation head:
 
 ```text
 72e3819be3bfab3796e7242d4fcf68a0979cdd4f
@@ -267,7 +267,7 @@ Key guarantees:
 - Issue V1 Workspace shows calls, known tokens, estimated cost, unknown usage and remaining configured allowances;
 - Workspace budget editing defaults to unlimited/blank and explicitly labels prices as user estimates.
 
-Validation:
+Implementation validation:
 
 ```text
 Law-Rag Stage 18 CI #50
@@ -286,7 +286,7 @@ Detailed design:
 docs/STAGE18_RESOURCE_BUDGET.md
 ```
 
-No paid/network DeepSeek or Kimi call was executed by Stage 18.3 engineering or CI.
+The final status/documentation head must pass the same Stage 18 CI before it is used as the exact Stage 18.4 base. No paid/network DeepSeek or Kimi call was executed by Stage 18.3 engineering or CI.
 
 ## Next engineering scope — Stage 18.4
 
