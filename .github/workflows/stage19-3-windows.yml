@@ -72,6 +72,7 @@ jobs:
           if (-not $refused) { throw "Inherited Stage 19.2 publication gate unexpectedly allowed an unsigned build." }
 
       - name: Validate signed safe-update trust chain and negative cases
+        timeout-minutes: 15
         shell: pwsh
         run: ./release/smoke-stage19-3-safe-update-v2.ps1
 
