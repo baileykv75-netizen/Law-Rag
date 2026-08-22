@@ -19,13 +19,21 @@ from .ai_audit_models import (
     ProviderHealth,
     ProviderUsage,
 )
+from .provider_runtime_settings import (
+    DEEPSEEK_DEFAULT_BASE_URL,
+    DEEPSEEK_DEFAULT_MODEL,
+    DEEPSEEK_DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    DEFAULT_MAX_ATTEMPTS,
+    ProviderRuntimeSettingsError,
+    resolve_provider_runtime,
+)
 from .secret_store import SecretStoreError, resolve_provider_secret
 
-DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
+DEFAULT_DEEPSEEK_BASE_URL = DEEPSEEK_DEFAULT_BASE_URL
+DEFAULT_DEEPSEEK_MODEL = DEEPSEEK_DEFAULT_MODEL
 DEFAULT_MAX_TOKENS = 6000
-DEFAULT_TIMEOUT_SECONDS = 90.0
-MAX_ATTEMPTS = 2
+DEFAULT_TIMEOUT_SECONDS = DEEPSEEK_DEFAULT_REQUEST_TIMEOUT_SECONDS
+MAX_ATTEMPTS = DEFAULT_MAX_ATTEMPTS
 
 
 class PrimaryAuditProviderError(RuntimeError):
@@ -101,12 +109,19 @@ class DeepSeekProvider(PrimaryAuditProvider):
     def __init__(self) -> None:
         try:
             resolved = resolve_provider_secret("deepseek")
+            runtime = resolve_provider_runtime("deepseek")
         except SecretStoreError as exc:
             raise PrimaryAuditProviderError(f"DeepSeek credential store could not be read: {exc}") from exc
+        except ProviderRuntimeSettingsError as exc:
+            raise PrimaryAuditProviderError(f"DeepSeek runtime settings are invalid: {exc}") from exc
         self.api_key = resolved.value or ""
         self.credential_source = resolved.source
-        self.base_url = os.getenv("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE_URL).rstrip("/")
-        self.model_name = os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL).strip() or DEFAULT_DEEPSEEK_MODEL
+        self.base_url = runtime.base_url
+        self.model_name = runtime.model
+        self.request_timeout_seconds = runtime.request_timeout_seconds
+        self.connect_timeout_seconds = runtime.connect_timeout_seconds
+        self.max_attempts = runtime.max_attempts
+        self.retry_backoff_seconds = runtime.retry_backoff_seconds
 
     def health(self) -> ProviderHealth:
         if not self.api_key:
@@ -142,16 +157,16 @@ class DeepSeekProvider(PrimaryAuditProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        timeout = httpx.Timeout(DEFAULT_TIMEOUT_SECONDS, connect=15.0)
+        timeout = httpx.Timeout(self.request_timeout_seconds, connect=self.connect_timeout_seconds)
         last_error: Exception | None = None
 
-        for attempt in range(1, MAX_ATTEMPTS + 1):
+        for attempt in range(1, self.max_attempts + 1):
             try:
                 with httpx.Client(timeout=timeout) as client:
                     response = client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
                 if response.status_code == 429 or response.status_code >= 500:
-                    if attempt < MAX_ATTEMPTS:
-                        time.sleep(1.0)
+                    if attempt < self.max_attempts:
+                        time.sleep(self.retry_backoff_seconds)
                         continue
                 response.raise_for_status()
                 raw_text = response.text
@@ -166,8 +181,8 @@ class DeepSeekProvider(PrimaryAuditProvider):
                 if finish_reason == "length":
                     raise PrimaryAuditProviderError("DeepSeek JSON output was truncated by the token limit.")
                 if not isinstance(content, str) or not content.strip():
-                    if attempt < MAX_ATTEMPTS:
-                        time.sleep(1.0)
+                    if attempt < self.max_attempts:
+                        time.sleep(self.retry_backoff_seconds)
                         continue
                     raise PrimaryAuditProviderError("DeepSeek returned empty JSON content.")
                 usage = body.get("usage") or {}
@@ -189,11 +204,11 @@ class DeepSeekProvider(PrimaryAuditProvider):
                 raise
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
                 last_error = exc
-                if attempt < MAX_ATTEMPTS:
-                    time.sleep(1.0)
+                if attempt < self.max_attempts:
+                    time.sleep(self.retry_backoff_seconds)
                     continue
                 break
-        raise PrimaryAuditProviderError(f"DeepSeek request failed after {MAX_ATTEMPTS} attempts: {last_error}")
+        raise PrimaryAuditProviderError(f"DeepSeek request failed after {self.max_attempts} attempts: {last_error}")
 
 
 class FakeAuditProvider(PrimaryAuditProvider):

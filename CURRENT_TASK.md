@@ -11,8 +11,8 @@ Stage 17.1–17.4 COMPLETE / tray, graceful quit, history, safe storage cleanup,
 Stage 18.1      COMPLETE / truthful Windows EFS Job-private runtime encryption
 Stage 18.2      COMPLETE / authoritative local DOCX/PDF ISSUE_V1 audit report export
 Stage 18.3      COMPLETE / truthful per-Job provider call/token/estimated-cost controls
-Stage 18.4      NEXT / advanced provider settings
-Stage 18.5      PENDING / Windows packaged regression + exact release-lock closeout
+Stage 18.4      COMPLETE / advanced non-secret provider runtime settings
+Stage 18.5      NEXT / Windows packaged regression + exact release-lock closeout
 Stage 19        PENDING / installer, signing semantics, safe updates, final documentation/package
 Final acceptance PENDING / private expert evidence + explicit paid/network provider UAT + complete-evidence gate
 ```
@@ -231,10 +231,10 @@ stage18-3-cost-resource-controls
 
 Draft PR #26 is a stacked validation carrier and must remain unmerged without separate authorization.
 
-Validated implementation head:
+Frozen head:
 
 ```text
-72e3819be3bfab3796e7242d4fcf68a0979cdd4f
+46696119d2d5b31d8521aaa8b04f86280cce5f14
 ```
 
 Resource control model:
@@ -267,18 +267,20 @@ Key guarantees:
 - Issue V1 Workspace shows calls, known tokens, estimated cost, unknown usage and remaining configured allowances;
 - Workspace budget editing defaults to unlimited/blank and explicitly labels prices as user estimates.
 
-Implementation validation:
+Final validation:
 
 ```text
-Law-Rag Stage 18 CI #50
-run 32549130409
+Law-Rag Stage 18 CI #66
+run 32549341109
 SUCCESS
-backend 519 passed, 5 skipped, 1 third-party warning
 frontend PASS
+backend PASS
 Stage 16 public gates/regression/suite PASS
 release evidence matrix PASS
 runtime encryption truthfulness PASS
 ```
+
+Implementation-bearing CI #50 (`32549130409`) recorded `519 passed, 5 skipped, 1 third-party warning` before status-only closeout commits.
 
 Detailed design:
 
@@ -286,32 +288,103 @@ Detailed design:
 docs/STAGE18_RESOURCE_BUDGET.md
 ```
 
-The final closeout head containing only evidence/status text must also pass the same Stage 18 CI before it is used as the exact Stage 18.4 base. No paid/network DeepSeek or Kimi call was executed by Stage 18.3 engineering or CI.
+No paid/network DeepSeek or Kimi call was executed by Stage 18.3 engineering or CI.
 
-## Next engineering scope — Stage 18.4
+## Stage 18.4 — COMPLETE
 
-Implement advanced provider settings without weakening the existing secret-storage, provider-approval, Stage 18.3 resource-budget, or Issue V1 evidence boundaries.
+Branch:
+
+```text
+stage18-4-advanced-provider-settings
+```
+
+Draft PR #27 is a stacked validation carrier and must remain unmerged without separate authorization.
+
+Validated implementation head:
+
+```text
+ab00a6f2810d3c40e4a30aae6870d05c5ed13192
+```
+
+Runtime configuration boundary:
+
+```text
+API Key
+ -> development environment secret OR Windows Credential Manager
+
+non-secret provider runtime options
+ -> runtime/config/provider-runtime.json
+ -> model / API root / request timeout / connect timeout / bounded HTTP attempts / retry backoff
+```
+
+Key guarantees:
+
+- DeepSeek remains the Stage 13E Issue V1 primary provider and Kimi remains the Stage 13F independent Issue/coverage reviewer;
+- no generic arbitrary-provider execution surface was introduced;
+- API keys never enter `provider-runtime.json`, Job artifacts, browser storage, logs or reports;
+- runtime precedence is explicit: SAVED > legacy model/base-URL environment compatibility > DEFAULT;
+- newly saved model identities must come from the server-reported provider-specific supported list;
+- provider endpoints require HTTPS except loopback-only HTTP for local development;
+- embedded credentials, query strings, fragments and direct `/chat/completions` paths are rejected;
+- a custom endpoint requires explicit user confirmation because it becomes the receiver of bounded contract/legal evidence;
+- request timeout, connect timeout, HTTP attempts and retry backoff are bounded;
+- Stage 18.3 call accounting remains one logical Issue-level provider execution; transient HTTP retries are not misreported as multiple logical budget calls;
+- prompt text, evidence scope, output schema, provider roles and application-owned max output-token ceilings are not user-editable;
+- Stage 13E/13F production adapters plus legacy Stage 8/9 compatibility adapters resolve from the same runtime source;
+- GET/PUT/DELETE runtime settings operations are local-only and never test a provider;
+- explicit connection testing remains a separate opt-in network action with fixed non-contract probe text;
+- the API Settings UI displays the actual resolved model, endpoint and runtime source beside the API Key controls;
+- after advanced settings save/reset, the parent Provider overview refreshes immediately so the displayed endpoint equals the endpoint used by the next explicit connection test;
+- symlinked runtime configuration fails closed;
+- persisted configuration is complete for both providers and fingerprint-validated using canonical Pydantic JSON.
+
+Implementation validation:
+
+```text
+Law-Rag Stage 18 CI #96
+run 32550053935
+SUCCESS
+backend 541 passed, 5 skipped, 1 third-party warning
+frontend PASS
+Stage 16 public deterministic quality gates PASS
+Stage 16.2 public regression 10/10 PASS
+Stage 16b evaluation suite 3/3 PASS
+release evidence matrix engineering_ready=true
+runtime encryption truthfulness PASS
+```
+
+Detailed design:
+
+```text
+docs/STAGE18_PROVIDER_SETTINGS.md
+```
+
+No paid/network DeepSeek or Kimi call was executed by Stage 18.4 engineering or CI. A final status/documentation-only head must pass the same Stage 18 CI before it becomes the exact Stage 18.5 base.
+
+## Next engineering scope — Stage 18.5
+
+Run the Stage 18 release-lock pass on Windows and close the exact packaged dependency surface introduced by Stages 18.1–18.4.
 
 Required focus:
 
 ```text
-provider-specific non-secret runtime options
- -> explicit model selection from supported configured values
- -> bounded timeout / retry policy where provider adapters support it
- -> base URL / endpoint override only under strict validation and explicit user intent
- -> secret API keys remain in Windows Credential Manager, never copied into Job artifacts or browser storage
- -> provider health/configuration remains truthful
- -> no hidden fallback to another provider/model
- -> no implicit paid/network test call when saving settings
+freeze exact Stage 18.4 closeout head
+ -> build Windows portable/release candidate from that head
+ -> verify Stage 18.1 runtime-encryption behavior in the packaged executable
+ -> verify Stage 18.2 DOCX/PDF export dependencies are present and usable in the packaged executable
+ -> verify Stage 18.3 resource-budget persistence/API/Workspace behavior survives packaging
+ -> verify Stage 18.4 provider-settings persistence/API/UI and Credential Manager boundary survive packaging
+ -> rerun Stage 17 packaged regressions and frozen three-domain baseline
+ -> record exact executable/dependency/artifact hashes
+ -> fail closed on missing packaged dependencies or release-lock drift
 ```
 
-Stage 18.4 must reuse the existing DeepSeek-primary / Kimi-secondary provider adapters and settings architecture. It must not create an arbitrary OpenAI-compatible provider execution surface or change the two-model audit roles.
+Stage 18.5 must remain provider-free. It must not run real DeepSeek/Kimi network UAT and must not claim private expert evidence. The goal is exact Windows packaging/regression closure, not final external acceptance.
 
 ## Remaining sequence
 
 ```text
-18.4 advanced provider settings
-18.5 Windows packaged regression + exact DOCX/PDF/provider dependency closure
+18.5 Windows packaged regression + exact release-lock closeout
  -> Stage 19 installer / signing semantics / safe updates / final docs/package
  -> final acceptance only then:
       real private expert evidence

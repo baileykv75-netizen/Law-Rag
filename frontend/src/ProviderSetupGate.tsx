@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
+import ProviderAdvancedSettings from './ProviderAdvancedSettings'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
@@ -10,6 +11,7 @@ type ProviderItem = {
   source: string | null
   model: string
   base_url: string
+  runtime_source: string
 }
 
 type ProviderOverview = {
@@ -33,6 +35,12 @@ function sourceLabel(source: string | null) {
   if (source === 'windows_credential_manager') return 'Windows 安全存储'
   if (source === 'environment') return '开发环境变量'
   return ''
+}
+
+function runtimeSourceLabel(source: string) {
+  if (source === 'SAVED') return '本地高级设置'
+  if (source === 'ENVIRONMENT') return '环境变量运行参数'
+  return '内置默认运行参数'
 }
 
 function providerLabel(provider: ProviderName) {
@@ -161,6 +169,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
           <div>
             <strong>{providerLabel(provider)}</strong>
             {item && <span>{item.model}</span>}
+            {item && <small>{item.base_url} · {runtimeSourceLabel(item.runtime_source)}</small>}
           </div>
           <div className={`provider-config-chip ${item?.configured ? 'is-ready' : ''}`}>
             {item?.configured ? `已配置${item.source ? ` · ${sourceLabel(item.source)}` : ''}` : '未配置'}
@@ -178,7 +187,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
         </label>
         <div className="provider-setup-actions">
           <button type="button" className="secondary" onClick={() => void testConnection(provider)} disabled={busy}>
-            测试连接
+            测试当前 Endpoint
           </button>
           {removable && (
             <button type="button" className="quiet-danger" onClick={() => void remove(provider)} disabled={busy}>
@@ -204,7 +213,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
           <section className="provider-setup-modal" role="dialog" aria-modal="true" aria-labelledby="provider-setup-title">
             <div className="provider-setup-titlebar">
               <div>
-                <p>首次使用配置</p>
+                <p>本地 Provider 配置</p>
                 <h2 id="provider-setup-title">连接审计模型</h2>
               </div>
               {overview?.setup_completed && (
@@ -214,17 +223,20 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
               )}
             </div>
             <p className="provider-setup-intro">
-              Law-Rag 的本地解析、规则和法律检索不需要 API。完整双模型审计需要 DeepSeek 与 Kimi；你也可以暂时跳过，之后再从“API 设置”补充。
+              Law-Rag 的本地解析、规则和法律检索不需要 API。完整双模型审计需要 DeepSeek 与 Kimi；API Key 与非秘密运行参数分开保存，避免把凭据写入普通配置文件。
             </p>
             {overview && !overview.secure_storage_available && (
               <div className="provider-setup-warning">
-                当前平台不提供 Windows Credential Manager 安全写入。开发环境请使用 DEEPSEEK_API_KEY / MOONSHOT_API_KEY；正式 Windows 版可在这里安全保存。
+                当前平台不提供 Windows Credential Manager 安全写入。开发环境请使用 DEEPSEEK_API_KEY / MOONSHOT_API_KEY；非秘密高级运行参数仍可在下方独立保存。
               </div>
             )}
             {providerBlock('deepseek', deepseekKey, setDeepseekKey)}
             {providerBlock('kimi', kimiKey, setKimiKey)}
+
+            <ProviderAdvancedSettings onChanged={load} />
+
             <p className="provider-setup-cost-note">
-              “测试连接”会向对应服务发送一个不含合同内容的极短测试请求，可能产生极少量 API 用量。
+              只有“测试当前 Endpoint”会把所填或已保存的 API Key 发送到上方显示的当前地址，并发送一个不含合同内容的极短测试请求，可能产生极少量 API 用量；保存 API Key 或高级运行参数本身不会调用模型。
             </p>
             {error && <div className="provider-setup-error">{error}</div>}
             <div className="provider-setup-footer">
@@ -232,7 +244,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
                 暂时跳过，仅使用本地功能
               </button>
               <button type="button" className="provider-save" onClick={() => void save()} disabled={busy || !overview?.secure_storage_available}>
-                {busy ? '处理中…' : '保存并继续'}
+                {busy ? '处理中…' : '保存 API Key 并继续'}
               </button>
             </div>
           </section>

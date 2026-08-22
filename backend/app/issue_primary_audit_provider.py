@@ -9,17 +9,12 @@ from abc import ABC, abstractmethod
 import httpx
 
 from .ai_audit_models import ProviderAuditResult, ProviderHealth, ProviderUsage
-from .ai_audit_providers import (
-    DEFAULT_DEEPSEEK_BASE_URL,
-    DEFAULT_DEEPSEEK_MODEL,
-    DEFAULT_TIMEOUT_SECONDS,
-    MAX_ATTEMPTS,
-)
 from .issue_primary_audit_models import (
     IssuePrimaryAuditContext,
     IssuePrimaryAuditState,
     ModelIssuePrimaryAuditDraft,
 )
+from .provider_runtime_settings import ProviderRuntimeSettingsError, resolve_provider_runtime
 from .secret_store import SecretStoreError, resolve_provider_secret
 
 ISSUE_PRIMARY_MAX_TOKENS = 3500
@@ -95,11 +90,18 @@ class DeepSeekIssuePrimaryProvider(IssuePrimaryAuditProvider):
     def __init__(self) -> None:
         try:
             resolved = resolve_provider_secret("deepseek")
+            runtime = resolve_provider_runtime("deepseek")
         except SecretStoreError as exc:
             raise IssuePrimaryAuditProviderError(f"DeepSeek credential store could not be read: {exc}") from exc
+        except ProviderRuntimeSettingsError as exc:
+            raise IssuePrimaryAuditProviderError(f"DeepSeek runtime settings are invalid: {exc}") from exc
         self.api_key = resolved.value or ""
-        self.base_url = os.getenv("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE_URL).rstrip("/")
-        self.model_name = os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL).strip() or DEFAULT_DEEPSEEK_MODEL
+        self.base_url = runtime.base_url
+        self.model_name = runtime.model
+        self.request_timeout_seconds = runtime.request_timeout_seconds
+        self.connect_timeout_seconds = runtime.connect_timeout_seconds
+        self.max_attempts = runtime.max_attempts
+        self.retry_backoff_seconds = runtime.retry_backoff_seconds
 
     def health(self) -> ProviderHealth:
         return ProviderHealth(
@@ -127,15 +129,15 @@ class DeepSeekIssuePrimaryProvider(IssuePrimaryAuditProvider):
             "stream": False,
         }
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        timeout = httpx.Timeout(DEFAULT_TIMEOUT_SECONDS, connect=15.0)
+        timeout = httpx.Timeout(self.request_timeout_seconds, connect=self.connect_timeout_seconds)
         last_error: Exception | None = None
-        for attempt in range(1, MAX_ATTEMPTS + 1):
+        for attempt in range(1, self.max_attempts + 1):
             try:
                 with httpx.Client(timeout=timeout) as client:
                     response = client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
                 if response.status_code == 429 or response.status_code >= 500:
-                    if attempt < MAX_ATTEMPTS:
-                        time.sleep(1.0)
+                    if attempt < self.max_attempts:
+                        time.sleep(self.retry_backoff_seconds)
                         continue
                 response.raise_for_status()
                 raw_text = response.text
@@ -150,8 +152,8 @@ class DeepSeekIssuePrimaryProvider(IssuePrimaryAuditProvider):
                 if finish_reason == "length":
                     raise IssuePrimaryAuditProviderError("DeepSeek issue JSON was truncated by the token limit.")
                 if not isinstance(content, str) or not content.strip():
-                    if attempt < MAX_ATTEMPTS:
-                        time.sleep(1.0)
+                    if attempt < self.max_attempts:
+                        time.sleep(self.retry_backoff_seconds)
                         continue
                     raise IssuePrimaryAuditProviderError("DeepSeek returned empty issue JSON content.")
                 usage = body.get("usage") or {}
@@ -173,11 +175,13 @@ class DeepSeekIssuePrimaryProvider(IssuePrimaryAuditProvider):
                 raise
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
                 last_error = exc
-                if attempt < MAX_ATTEMPTS:
-                    time.sleep(1.0)
+                if attempt < self.max_attempts:
+                    time.sleep(self.retry_backoff_seconds)
                     continue
                 break
-        raise IssuePrimaryAuditProviderError(f"DeepSeek issue request failed after {MAX_ATTEMPTS} attempts: {last_error}")
+        raise IssuePrimaryAuditProviderError(
+            f"DeepSeek issue request failed after {self.max_attempts} attempts: {last_error}"
+        )
 
 
 class FakeIssuePrimaryProvider(IssuePrimaryAuditProvider):

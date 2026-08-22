@@ -11,13 +11,21 @@ import httpx
 from .ai_audit_models import ProviderAuditResult, ProviderHealth, ProviderUsage
 from .issue_primary_audit_models import IssuePrimaryAuditContext, IssuePrimaryAuditResult
 from .issue_secondary_review_models import ModelIssueSecondaryDraft
+from .provider_runtime_settings import (
+    DEFAULT_MAX_ATTEMPTS,
+    KIMI_DEFAULT_BASE_URL,
+    KIMI_DEFAULT_MODEL,
+    KIMI_DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    ProviderRuntimeSettingsError,
+    resolve_provider_runtime,
+)
 from .secret_store import SecretStoreError, resolve_provider_secret
 
-DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-DEFAULT_KIMI_MODEL = "kimi-k3"
+DEFAULT_KIMI_BASE_URL = KIMI_DEFAULT_BASE_URL
+DEFAULT_KIMI_MODEL = KIMI_DEFAULT_MODEL
 DEFAULT_KIMI_MAX_COMPLETION_TOKENS = 8000
-DEFAULT_KIMI_TIMEOUT_SECONDS = 120.0
-KIMI_MAX_ATTEMPTS = 2
+DEFAULT_KIMI_TIMEOUT_SECONDS = KIMI_DEFAULT_REQUEST_TIMEOUT_SECONDS
+KIMI_MAX_ATTEMPTS = DEFAULT_MAX_ATTEMPTS
 
 
 class IssueSecondaryReviewProviderError(RuntimeError):
@@ -85,11 +93,18 @@ class KimiIssueSecondaryReviewProvider(IssueSecondaryReviewProvider):
     def __init__(self) -> None:
         try:
             resolved = resolve_provider_secret("kimi")
+            runtime = resolve_provider_runtime("kimi")
         except SecretStoreError as exc:
             raise IssueSecondaryReviewProviderError(f"Kimi credential store could not be read: {exc}") from exc
+        except ProviderRuntimeSettingsError as exc:
+            raise IssueSecondaryReviewProviderError(f"Kimi runtime settings are invalid: {exc}") from exc
         self.api_key = resolved.value or ""
-        self.base_url = os.getenv("MOONSHOT_BASE_URL", DEFAULT_KIMI_BASE_URL).rstrip("/")
-        self.model_name = os.getenv("MOONSHOT_MODEL", DEFAULT_KIMI_MODEL).strip() or DEFAULT_KIMI_MODEL
+        self.base_url = runtime.base_url
+        self.model_name = runtime.model
+        self.request_timeout_seconds = runtime.request_timeout_seconds
+        self.connect_timeout_seconds = runtime.connect_timeout_seconds
+        self.max_attempts = runtime.max_attempts
+        self.retry_backoff_seconds = runtime.retry_backoff_seconds
 
     def health(self) -> ProviderHealth:
         return ProviderHealth(
@@ -112,15 +127,15 @@ class KimiIssueSecondaryReviewProvider(IssueSecondaryReviewProvider):
             "stream": False,
         }
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        timeout = httpx.Timeout(DEFAULT_KIMI_TIMEOUT_SECONDS, connect=15.0)
+        timeout = httpx.Timeout(self.request_timeout_seconds, connect=self.connect_timeout_seconds)
         last_error: Exception | None = None
-        for attempt in range(1, KIMI_MAX_ATTEMPTS + 1):
+        for attempt in range(1, self.max_attempts + 1):
             try:
                 with httpx.Client(timeout=timeout) as client:
                     response = client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
                 if response.status_code == 429 or response.status_code >= 500:
-                    if attempt < KIMI_MAX_ATTEMPTS:
-                        time.sleep(1.0)
+                    if attempt < self.max_attempts:
+                        time.sleep(self.retry_backoff_seconds)
                         continue
                 response.raise_for_status()
                 raw_text = response.text
@@ -150,11 +165,11 @@ class KimiIssueSecondaryReviewProvider(IssueSecondaryReviewProvider):
                 raise
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
                 last_error = exc
-                if attempt < KIMI_MAX_ATTEMPTS:
-                    time.sleep(1.0)
+                if attempt < self.max_attempts:
+                    time.sleep(self.retry_backoff_seconds)
                     continue
                 break
-        raise IssueSecondaryReviewProviderError(f"Kimi request failed after {KIMI_MAX_ATTEMPTS} attempts: {last_error}")
+        raise IssueSecondaryReviewProviderError(f"Kimi request failed after {self.max_attempts} attempts: {last_error}")
 
 
 class FakeIssueSecondaryReviewProvider(IssueSecondaryReviewProvider):

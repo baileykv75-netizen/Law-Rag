@@ -9,6 +9,14 @@ from abc import ABC, abstractmethod
 import httpx
 
 from .ai_audit_models import ProviderAuditResult, ProviderHealth, ProviderUsage
+from .provider_runtime_settings import (
+    DEFAULT_MAX_ATTEMPTS,
+    KIMI_DEFAULT_BASE_URL,
+    KIMI_DEFAULT_MODEL,
+    KIMI_DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    ProviderRuntimeSettingsError,
+    resolve_provider_runtime,
+)
 from .secondary_review_models import (
     DisagreementCategory,
     ModelSecondaryEnvelope,
@@ -18,11 +26,11 @@ from .secondary_review_models import (
 )
 from .secret_store import SecretStoreError, resolve_provider_secret
 
-DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-DEFAULT_KIMI_MODEL = "kimi-k3"
+DEFAULT_KIMI_BASE_URL = KIMI_DEFAULT_BASE_URL
+DEFAULT_KIMI_MODEL = KIMI_DEFAULT_MODEL
 DEFAULT_KIMI_MAX_COMPLETION_TOKENS = 12000
-DEFAULT_KIMI_TIMEOUT_SECONDS = 120.0
-KIMI_MAX_ATTEMPTS = 2
+DEFAULT_KIMI_TIMEOUT_SECONDS = KIMI_DEFAULT_REQUEST_TIMEOUT_SECONDS
+KIMI_MAX_ATTEMPTS = DEFAULT_MAX_ATTEMPTS
 
 
 class SecondaryReviewProviderError(RuntimeError):
@@ -95,12 +103,19 @@ class KimiSecondaryReviewProvider(SecondaryReviewProvider):
     def __init__(self) -> None:
         try:
             resolved = resolve_provider_secret("kimi")
+            runtime = resolve_provider_runtime("kimi")
         except SecretStoreError as exc:
             raise SecondaryReviewProviderError(f"Kimi credential store could not be read: {exc}") from exc
+        except ProviderRuntimeSettingsError as exc:
+            raise SecondaryReviewProviderError(f"Kimi runtime settings are invalid: {exc}") from exc
         self.api_key = resolved.value or ""
         self.credential_source = resolved.source
-        self.base_url = os.getenv("MOONSHOT_BASE_URL", DEFAULT_KIMI_BASE_URL).rstrip("/")
-        self.model_name = os.getenv("MOONSHOT_MODEL", DEFAULT_KIMI_MODEL).strip() or DEFAULT_KIMI_MODEL
+        self.base_url = runtime.base_url
+        self.model_name = runtime.model
+        self.request_timeout_seconds = runtime.request_timeout_seconds
+        self.connect_timeout_seconds = runtime.connect_timeout_seconds
+        self.max_attempts = runtime.max_attempts
+        self.retry_backoff_seconds = runtime.retry_backoff_seconds
 
     def health(self) -> ProviderHealth:
         if not self.api_key:
@@ -135,16 +150,16 @@ class KimiSecondaryReviewProvider(SecondaryReviewProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        timeout = httpx.Timeout(DEFAULT_KIMI_TIMEOUT_SECONDS, connect=15.0)
+        timeout = httpx.Timeout(self.request_timeout_seconds, connect=self.connect_timeout_seconds)
         last_error: Exception | None = None
 
-        for attempt in range(1, KIMI_MAX_ATTEMPTS + 1):
+        for attempt in range(1, self.max_attempts + 1):
             try:
                 with httpx.Client(timeout=timeout) as client:
                     response = client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
                 if response.status_code == 429 or response.status_code >= 500:
-                    if attempt < KIMI_MAX_ATTEMPTS:
-                        time.sleep(1.0)
+                    if attempt < self.max_attempts:
+                        time.sleep(self.retry_backoff_seconds)
                         continue
                 response.raise_for_status()
                 raw_text = response.text
@@ -159,8 +174,8 @@ class KimiSecondaryReviewProvider(SecondaryReviewProvider):
                 if finish_reason == "length":
                     raise SecondaryReviewProviderError("Kimi JSON output was truncated by the completion-token limit.")
                 if not isinstance(content, str) or not content.strip():
-                    if attempt < KIMI_MAX_ATTEMPTS:
-                        time.sleep(1.0)
+                    if attempt < self.max_attempts:
+                        time.sleep(self.retry_backoff_seconds)
                         continue
                     raise SecondaryReviewProviderError("Kimi returned empty JSON content.")
                 usage = body.get("usage") or {}
@@ -182,12 +197,12 @@ class KimiSecondaryReviewProvider(SecondaryReviewProvider):
                 raise
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
                 last_error = exc
-                if attempt < KIMI_MAX_ATTEMPTS:
-                    time.sleep(1.0)
+                if attempt < self.max_attempts:
+                    time.sleep(self.retry_backoff_seconds)
                     continue
                 break
         raise SecondaryReviewProviderError(
-            f"Kimi request failed after {KIMI_MAX_ATTEMPTS} attempts: {last_error}"
+            f"Kimi request failed after {self.max_attempts} attempts: {last_error}"
         )
 
 

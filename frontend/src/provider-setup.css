@@ -31,7 +31,7 @@
 }
 
 .provider-setup-modal {
-  width: min(680px, 100%);
+  width: min(820px, 100%);
   max-height: calc(100vh - 48px);
   overflow: auto;
   border-radius: 20px;
@@ -115,16 +115,22 @@
   color: #525b67;
 }
 
-.provider-setup-provider input {
+.provider-setup-provider input,
+.provider-runtime-provider input,
+.provider-runtime-provider select {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid #d5dae2;
   border-radius: 10px;
   padding: 11px 12px;
+  background: #fff;
+  color: #2f3742;
   font: inherit;
 }
 
-.provider-setup-provider input:focus {
+.provider-setup-provider input:focus,
+.provider-runtime-provider input:focus,
+.provider-runtime-provider select:focus {
   outline: 2px solid rgba(70, 92, 120, 0.18);
   border-color: #7f8d9f;
 }
@@ -135,7 +141,8 @@
 }
 
 .provider-setup-actions button,
-.provider-setup-footer button {
+.provider-setup-footer button,
+.provider-runtime-actions button {
   border-radius: 10px;
   padding: 9px 13px;
   font: inherit;
@@ -181,6 +188,139 @@
   color: #9a3c3c;
 }
 
+.provider-advanced-settings {
+  margin-top: 18px;
+  border: 1px solid #dce2e9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fafbfc;
+}
+
+.provider-advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 15px 16px;
+  border: 0;
+  background: transparent;
+  color: #3f4957;
+  text-align: left;
+  cursor: pointer;
+}
+
+.provider-advanced-toggle > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.provider-advanced-toggle strong { font-size: 14px; }
+.provider-advanced-toggle small { color: #7b8593; font-size: 12px; font-weight: 400; }
+.provider-advanced-toggle > span:last-child { color: #75808e; font-size: 12px; }
+
+.provider-advanced-body {
+  padding: 0 16px 16px;
+  border-top: 1px solid #e4e8ee;
+  background: #fff;
+}
+
+.provider-runtime-note,
+.provider-runtime-accounting-note {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.provider-runtime-note {
+  background: #f3f6f9;
+  color: #566372;
+}
+
+.provider-runtime-accounting-note {
+  border-left: 3px solid #70849c;
+  background: #f7f9fb;
+  color: #536276;
+}
+
+.provider-runtime-provider {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #e2e6ec;
+  border-radius: 12px;
+}
+
+.provider-runtime-provider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.provider-runtime-provider-head > div {
+  display: grid;
+  gap: 2px;
+}
+.provider-runtime-provider-head strong { color: #394555; font-size: 13px; }
+.provider-runtime-provider-head span { color: #818b99; font-size: 11px; }
+.provider-runtime-custom,
+.provider-runtime-official {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.provider-runtime-custom { background: #fff0dc; color: #945b22 !important; }
+.provider-runtime-official { background: #eef6f0; color: #3f6d4e !important; }
+
+.provider-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.provider-runtime-grid label {
+  display: grid;
+  gap: 6px;
+  color: #596574;
+  font-size: 12px;
+}
+
+.provider-runtime-url { grid-column: span 2; }
+
+.provider-custom-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: #fff8e8;
+  color: #725b24;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.provider-custom-confirm input {
+  width: auto;
+  margin-top: 2px;
+}
+
+.provider-runtime-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.provider-runtime-message {
+  margin: 12px 0 0;
+  color: #747f8d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .provider-setup-footer {
   margin-top: 20px;
   justify-content: flex-end;
@@ -200,7 +340,8 @@
 
 .provider-save:disabled,
 .provider-skip:disabled,
-.provider-setup-actions button:disabled {
+.provider-setup-actions button:disabled,
+.provider-runtime-actions button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -214,4 +355,8 @@
   .provider-setup-modal { padding: 20px; }
   .provider-setup-footer { align-items: stretch; flex-direction: column-reverse; }
   .provider-setup-footer button { width: 100%; }
+  .provider-runtime-grid { grid-template-columns: 1fr; }
+  .provider-runtime-url { grid-column: auto; }
+  .provider-runtime-actions { flex-direction: column; }
+  .provider-runtime-actions button { width: 100%; }
 }
