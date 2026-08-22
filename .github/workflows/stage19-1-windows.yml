@@ -1,0 +1,83 @@
+name: Law-Rag Stage 19.1 Windows Installer
+
+on:
+  pull_request:
+    branches:
+      - stage18-5-windows-release-lock
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+          Write-Host "Exact PR head: $actual"
+
+      - name: Set up CPython 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Set up Node 22.23.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build exact Windows onedir bundle
+        shell: pwsh
+        run: ./release/build-windows.ps1
+
+      - name: Revalidate Stage 18 packaged boundaries
+        shell: pwsh
+        run: ./release/smoke-stage18-5-windows.ps1 -BundleDir ./release/dist/Law-Rag -Port 8891
+
+      - name: Build Stage 19.1 unsigned validation installer
+        shell: pwsh
+        run: ./release/build-installer.ps1
+
+      - name: Validate install, reinstall, and uninstall lifecycle
+        shell: pwsh
+        run: ./release/smoke-stage19-1-installer.ps1
+
+      - name: Verify installer evidence is exact-head and unsigned
+        shell: pwsh
+        run: |
+          $evidence = Get-Content ./release/installer-dist/STAGE19-1-INSTALLER-EVIDENCE.json -Raw | ConvertFrom-Json
+          $head = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($evidence.source_sha -ne $head) { throw "Installer evidence source SHA mismatch." }
+          if ($evidence.publication_state -ne 'VALIDATION_ONLY_UNSIGNED') { throw "Installer publication state must remain VALIDATION_ONLY_UNSIGNED in Stage 19.1." }
+          if ($evidence.code_signing -ne 'NOT_APPLIED') { throw "Stage 19.1 must not fabricate a signing claim." }
+          if (-not $evidence.user_data_separated_from_app) { throw "Installer evidence does not preserve user-data separation." }
+          if (-not $evidence.uninstall_preserves_runtime) { throw "Installer evidence does not preserve runtime on uninstall." }
+          if ($evidence.provider_network_uat_executed) { throw "Stage 19.1 unexpectedly executed provider network UAT." }
+          if ($evidence.private_expert_evidence_executed) { throw "Stage 19.1 unexpectedly executed private expert evidence." }
+          Write-Host ($evidence | ConvertTo-Json -Depth 8)
+
+      - name: Upload Stage 19.1 installer and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-stage19-1-installer
+          path: |
+            release/installer-dist/Law-Rag-0.8.0-rc2-windows-x64-setup.exe
+            release/installer-dist/STAGE19-1-INSTALLER-EVIDENCE.json
+          retention-days: 7
+          if-no-files-found: error
