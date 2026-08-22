@@ -27,10 +27,24 @@ if (-not $Iscc) {
     throw "Inno Setup 6 compiler was not found. Set INNO_SETUP_COMPILER to ISCC.exe."
 }
 
-$CompilerVersion = (Get-Item $Iscc).VersionInfo.ProductVersion
-if (-not $CompilerVersion) { $CompilerVersion = (Get-Item $Iscc).VersionInfo.FileVersion }
+# GitHub-hosted Windows images can expose 0.0.0.0 through the PE VersionInfo fields
+# even when ISCC itself is a valid Inno Setup 6 compiler. Ask the compiler for its
+# engine version instead; this is the authoritative command-line interface.
+$VersionOutput = @(& $Iscc --version 2>&1)
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not query Inno Setup compiler version from '$Iscc' (exit code $LASTEXITCODE)."
+}
+$CompilerVersion = $null
+foreach ($Line in $VersionOutput) {
+    $Text = [string]$Line
+    if ($Text -match '\b(6\.\d+(?:\.\d+){0,2})\b') {
+        $CompilerVersion = $Matches[1]
+        break
+    }
+}
 if (-not $CompilerVersion -or -not $CompilerVersion.StartsWith("6.")) {
-    throw "Stage 19.1 requires Inno Setup 6.x; found '$CompilerVersion'."
+    $RenderedVersionOutput = ($VersionOutput | ForEach-Object { [string]$_ }) -join " | "
+    throw "Stage 19.1 requires Inno Setup 6.x; ISCC --version returned '$RenderedVersionOutput'."
 }
 
 if (Test-Path $OutputDir) { Remove-Item $OutputDir -Recurse -Force }
