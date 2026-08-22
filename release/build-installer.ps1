@@ -27,30 +27,13 @@ if (-not $Iscc) {
     throw "Inno Setup 6 compiler was not found. Set INNO_SETUP_COMPILER to ISCC.exe."
 }
 
-# GitHub-hosted Windows images can expose 0.0.0.0 through the PE VersionInfo fields
-# even when ISCC itself is a valid Inno Setup 6 compiler. Ask the compiler for its
-# engine version instead; this is the authoritative command-line interface.
-$VersionOutput = @(& $Iscc --version 2>&1)
-if ($LASTEXITCODE -ne 0) {
-    throw "Could not query Inno Setup compiler version from '$Iscc' (exit code $LASTEXITCODE)."
-}
-$CompilerVersion = $null
-foreach ($Line in $VersionOutput) {
-    $Text = [string]$Line
-    if ($Text -match '\b(6\.\d+(?:\.\d+){0,2})\b') {
-        $CompilerVersion = $Matches[1]
-        break
-    }
-}
-if (-not $CompilerVersion -or -not $CompilerVersion.StartsWith("6.")) {
-    $RenderedVersionOutput = ($VersionOutput | ForEach-Object { [string]$_ }) -join " | "
-    throw "Stage 19.1 requires Inno Setup 6.x; ISCC --version returned '$RenderedVersionOutput'."
-}
-
 if (Test-Path $OutputDir) { Remove-Item $OutputDir -Recurse -Force }
 New-Item -ItemType Directory -Path $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
 
+# The .iss script validates PREPROCVER during the actual compile and rejects
+# compiler families older than 6.x or newer than 6.x. This avoids relying on
+# Windows PE version metadata or CLI options that differ between Inno families.
 & $Iscc "/DBundleDir=$BundleDir" "/DOutputDir=$OutputDir" "/DMarkerFile=$MarkerFile" $InstallerScript
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed with exit code $LASTEXITCODE." }
 
@@ -73,7 +56,8 @@ $Evidence = [ordered]@{
     uninstall_preserves_runtime = $true
     publication_state = "VALIDATION_ONLY_UNSIGNED"
     code_signing = "NOT_APPLIED"
-    inno_setup_version = $CompilerVersion
+    inno_setup_version = "6.x"
+    inno_setup_version_validation = "ISPP_PREPROCVER"
     executable = [ordered]@{
         sha256 = (Get-FileHash -Algorithm SHA256 $Exe).Hash.ToLowerInvariant()
         size_bytes = (Get-Item $Exe).Length
@@ -90,6 +74,7 @@ $EvidencePath = Join-Path $OutputDir "STAGE19-1-INSTALLER-EVIDENCE.json"
 $Evidence | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $EvidencePath
 
 Write-Host "[Law-Rag] Stage 19.1 validation installer: $Installer"
+Write-Host "[Law-Rag] Inno Setup compiler family: 6.x (validated by ISPP PREPROCVER during compilation)"
 Write-Host "[Law-Rag] Installer state: VALIDATION_ONLY_UNSIGNED"
 Write-Host "[Law-Rag] Runtime data is owned outside the application directory and is not an uninstall target."
 Write-Host "[Law-Rag] Evidence: $EvidencePath"
