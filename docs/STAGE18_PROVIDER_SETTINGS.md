@@ -206,7 +206,10 @@ The advanced panel:
 - uses provider-specific supported-model selectors;
 - requires a custom-endpoint disclosure checkbox before saving a custom endpoint;
 - makes clear that saving/resetting does not test the connection;
-- distinguishes Stage 18.3 logical call budgets from Stage 18.4 internal HTTP retries.
+- distinguishes Stage 18.3 logical call budgets from Stage 18.4 internal HTTP retries;
+- refreshes the parent Provider overview immediately after save/reset so the endpoint shown beside the API Key controls is the same endpoint used by the next explicit connectivity test.
+
+The API Key section displays the currently resolved model, endpoint and runtime source. The `测试当前 Endpoint` action explicitly warns that the supplied or saved API Key is sent to that displayed address. This prevents a custom endpoint from being hidden behind a generic provider label.
 
 ## Provider adapter consistency
 
@@ -225,7 +228,7 @@ This prevents a configuration UI from displaying one model/endpoint while anothe
 
 ## Validation requirements
 
-Provider-free CI must cover at least:
+Provider-free CI covers:
 
 - default non-mutating resolution;
 - legacy environment compatibility;
@@ -247,4 +250,25 @@ Provider-free CI must cover at least:
 - all four real adapters resolving the same saved model/base URL/timeouts/retries;
 - application-owned output-token ceilings remaining unchanged.
 
-Real paid/network DeepSeek/Kimi UAT remains deferred to final acceptance after Stage 19 engineering.
+Validated implementation head:
+
+```text
+ab00a6f2810d3c40e4a30aae6870d05c5ed13192
+```
+
+Validation:
+
+```text
+Law-Rag Stage 18 CI #96
+run 32550053935
+SUCCESS
+backend 541 passed, 5 skipped, 1 third-party warning
+frontend PASS
+Stage 16 public deterministic quality gates PASS
+Stage 16.2 public regression 10/10 gates PASS
+Stage 16b evaluation suite 3/3 entries PASS
+release evidence matrix engineering_ready=true
+runtime encryption truthfulness PASS
+```
+
+No paid/network DeepSeek or Kimi call was executed by Stage 18.4 engineering or CI. Real paid/network UAT remains deferred to final acceptance after Stage 19 engineering.
