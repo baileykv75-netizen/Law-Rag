@@ -86,7 +86,7 @@ jobs:
           if ($null -eq $Zip) { throw 'Portable RC ZIP not found while assembling evidence.' }
           $Manifest = Resolve-Path ./release/rc/RC-MANIFEST.json
           $Sums = Resolve-Path ./release/rc/SHA256SUMS.txt
-          $PythonResolved = Resolve-Path ./release/dist/Law-Rag/release/python-resolved.json
+          $PythonResolved = Resolve-Path ./release/dist/Law-Rag/python-resolved.txt
           $Evidence = [ordered]@{
             schema_version = '1.0.0'
             stage = '18.5'
@@ -101,7 +101,7 @@ jobs:
               sha256 = (Get-FileHash -Algorithm SHA256 $Lock).Hash.ToLowerInvariant()
             }
             python_resolved = [ordered]@{
-              path = 'release/dist/Law-Rag/release/python-resolved.json'
+              path = 'release/dist/Law-Rag/python-resolved.txt'
               sha256 = (Get-FileHash -Algorithm SHA256 $PythonResolved).Hash.ToLowerInvariant()
             }
             portable_rc = [ordered]@{
