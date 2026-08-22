@@ -37,6 +37,12 @@ function sourceLabel(source: string | null) {
   return ''
 }
 
+function runtimeSourceLabel(source: string) {
+  if (source === 'SAVED') return '本地高级设置'
+  if (source === 'ENVIRONMENT') return '环境变量运行参数'
+  return '内置默认运行参数'
+}
+
 function providerLabel(provider: ProviderName) {
   return provider === 'deepseek' ? 'DeepSeek' : 'Kimi / Moonshot'
 }
@@ -163,6 +169,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
           <div>
             <strong>{providerLabel(provider)}</strong>
             {item && <span>{item.model}</span>}
+            {item && <small>{item.base_url} · {runtimeSourceLabel(item.runtime_source)}</small>}
           </div>
           <div className={`provider-config-chip ${item?.configured ? 'is-ready' : ''}`}>
             {item?.configured ? `已配置${item.source ? ` · ${sourceLabel(item.source)}` : ''}` : '未配置'}
@@ -180,7 +187,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
         </label>
         <div className="provider-setup-actions">
           <button type="button" className="secondary" onClick={() => void testConnection(provider)} disabled={busy}>
-            测试连接
+            测试当前 Endpoint
           </button>
           {removable && (
             <button type="button" className="quiet-danger" onClick={() => void remove(provider)} disabled={busy}>
@@ -229,7 +236,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
             <ProviderAdvancedSettings />
 
             <p className="provider-setup-cost-note">
-              只有“测试连接”会向对应服务发送一个不含合同内容的极短测试请求，可能产生极少量 API 用量；保存 API Key 或高级运行参数本身不会调用模型。
+              只有“测试当前 Endpoint”会把所填或已保存的 API Key 发送到上方显示的当前地址，并发送一个不含合同内容的极短测试请求，可能产生极少量 API 用量；保存 API Key 或高级运行参数本身不会调用模型。
             </p>
             {error && <div className="provider-setup-error">{error}</div>}
             <div className="provider-setup-footer">
