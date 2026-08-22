@@ -233,7 +233,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
             {providerBlock('deepseek', deepseekKey, setDeepseekKey)}
             {providerBlock('kimi', kimiKey, setKimiKey)}
 
-            <ProviderAdvancedSettings />
+            <ProviderAdvancedSettings onChanged={load} />
 
             <p className="provider-setup-cost-note">
               只有“测试当前 Endpoint”会把所填或已保存的 API Key 发送到上方显示的当前地址，并发送一个不含合同内容的极短测试请求，可能产生极少量 API 用量；保存 API Key 或高级运行参数本身不会调用模型。
