@@ -146,13 +146,15 @@ try {
     if ($PrimaryThumbprint -eq $OtherThumbprint) { throw "CI signing identities unexpectedly share a thumbprint." }
     $env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT = $PrimaryThumbprint
 
-    # Strong release-artifact path: the real installer must be accepted only when
-    # signed by the expected signer, and byte tampering must invalidate both hash
-    # and Authenticode. These are the only negative checks that need the large
-    # installer bytes.
+    # Strong release-artifact path. The inherited Stage 19.1 installer has already
+    # passed the unsigned-publication gate in the preceding workflow step. Move it
+    # within the same workspace instead of copying hundreds of megabytes, then
+    # sign and verify the exact bytes. After the positive decision is recorded,
+    # mutate that same candidate in place for the real artifact-tamper check.
     Write-Host "[Law-Rag][Stage19.3] Validating real installer positive path"
     $Candidate = Join-Path $OutputDir 'Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
-    Copy-Item $InstallerPath $Candidate -Force
+    if (Test-Path $Candidate) { Remove-Item $Candidate -Force }
+    Move-Item -Path $InstallerPath -Destination $Candidate
     Sign-FileChecked -Path $Candidate -Certificate $Primary -Label 'real update installer'
 
     $ReleaseManifest = New-SignedManifest `
@@ -177,15 +179,11 @@ try {
     if ($Positive.provider_network_uat_executed -or $Positive.private_expert_evidence_executed) { throw "Stage 19.3 crossed a forbidden external-evidence boundary." }
 
     Write-Host "[Law-Rag][Stage19.3] Validating real installer tamper rejection"
-    $TamperedDir = Join-Path $OutputDir 'tampered-artifact'
-    New-Item -ItemType Directory -Path $TamperedDir -Force | Out-Null
-    $TamperedCandidate = Join-Path $TamperedDir 'Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
-    Copy-Item $Candidate $TamperedCandidate -Force
-    $Stream = [IO.File]::Open($TamperedCandidate, [IO.FileMode]::Append, [IO.FileAccess]::Write)
+    $Stream = [IO.File]::Open($Candidate, [IO.FileMode]::Append, [IO.FileAccess]::Write)
     try { $Stream.WriteByte(0x00) } finally { $Stream.Dispose() }
     $TamperedEvidence = Join-Path $OutputDir 'STAGE19-3-ARTIFACT-TAMPER.json'
     Invoke-ExpectedRefusal -Label 'installer-tamper' -Action {
-        ./release/verify-stage19-3-update.ps1 -ManifestPath $ReleaseManifest.Manifest -ManifestSignaturePath $ReleaseManifest.Cms -InstallerPath $TamperedCandidate -CurrentVersion '0.8.0-rc2' -ExpectedSignerThumbprint $PrimaryThumbprint -EvidencePath $TamperedEvidence -RequireEligible
+        ./release/verify-stage19-3-update.ps1 -ManifestPath $ReleaseManifest.Manifest -ManifestSignaturePath $ReleaseManifest.Cms -InstallerPath $Candidate -CurrentVersion '0.8.0-rc2' -ExpectedSignerThumbprint $PrimaryThumbprint -EvidencePath $TamperedEvidence -RequireEligible
     }
     $Tampered = Read-Evidence $TamperedEvidence
     if ($Tampered.rejection_reasons -notcontains 'ARTIFACT_SHA256_MISMATCH') { throw "Installer tamper did not report SHA-256 mismatch." }
