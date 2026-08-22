@@ -1,0 +1,103 @@
+name: Law-Rag Stage 19.2 Windows Signing Semantics
+
+on:
+  pull_request:
+    branches:
+      - stage19-1-installer
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-signing-semantics:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+          Write-Host "Exact PR head: $actual"
+
+      - name: Set up CPython 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Set up Node 22.23.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build exact Windows onedir bundle
+        shell: pwsh
+        run: ./release/build-windows.ps1
+
+      - name: Revalidate Stage 18 packaged boundaries
+        shell: pwsh
+        run: ./release/smoke-stage18-5-windows.ps1 -BundleDir ./release/dist/Law-Rag -Port 8892
+
+      - name: Build inherited Stage 19.1 unsigned installer
+        shell: pwsh
+        run: ./release/build-installer.ps1
+
+      - name: Revalidate Stage 19.1 install lifecycle
+        shell: pwsh
+        run: ./release/smoke-stage19-1-installer.ps1
+
+      - name: Record truthful unsigned Authenticode evidence
+        shell: pwsh
+        run: |
+          Remove-Item Env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT -ErrorAction SilentlyContinue
+          ./release/verify-stage19-2-signing.ps1
+          $evidence = Get-Content ./release/installer-dist/STAGE19-2-SIGNING-EVIDENCE.json -Raw | ConvertFrom-Json
+          $head = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($evidence.source_sha -ne $head) { throw "Stage 19.2 evidence source SHA mismatch." }
+          if ($evidence.signing_performed_by_stage19_2) { throw "Stage 19.2 CI must not claim it signed the build." }
+          if ($evidence.expected_release_signer_configured) { throw "Stage 19.2 validation unexpectedly has a release signer configured." }
+          if ($evidence.publication_allowed) { throw "Unsigned validation artifacts must not be publishable." }
+          if ($evidence.publication_state -ne 'VALIDATION_ONLY_NOT_PUBLISHABLE') { throw "Unexpected Stage 19.2 publication state." }
+          if ($evidence.decision_reason -ne 'NO_EXPECTED_RELEASE_SIGNER') { throw "Unexpected unsigned decision reason." }
+          if ($evidence.executable.authenticode_status -ne 'NotSigned') { throw "Frozen EXE unexpectedly has Authenticode status '$($evidence.executable.authenticode_status)'." }
+          if ($evidence.installer.authenticode_status -ne 'NotSigned') { throw "Installer unexpectedly has Authenticode status '$($evidence.installer.authenticode_status)'." }
+          if ($evidence.provider_network_uat_executed) { throw "Stage 19.2 unexpectedly executed provider network UAT." }
+          if ($evidence.private_expert_evidence_executed) { throw "Stage 19.2 unexpectedly executed private expert evidence." }
+          Write-Host ($evidence | ConvertTo-Json -Depth 8)
+
+      - name: Prove publication gate fails closed when unsigned
+        shell: pwsh
+        run: |
+          Remove-Item Env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT -ErrorAction SilentlyContinue
+          $refused = $false
+          try {
+            ./release/verify-stage19-2-signing.ps1 -EvidencePath ./release/installer-dist/STAGE19-2-PUBLICATION-GATE.json -RequirePublishable
+          } catch {
+            $refused = $true
+            Write-Host "Expected publication refusal: $($_.Exception.Message)"
+          }
+          if (-not $refused) { throw "Unsigned publication gate unexpectedly allowed the build." }
+
+      - name: Upload Stage 19.2 validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-stage19-2-signing-semantics
+          path: |
+            release/installer-dist/Law-Rag-0.8.0-rc2-windows-x64-setup.exe
+            release/installer-dist/STAGE19-1-INSTALLER-EVIDENCE.json
+            release/installer-dist/STAGE19-2-SIGNING-EVIDENCE.json
+            release/installer-dist/STAGE19-2-PUBLICATION-GATE.json
+          retention-days: 7
+          if-no-files-found: error
