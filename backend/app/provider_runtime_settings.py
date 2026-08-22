@@ -246,9 +246,11 @@ def _persist(providers: dict[str, ProviderRuntimeOptions]) -> ProviderRuntimeArt
         "schema_version": PROVIDER_RUNTIME_SCHEMA_VERSION,
         "engine_version": PROVIDER_RUNTIME_ENGINE_VERSION,
         "providers": {name: options.model_dump(mode="json") for name, options in providers.items()},
-        "updated_at": _now().isoformat(),
+        "updated_at": _now(),
     }
-    artifact = ProviderRuntimeArtifact(**payload, artifact_fingerprint=_fingerprint(payload))
+    artifact = ProviderRuntimeArtifact(**payload, artifact_fingerprint="0" * 64)
+    canonical_payload = artifact.model_dump(mode="json", exclude={"artifact_fingerprint"})
+    artifact.artifact_fingerprint = _fingerprint(canonical_payload)
     atomic_write_text(path, artifact.model_dump_json(indent=2))
     return artifact
 
