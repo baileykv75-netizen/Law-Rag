@@ -1,0 +1,135 @@
+name: Law-Rag Stage 18.5 Windows Release Lock
+
+on:
+  pull_request:
+    branches: ['stage18-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-stage18-release-lock:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'stage18-5-')
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact validation head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12.10'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.2'
+          package-manager-cache: false
+
+      - name: Assert checkout is the exact PR head
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $Actual = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          $Expected = '${{ github.event.pull_request.head.sha }}'.ToLowerInvariant()
+          if ($Actual -ne $Expected) { throw "Stage 18.5 must build the exact PR head. actual=$Actual expected=$Expected" }
+          Write-Host "[Law-Rag] Exact Stage 18.5 source head: $Actual"
+
+      - name: Build Windows onedir bundle from exact Stage 18.5 release locks
+        shell: pwsh
+        run: ./release/build-windows.ps1
+
+      - name: Revalidate frozen three-domain corpus baseline
+        shell: pwsh
+        run: ./release/smoke-stage15-5-windows.ps1 -Port 8795
+
+      - name: Revalidate packaged PDF OCR HTTP privacy path
+        shell: pwsh
+        run: ./release/smoke-windows.ps1 -Port 8810
+
+      - name: Revalidate Stage 17 tray history storage cleanup and restart recovery
+        shell: pwsh
+        run: ./release/smoke-stage17-4-windows.ps1 -Port 8850
+
+      - name: Validate Stage 18.1-18.4 against frozen onedir executable
+        shell: pwsh
+        run: ./release/smoke-stage18-5-windows.ps1 -Port 8870
+
+      - name: Build deterministic portable RC ZIP and manifest
+        shell: pwsh
+        run: ./release/package-rc.ps1
+
+      - name: Revalidate existing Stage 12-14 regressions against extracted RC
+        shell: pwsh
+        run: ./release/smoke-rc-windows.ps1 -Port 8830
+
+      - name: Validate Stage 17 and Stage 18 against extracted portable RC
+        shell: pwsh
+        run: |
+          $Zip = Get-ChildItem ./release/rc -Filter '*.zip' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $Zip) { throw 'Portable RC ZIP not found.' }
+          $Extract = Join-Path $env:RUNNER_TEMP ('law-rag-stage18-5-rc-' + [guid]::NewGuid().ToString('N'))
+          Expand-Archive -Path $Zip.FullName -DestinationPath $Extract -Force
+          $Bundle = Get-ChildItem $Extract -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'Law-Rag.exe') } | Select-Object -First 1
+          if ($null -eq $Bundle) { throw 'Extracted portable RC does not contain Law-Rag.exe.' }
+          ./release/smoke-stage17-4-windows.ps1 -BundleDir $Bundle.FullName -Port 8860
+          ./release/smoke-stage18-5-windows.ps1 -BundleDir $Bundle.FullName -Port 8880
+
+      - name: Record exact Stage 18.5 release-lock evidence
+        shell: pwsh
+        run: |
+          $SourceSha = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          $Exe = Resolve-Path ./release/dist/Law-Rag/Law-Rag.exe
+          $Lock = Resolve-Path ./backend/requirements-release-lock-windows.txt
+          $Zip = Get-ChildItem ./release/rc -Filter '*.zip' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $Zip) { throw 'Portable RC ZIP not found while assembling evidence.' }
+          $Manifest = Resolve-Path ./release/rc/RC-MANIFEST.json
+          $Sums = Resolve-Path ./release/rc/SHA256SUMS.txt
+          $PythonResolved = Resolve-Path ./release/dist/Law-Rag/release/python-resolved.json
+          $Evidence = [ordered]@{
+            schema_version = '1.0.0'
+            stage = '18.5'
+            source_sha = $SourceSha
+            executable = [ordered]@{
+              path = 'release/dist/Law-Rag/Law-Rag.exe'
+              sha256 = (Get-FileHash -Algorithm SHA256 $Exe).Hash.ToLowerInvariant()
+              size_bytes = (Get-Item $Exe).Length
+            }
+            windows_release_lock = [ordered]@{
+              path = 'backend/requirements-release-lock-windows.txt'
+              sha256 = (Get-FileHash -Algorithm SHA256 $Lock).Hash.ToLowerInvariant()
+            }
+            python_resolved = [ordered]@{
+              path = 'release/dist/Law-Rag/release/python-resolved.json'
+              sha256 = (Get-FileHash -Algorithm SHA256 $PythonResolved).Hash.ToLowerInvariant()
+            }
+            portable_rc = [ordered]@{
+              filename = $Zip.Name
+              sha256 = (Get-FileHash -Algorithm SHA256 $Zip.FullName).Hash.ToLowerInvariant()
+              size_bytes = $Zip.Length
+            }
+            rc_manifest_sha256 = (Get-FileHash -Algorithm SHA256 $Manifest).Hash.ToLowerInvariant()
+            sha256sums_sha256 = (Get-FileHash -Algorithm SHA256 $Sums).Hash.ToLowerInvariant()
+            provider_network_uat_executed = $false
+            private_expert_evidence_executed = $false
+          }
+          $EvidencePath = './release/rc/STAGE18-5-EVIDENCE.json'
+          $Evidence | ConvertTo-Json -Depth 10 | Set-Content -Path $EvidencePath -Encoding UTF8
+          Get-Content $EvidencePath
+
+      - name: Upload inspectable Stage 18.5 Windows onedir bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-onedir-stage18-5
+          path: release/dist/Law-Rag
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload Stage 18.5 portable RC and release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-windows-x64-stage18-5
+          path: release/rc
+          if-no-files-found: error
+          retention-days: 7
