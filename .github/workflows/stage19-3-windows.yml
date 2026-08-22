@@ -12,7 +12,7 @@ permissions:
 jobs:
   windows-safe-updates:
     runs-on: windows-latest
-    timeout-minutes: 100
+    timeout-minutes: 60
 
     steps:
       - name: Check out exact source head
@@ -73,7 +73,7 @@ jobs:
 
       - name: Validate signed safe-update trust chain and negative cases
         shell: pwsh
-        run: ./release/smoke-stage19-3-safe-update.ps1
+        run: ./release/smoke-stage19-3-safe-update-v2.ps1
 
       - name: Upload Stage 19.3 validation artifacts
         uses: actions/upload-artifact@v4
