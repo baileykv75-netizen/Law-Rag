@@ -211,4 +211,6 @@ release evidence matrix PASS
 runtime encryption truthfulness PASS
 ```
 
+The later closeout commits only record this evidence/status; the final closeout head must also pass the same Stage 18 CI before Stage 18.3 is frozen as the base for Stage 18.4.
+
 Real DeepSeek/Kimi paid/network UAT remains deferred to the final acceptance boundary after Stage 19 engineering.
