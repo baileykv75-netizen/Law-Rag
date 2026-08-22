@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 import app.resource_budget as resource_budget
 from app.ai_audit_models import ProviderUsage
@@ -160,6 +162,42 @@ def test_historical_checkpoint_is_imported_once(tmp_path: Path, monkeypatch) -> 
     assert first.provider_calls_used == 1
     assert second.provider_calls_used == 1
     assert second.total_tokens_known == 30
+
+
+def test_legacy_imported_checkpoint_reference_is_canonicalized() -> None:
+    stamp = datetime(2026, 8, 21, 9, 0, tzinfo=timezone.utc)
+    opaque = "hash-issue-1"
+
+    record = ProviderCallLedgerRecord(
+        call_id=uuid4(),
+        provider="deepseek",
+        stage="PRIMARY",
+        issue_id="ISSUE-1",
+        state=ProviderCallLedgerState.COMPLETED,
+        source=ProviderCallLedgerSource.IMPORTED_CHECKPOINT,
+        started_at=stamp,
+        finished_at=stamp,
+        checkpoint_fingerprint=opaque,
+    )
+
+    assert record.checkpoint_fingerprint == hashlib.sha256(opaque.encode("utf-8")).hexdigest()
+
+
+def test_live_checkpoint_reference_remains_strict_sha256() -> None:
+    stamp = datetime(2026, 8, 21, 9, 0, tzinfo=timezone.utc)
+
+    with pytest.raises(ValidationError):
+        ProviderCallLedgerRecord(
+            call_id=uuid4(),
+            provider="deepseek",
+            stage="PRIMARY",
+            issue_id="ISSUE-1",
+            state=ProviderCallLedgerState.COMPLETED,
+            source=ProviderCallLedgerSource.LIVE,
+            started_at=stamp,
+            finished_at=stamp,
+            checkpoint_fingerprint="hash-issue-1",
+        )
 
 
 def test_user_price_table_produces_estimate_and_cost_continuation_limit(tmp_path: Path, monkeypatch) -> None:
