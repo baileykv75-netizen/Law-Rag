@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .safe_persistence import atomic_write_text
 from .storage import runtime_dir
@@ -42,6 +42,8 @@ class ProviderRuntimeSource(str, Enum):
 
 
 class ProviderRuntimeOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
     base_url: str = Field(min_length=1, max_length=512)
     request_timeout_seconds: float = Field(ge=15.0, le=300.0)
@@ -51,6 +53,8 @@ class ProviderRuntimeOptions(BaseModel):
 
 
 class ProviderRuntimeArtifact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     schema_version: str = PROVIDER_RUNTIME_SCHEMA_VERSION
     engine_version: str = PROVIDER_RUNTIME_ENGINE_VERSION
     providers: dict[str, ProviderRuntimeOptions]
@@ -66,6 +70,8 @@ class ProviderRuntimeArtifact(BaseModel):
 
 
 class ProviderRuntimeResolved(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     provider: str
     source: ProviderRuntimeSource
     model: str
@@ -79,6 +85,8 @@ class ProviderRuntimeResolved(BaseModel):
 
 
 class ProviderRuntimeOverview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     schema_version: str = PROVIDER_RUNTIME_SCHEMA_VERSION
     providers: list[ProviderRuntimeResolved]
     custom_endpoint_warning: str = (
@@ -87,12 +95,16 @@ class ProviderRuntimeOverview(BaseModel):
 
 
 class ProviderRuntimeUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     deepseek: ProviderRuntimeOptions
     kimi: ProviderRuntimeOptions
     confirm_custom_endpoints: bool = False
 
 
 class ProviderRuntimeResetResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     reset: bool
     overview: ProviderRuntimeOverview
 
