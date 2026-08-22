@@ -1,3 +1,10 @@
+#if PREPROCVER < 0x06000000
+  #error Stage 19.1 requires Inno Setup 6.x.
+#endif
+#if PREPROCVER >= 0x07000000
+  #error Stage 19.1 requires Inno Setup 6.x.
+#endif
+
 #ifndef BundleDir
   #error BundleDir must point at the validated Law-Rag onedir bundle.
 #endif
