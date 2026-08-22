@@ -15,16 +15,66 @@ $ReinstallLog = Join-Path $Sandbox "reinstall.log"
 $UninstallLog = Join-Path $Sandbox "uninstall.log"
 
 function Invoke-CheckedProcess {
-    param([string]$FilePath, [string[]]$Arguments, [string]$Label)
-    $Process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -PassThru -Wait
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [string]$Label,
+        [int]$TimeoutSeconds = 300
+    )
+
+    Write-Host "[Law-Rag][Stage19.1] START $Label (timeout=${TimeoutSeconds}s)"
+    $StartedAt = Get-Date
+    $Process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -PassThru
+    if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        throw "$Label timed out after $TimeoutSeconds seconds."
+    }
+    $Process.WaitForExit()
+    $Elapsed = [Math]::Round(((Get-Date) - $StartedAt).TotalSeconds, 1)
     if ($Process.ExitCode -ne 0) {
-        throw "$Label failed with exit code $($Process.ExitCode)."
+        throw "$Label failed with exit code $($Process.ExitCode) after ${Elapsed}s."
+    }
+    Write-Host "[Law-Rag][Stage19.1] PASS  $Label (${Elapsed}s)"
+}
+
+function Invoke-CapturedProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [string]$Label,
+        [int]$TimeoutSeconds = 180
+    )
+
+    $Token = [guid]::NewGuid().ToString("N")
+    $StdoutPath = Join-Path $Sandbox ("diagnostic-$Token.stdout.txt")
+    $StderrPath = Join-Path $Sandbox ("diagnostic-$Token.stderr.txt")
+    Write-Host "[Law-Rag][Stage19.1] START $Label (timeout=${TimeoutSeconds}s)"
+    $StartedAt = Get-Date
+    try {
+        $Process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath -PassThru
+        if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
+            Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+            throw "$Label timed out after $TimeoutSeconds seconds."
+        }
+        $Process.WaitForExit()
+        $Stdout = if (Test-Path $StdoutPath) { Get-Content $StdoutPath -Raw } else { "" }
+        $Stderr = if (Test-Path $StderrPath) { Get-Content $StderrPath -Raw } else { "" }
+        $Elapsed = [Math]::Round(((Get-Date) - $StartedAt).TotalSeconds, 1)
+        if ($Process.ExitCode -ne 0) {
+            throw "$Label failed with exit code $($Process.ExitCode) after ${Elapsed}s.`nSTDOUT:`n$Stdout`nSTDERR:`n$Stderr"
+        }
+        Write-Host "[Law-Rag][Stage19.1] PASS  $Label (${Elapsed}s)"
+        return $Stdout
+    }
+    finally {
+        Remove-Item $StdoutPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $StderrPath -Force -ErrorAction SilentlyContinue
     }
 }
 
 function Install-LawRag {
-    param([string]$LogPath)
-    Invoke-CheckedProcess -FilePath $InstallerPath -Label "Law-Rag installer" -Arguments @(
+    param([string]$LogPath, [string]$Label)
+    Invoke-CheckedProcess -FilePath $InstallerPath -Label $Label -TimeoutSeconds 420 -Arguments @(
         "/VERYSILENT",
         "/SUPPRESSMSGBOXES",
         "/NORESTART",
@@ -46,7 +96,7 @@ try {
     Remove-Item Env:DEEPSEEK_API_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:MOONSHOT_API_KEY -ErrorAction SilentlyContinue
 
-    Install-LawRag -LogPath $InstallLog
+    Install-LawRag -LogPath $InstallLog -Label "initial per-user install"
 
     $InstalledExe = Join-Path $InstallDir "Law-Rag.exe"
     $InstalledMarker = Join-Path $InstallDir ".law-rag-installed"
@@ -58,8 +108,7 @@ try {
         throw "Installer incorrectly owns an adjacent runtime directory."
     }
 
-    $LayoutRaw = (& $InstalledExe --diagnose-installation-layout | Out-String)
-    if ($LASTEXITCODE -ne 0) { throw "Installed layout diagnostic failed with exit code $LASTEXITCODE.`n$LayoutRaw" }
+    $LayoutRaw = Invoke-CapturedProcess -FilePath $InstalledExe -Arguments @("--diagnose-installation-layout") -Label "installed layout diagnostic"
     $Layout = $LayoutRaw | ConvertFrom-Json
     if (-not $Layout.installed) { throw "Installed executable did not recognize the installation marker." }
     if ($Layout.runtime_source -ne "INSTALLED_MARKER") { throw "Installed runtime source was '$($Layout.runtime_source)', expected INSTALLED_MARKER." }
@@ -69,26 +118,24 @@ try {
         throw "Installed runtime mismatch. Expected '$ExpectedRuntime', got '$($Layout.runtime_dir)'."
     }
 
-    $ReportRaw = (& $InstalledExe --diagnose-report-export-runtime | Out-String)
-    if ($LASTEXITCODE -ne 0) { throw "Installed Stage 18.2 report renderer diagnostic failed.`n$ReportRaw" }
+    $ReportRaw = Invoke-CapturedProcess -FilePath $InstalledExe -Arguments @("--diagnose-report-export-runtime") -Label "installed report-export diagnostic"
     $Report = $ReportRaw | ConvertFrom-Json
     if (-not $Report.ready -or $Report.network_used) {
         throw "Installed report renderer diagnostic was not provider-free and ready."
     }
 
-    $CorpusRaw = (& $InstalledExe --diagnose-corpus --json | Out-String)
-    if ($LASTEXITCODE -ne 0) { throw "Installed packaged corpus diagnostic failed.`n$CorpusRaw" }
+    $CorpusRaw = Invoke-CapturedProcess -FilePath $InstalledExe -Arguments @("--diagnose-corpus", "--json") -Label "installed corpus diagnostic" -TimeoutSeconds 240
     $Corpus = $CorpusRaw | ConvertFrom-Json
     if (-not $Corpus.ready) { throw "Installed packaged corpus baseline is not ready." }
 
     New-Item -ItemType Directory -Path $ExpectedRuntime -Force | Out-Null
     "preserve-me" | Set-Content -Encoding UTF8 $Sentinel
 
-    Install-LawRag -LogPath $ReinstallLog
+    Install-LawRag -LogPath $ReinstallLog -Label "in-place reinstall"
     if (-not (Test-Path $Sentinel)) { throw "In-place reinstall deleted user runtime data." }
     if (-not (Test-Path $InstalledExe)) { throw "Law-Rag.exe disappeared after in-place reinstall." }
 
-    Invoke-CheckedProcess -FilePath $Uninstaller -Label "Law-Rag uninstaller" -Arguments @(
+    Invoke-CheckedProcess -FilePath $Uninstaller -Label "per-user uninstall" -TimeoutSeconds 420 -Arguments @(
         "/VERYSILENT",
         "/SUPPRESSMSGBOXES",
         "/NORESTART",
