@@ -63,9 +63,12 @@ class ProviderRuntimeArtifact(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_keys(self) -> "ProviderRuntimeArtifact":
-        unknown = set(self.providers) - set(_PROVIDER_NAMES)
-        if unknown:
-            raise ValueError(f"Unsupported provider runtime settings: {sorted(unknown)}")
+        actual = set(self.providers)
+        expected = set(_PROVIDER_NAMES)
+        if actual != expected:
+            raise ValueError(
+                f"Provider runtime artifact must contain exactly {sorted(expected)}; found {sorted(actual)}."
+            )
         return self
 
 
@@ -275,7 +278,7 @@ def _environment_options(provider: str) -> tuple[ProviderRuntimeOptions, bool]:
 def resolve_provider_runtime(provider: str) -> ProviderRuntimeResolved:
     normalized = _provider_name(provider)
     saved = _read_saved()
-    if saved is not None and normalized in saved.providers:
+    if saved is not None:
         options = saved.providers[normalized]
         source = ProviderRuntimeSource.SAVED
     else:
