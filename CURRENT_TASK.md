@@ -10,8 +10,8 @@ Stage 16 external acceptance
 Stage 17.1–17.4 COMPLETE / tray, graceful quit, history, safe storage cleanup, packaged Windows validation
 Stage 18.1      COMPLETE / truthful Windows EFS Job-private runtime encryption
 Stage 18.2      COMPLETE / authoritative local DOCX/PDF ISSUE_V1 audit report export
-Stage 18.3      NEXT / cost and resource controls
-Stage 18.4      PENDING / advanced provider settings
+Stage 18.3      COMPLETE / truthful per-Job provider call/token/estimated-cost controls
+Stage 18.4      NEXT / advanced provider settings
 Stage 18.5      PENDING / Windows packaged regression + exact release-lock closeout
 Stage 19        PENDING / installer, signing semantics, safe updates, final documentation/package
 Final acceptance PENDING / private expert evidence + explicit paid/network provider UAT + complete-evidence gate
@@ -167,6 +167,12 @@ stage18-2-report-export
 
 Draft PR #25 is a stacked validation carrier and must remain unmerged without separate authorization.
 
+Frozen head:
+
+```text
+ab40e603e3a433aa34c7185e4827e2cc8f0cd1b8
+```
+
 Authoritative report pipeline:
 
 ```text
@@ -196,12 +202,11 @@ Key guarantees:
 - `exports/<job_id>` participates in the existing crash-recoverable Job cleanup transaction;
 - shared `runtime/legal` remains outside Job cleanup.
 
-Implementation/code validation head:
+Final validation:
 
 ```text
-73a3c5427c322c75df0d1a3aa26f950d1639a761
-Law-Rag Stage 18 CI #21
-run 32470253271
+Law-Rag Stage 18 CI #25
+run 32470517835
 SUCCESS
 backend 505 passed, 5 skipped, 1 third-party warning
 frontend PASS
@@ -216,34 +221,97 @@ Detailed design:
 docs/STAGE18_REPORT_EXPORT.md
 ```
 
-The final documentation/status head must also pass Stage 18 CI before it becomes the frozen Stage 18.2 baseline.
+## Stage 18.3 — COMPLETE
 
-## Next engineering scope — Stage 18.3
-
-Implement bounded cost/resource controls without changing the existing provider approval/cancellation truth model.
-
-Required principles:
+Branch:
 
 ```text
-no budget configured -> existing behavior unchanged
-provider-call and token budgets -> deterministic per-Job limits
-unknown provider usage -> never silently treated as zero
-budget check -> immediately before the real provider boundary
-usage record -> after a completed provider call
-primary + secondary -> shared Job budget
-checkpoint resume -> no double counting reused provider calls
-local-only / blocked calls -> consume no provider budget
-optional monetary estimate -> only from user-configured pricing, never hardcoded as provider truth
+stage18-3-cost-resource-controls
 ```
 
-Reuse the existing persisted pipeline control and provider-call checkpoints. Do not create a second execution pipeline.
+Draft PR #26 is a stacked validation carrier and must remain unmerged without separate authorization.
+
+Validated implementation head:
+
+```text
+72e3819be3bfab3796e7242d4fcf68a0979cdd4f
+```
+
+Resource control model:
+
+```text
+existing provider approval / LOCAL_ONLY / cancellation gate
+ -> per-Job Stage 18.3 budget gate
+ -> durable provider-call ledger reservation
+ -> bounded DeepSeek/Kimi request
+ -> provider return
+ -> existing Stage 13E/F validation + checkpoint
+ -> ledger/checkpoint usage reconciliation
+```
+
+Key guarantees:
+
+- no budget configured means existing provider behavior is unchanged;
+- `max_provider_calls` is a hard pre-request per-Job limit;
+- provider calls rejected by `LOCAL_ONLY`, missing approval, cancellation, or an exhausted budget consume no new call slot;
+- `max_total_tokens` is truthfully a continuation limit based on provider-reported usage, not a fabricated pre-request token guarantee;
+- unknown token usage under a token limit blocks later provider calls instead of being counted as zero;
+- `max_estimated_cost` uses only user-configured provider prices plus provider-reported prompt/completion tokens;
+- no DeepSeek/Kimi vendor price is hardcoded or fetched and the displayed number is not represented as an invoice;
+- missing price/usage under an enabled cost limit fails closed for later calls;
+- live requests are durably recorded before the external boundary and crash-surviving pending calls remain visible/conservative;
+- existing Primary/Secondary checkpoints reconcile usage without double-counting resumed/reused Issue calls;
+- historical opaque checkpoint hash identifiers are deterministically SHA-256-derived only when imported; live ledger checkpoint fingerprints remain strict 64-character lowercase SHA-256 values;
+- local GET/PUT budget APIs never trigger provider work;
+- `resource-budget.json` and Job-directory symlink traversal fail closed;
+- Issue V1 Workspace shows calls, known tokens, estimated cost, unknown usage and remaining configured allowances;
+- Workspace budget editing defaults to unlimited/blank and explicitly labels prices as user estimates.
+
+Implementation validation:
+
+```text
+Law-Rag Stage 18 CI #50
+run 32549130409
+SUCCESS
+backend 519 passed, 5 skipped, 1 third-party warning
+frontend PASS
+Stage 16 public gates/regression/suite PASS
+release evidence matrix PASS
+runtime encryption truthfulness PASS
+```
+
+Detailed design:
+
+```text
+docs/STAGE18_RESOURCE_BUDGET.md
+```
+
+The final closeout head containing only evidence/status text must also pass the same Stage 18 CI before it is used as the exact Stage 18.4 base. No paid/network DeepSeek or Kimi call was executed by Stage 18.3 engineering or CI.
+
+## Next engineering scope — Stage 18.4
+
+Implement advanced provider settings without weakening the existing secret-storage, provider-approval, Stage 18.3 resource-budget, or Issue V1 evidence boundaries.
+
+Required focus:
+
+```text
+provider-specific non-secret runtime options
+ -> explicit model selection from supported configured values
+ -> bounded timeout / retry policy where provider adapters support it
+ -> base URL / endpoint override only under strict validation and explicit user intent
+ -> secret API keys remain in Windows Credential Manager, never copied into Job artifacts or browser storage
+ -> provider health/configuration remains truthful
+ -> no hidden fallback to another provider/model
+ -> no implicit paid/network test call when saving settings
+```
+
+Stage 18.4 must reuse the existing DeepSeek-primary / Kimi-secondary provider adapters and settings architecture. It must not create an arbitrary OpenAI-compatible provider execution surface or change the two-model audit roles.
 
 ## Remaining sequence
 
 ```text
-18.3 cost/resource controls
 18.4 advanced provider settings
-18.5 Windows packaged regression + exact DOCX/PDF dependency closure
+18.5 Windows packaged regression + exact DOCX/PDF/provider dependency closure
  -> Stage 19 installer / signing semantics / safe updates / final docs/package
  -> final acceptance only then:
       real private expert evidence

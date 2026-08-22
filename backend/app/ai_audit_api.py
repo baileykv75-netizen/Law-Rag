@@ -20,6 +20,7 @@ from .issue_review_report_api import router as issue_review_report_router
 from .issue_secondary_review_api import router as issue_secondary_review_router
 from .provider_settings_api import router as provider_settings_router
 from .report_export_api import router as report_export_router
+from .resource_budget_api import router as resource_budget_router
 from .secondary_review_api import router as secondary_review_router
 from .workspace_api import router as workspace_router
 
@@ -33,6 +34,7 @@ router.include_router(issue_review_report_router)
 router.include_router(secondary_review_router)
 router.include_router(workspace_router)
 router.include_router(report_export_router)
+router.include_router(resource_budget_router)
 
 
 @router.get("/api/ai/providers/health", response_model=ProviderHealth)

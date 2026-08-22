@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import IssueAuditQueuePane from './IssueAuditQueuePane'
 import IssueReviewContextPane from './IssueReviewContextPane'
 import ReportExportControls from './ReportExportControls'
+import ResourceBudgetPanel from './ResourceBudgetPanel'
 import SourceViewerPane from './SourceViewerPane'
 import type {
   ArtifactState,
@@ -148,6 +149,8 @@ export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
       {!coverage?.coverage_complete && coverage && (
         <div className="coverage-global-warning">审计规划覆盖不完整。工作台不会把“没有形成 Issue”解释为“合同安全”，Issue 人工决定也不能豁免未覆盖文本。</div>
       )}
+
+      <ResourceBudgetPanel jobId={summary.job_id} />
 
       <section className="workstation-grid issue-workstation-grid">
         <aside className="workstation-pane source-pane" aria-label="合同来源与 Stage 13 处理链">

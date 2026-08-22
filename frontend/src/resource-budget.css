@@ -1,0 +1,115 @@
+.resource-budget-panel {
+  margin: 0 18px 12px;
+  padding: 12px 14px;
+  border: 1px solid #d9e0e8;
+  background: #fff;
+}
+.resource-budget-heading,
+.resource-budget-actions,
+.resource-budget-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.resource-budget-heading h3 { margin: 2px 0 0; color: #2f3e55; font-size: 13px; }
+.resource-budget-state {
+  padding: 4px 7px;
+  border-radius: 3px;
+  font-size: 8px;
+  letter-spacing: .03em;
+}
+.resource-budget-state.is-unlimited { background: #f0f2f5; color: #667286; }
+.resource-budget-state.is-safe { background: #eaf4ed; color: #456c50; }
+.resource-budget-state.is-blocked { background: #fff0dc; color: #985b1d; }
+.resource-budget-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 10px;
+  background: #e1e6ed;
+  border: 1px solid #e1e6ed;
+}
+.resource-budget-metrics > div { min-width: 0; padding: 9px 10px; background: #f9fafb; }
+.resource-budget-metrics > div.needs-attention { background: #fff8e8; }
+.resource-budget-metrics span,
+.resource-budget-metrics small { display: block; color: #7c8797; font-size: 8px; line-height: 1.4; }
+.resource-budget-metrics strong { display: block; margin: 3px 0; color: #334258; font-size: 13px; overflow-wrap: anywhere; }
+.resource-budget-actions { margin-top: 9px; }
+.resource-budget-actions button,
+.resource-budget-editor-actions button {
+  border: 1px solid #8e9db0;
+  border-radius: 3px;
+  background: #fff;
+  color: #43536a;
+  padding: 6px 9px;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.resource-budget-actions button:hover,
+.resource-budget-editor-actions button:hover { border-color: #61748c; }
+.resource-budget-actions span,
+.resource-budget-message { color: #7c8797; font-size: 8px; line-height: 1.45; }
+.resource-budget-message.is-error { color: #9a4b42; }
+.resource-budget-editor {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid #e2e7ed;
+}
+.resource-budget-editor label { display: grid; gap: 4px; color: #5d6a7d; font-size: 8px; font-weight: 700; }
+.resource-budget-editor input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cdd5df;
+  border-radius: 3px;
+  padding: 7px 8px;
+  background: #fff;
+  color: #2f3d52;
+  font: inherit;
+  font-size: 9px;
+}
+.resource-budget-price-group {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  align-items: end;
+  gap: 8px;
+  grid-column: span 2;
+  padding: 9px;
+  background: #f7f9fb;
+  border: 1px solid #e0e5eb;
+}
+.resource-budget-price-group > strong { align-self: center; color: #4d5c71; font-size: 8px; line-height: 1.45; }
+.resource-budget-truth-note {
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-left: 3px solid #a8894e;
+  background: #fff9ea;
+  color: #705b2b;
+  font-size: 8px;
+  line-height: 1.55;
+}
+.resource-budget-editor-actions { grid-column: 1 / -1; justify-content: flex-start; }
+.resource-budget-editor-actions button:disabled { cursor: not-allowed; opacity: .55; }
+.resource-budget-editor-actions button.secondary { border-color: #d3d9e1; color: #6f7a89; }
+.resource-budget-warnings { margin-top: 9px; color: #687589; font-size: 8px; }
+.resource-budget-warnings summary { cursor: pointer; font-weight: 700; }
+.resource-budget-warnings ul { margin: 6px 0 0 16px; padding: 0; line-height: 1.55; }
+
+@media (max-width: 1000px) {
+  .resource-budget-metrics { grid-template-columns: 1fr 1fr; }
+  .resource-budget-editor { grid-template-columns: 1fr 1fr; }
+  .resource-budget-price-group { grid-column: 1 / -1; }
+}
+
+@media (max-width: 640px) {
+  .resource-budget-panel { margin-left: 10px; margin-right: 10px; }
+  .resource-budget-heading,
+  .resource-budget-actions { align-items: flex-start; flex-direction: column; }
+  .resource-budget-metrics,
+  .resource-budget-editor { grid-template-columns: 1fr; }
+  .resource-budget-price-group { grid-template-columns: 1fr; }
+}
