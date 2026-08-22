@@ -12,7 +12,7 @@ Stage 18.1      COMPLETE / truthful Windows EFS Job-private runtime encryption
 Stage 18.2      COMPLETE / authoritative local DOCX/PDF ISSUE_V1 audit report export
 Stage 18.3      COMPLETE / truthful per-Job provider call/token/estimated-cost controls
 Stage 18.4      COMPLETE / advanced non-secret provider runtime settings
-Stage 18.5      NEXT / Windows packaged regression + exact release-lock closeout
+Stage 18.5      COMPLETE / Windows packaged regression + exact release-lock closeout
 Stage 19        PENDING / installer, signing semantics, safe updates, final documentation/package
 Final acceptance PENDING / private expert evidence + explicit paid/network provider UAT + complete-evidence gate
 ```
@@ -359,33 +359,85 @@ Detailed design:
 docs/STAGE18_PROVIDER_SETTINGS.md
 ```
 
-No paid/network DeepSeek or Kimi call was executed by Stage 18.4 engineering or CI. A final status/documentation-only head must pass the same Stage 18 CI before it becomes the exact Stage 18.5 base.
+No paid/network DeepSeek or Kimi call was executed by Stage 18.4 engineering or CI.
 
-## Next engineering scope — Stage 18.5
+## Stage 18.5 — COMPLETE
 
-Run the Stage 18 release-lock pass on Windows and close the exact packaged dependency surface introduced by Stages 18.1–18.4.
-
-Required focus:
+Branch:
 
 ```text
-freeze exact Stage 18.4 closeout head
- -> build Windows portable/release candidate from that head
- -> verify Stage 18.1 runtime-encryption behavior in the packaged executable
- -> verify Stage 18.2 DOCX/PDF export dependencies are present and usable in the packaged executable
- -> verify Stage 18.3 resource-budget persistence/API/Workspace behavior survives packaging
- -> verify Stage 18.4 provider-settings persistence/API/UI and Credential Manager boundary survive packaging
- -> rerun Stage 17 packaged regressions and frozen three-domain baseline
- -> record exact executable/dependency/artifact hashes
- -> fail closed on missing packaged dependencies or release-lock drift
+stage18-5-windows-release-lock
 ```
 
-Stage 18.5 must remain provider-free. It must not run real DeepSeek/Kimi network UAT and must not claim private expert evidence. The goal is exact Windows packaging/regression closure, not final external acceptance.
+Draft PR #28 is a stacked validation carrier and must remain unmerged without separate authorization.
+
+Validated release-lock implementation head:
+
+```text
+8512c13e1c7efafd0975ec85b1f4d4ee6d2f6a25
+```
+
+Release-lock scope:
+
+```text
+exact Windows CPython 3.12.10 dependency lock
+ -> frozen onedir Law-Rag.exe build
+ -> Stage 15.5 corpus baseline
+ -> packaged PDF/OCR/HTTP/privacy regression
+ -> Stage 17 tray/history/storage lifecycle regression
+ -> Stage 18.1 EFS truthfulness
+ -> Stage 18.2 DOCX/PDF renderer dependency + runtime execution
+ -> Stage 18.3 local resource-budget persistence/API
+ -> Stage 18.4 provider-settings persistence/API + Credential Manager boundary
+ -> deterministic portable RC ZIP + manifest
+ -> extracted-RC Stage 12–14 regression
+ -> extracted-RC Stage 17 + Stage 18 regression
+ -> exact executable/dependency/RC evidence hashes
+```
+
+Stage 18.5 found and fixed one real Windows-only production defect in the Stage 18.2 atomic renderer path: the temporary output was reopened read-only (`rb`) before `os.fsync()`. Linux tolerated that descriptor usage, while the packaged Windows executable failed with `OSError: [Errno 9] Bad file descriptor`. The production path now reopens the temporary file as `r+b` before `fsync`, and a cross-platform regression test requires the descriptor to be writable so Linux CI can catch any future reintroduction.
+
+No smoke assertion was weakened to hide the defect. The same authoritative DOCX/PDF renderer path is exercised in the packaged executable.
+
+Exact implementation validation:
+
+```text
+Law-Rag Stage 18 CI #114
+run 32551622588
+SUCCESS
+backend 543 passed, 5 skipped, 1 third-party warning
+frontend PASS
+Stage 16 public deterministic quality gates PASS
+Stage 16.2 public regression 10/10 PASS
+Stage 16b evaluation suite PASS
+release evidence matrix PASS
+runtime encryption truthfulness PASS
+
+Law-Rag Stage 18.5 Windows Release Lock #4
+run 32551622552
+SUCCESS on exact head 8512c13e1c7efafd0975ec85b1f4d4ee6d2f6a25
+```
+
+The Windows release-lock run passed all exact packaged steps:
+
+- exact PR-head checkout and pinned Windows release lock;
+- frozen three-domain corpus baseline;
+- packaged PDF/OCR/HTTP/privacy path;
+- Stage 17 tray/history/storage cleanup and restart recovery;
+- Stage 18.1–18.4 smoke against the frozen onedir executable;
+- deterministic portable RC ZIP and manifest;
+- existing Stage 12–14 regressions against the extracted RC;
+- Stage 17 and Stage 18 regressions against the extracted portable RC;
+- exact release-evidence recording and inspectable artifact upload.
+
+One first attempt on the same exact head failed in the legacy extracted-RC regression window after an asynchronous pipeline artifact changed during a snapshot assertion. No code, package content, or assertion was changed in response. An unchanged rerun of the same commit passed the entire Step 12 and full workflow, while the prior release-lock candidate had also passed the same extracted-RC chain. This is retained as a non-deterministic test-timing observation rather than misclassified as a second product defect.
+
+Stage 18.5 remained provider-free: no paid/network DeepSeek or Kimi request, no provider connectivity probe, and no private expert/contract evidence was used.
 
 ## Remaining sequence
 
 ```text
-18.5 Windows packaged regression + exact release-lock closeout
- -> Stage 19 installer / signing semantics / safe updates / final docs/package
+Stage 19 installer / signing semantics / safe updates / final docs/package
  -> final acceptance only then:
       real private expert evidence
       explicit paid/network DeepSeek + Kimi ISSUE_V1 UAT
