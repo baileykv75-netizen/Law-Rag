@@ -286,7 +286,7 @@ Detailed design:
 docs/STAGE18_RESOURCE_BUDGET.md
 ```
 
-The final status/documentation head must pass the same Stage 18 CI before it is used as the exact Stage 18.4 base. No paid/network DeepSeek or Kimi call was executed by Stage 18.3 engineering or CI.
+The final closeout head containing only evidence/status text must also pass the same Stage 18 CI before it is used as the exact Stage 18.4 base. No paid/network DeepSeek or Kimi call was executed by Stage 18.3 engineering or CI.
 
 ## Next engineering scope — Stage 18.4
 
