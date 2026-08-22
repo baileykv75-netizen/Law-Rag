@@ -1,0 +1,221 @@
+name: Law-Rag Stage 19.3 Windows Safe Updates
+
+on:
+  pull_request:
+    branches:
+      - stage19-2-signing-semantics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-safe-updates:
+    runs-on: windows-latest
+    timeout-minutes: 100
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+          Write-Host "Exact PR head: $actual"
+
+      - name: Set up CPython 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Set up Node 22.23.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build exact Windows onedir bundle
+        shell: pwsh
+        run: ./release/build-windows.ps1
+
+      - name: Revalidate Stage 18 packaged boundaries
+        shell: pwsh
+        run: ./release/smoke-stage18-5-windows.ps1 -BundleDir ./release/dist/Law-Rag -Port 8893
+
+      - name: Build inherited Stage 19.1 unsigned installer
+        shell: pwsh
+        run: ./release/build-installer.ps1
+
+      - name: Revalidate Stage 19.1 install lifecycle
+        shell: pwsh
+        run: ./release/smoke-stage19-1-installer.ps1
+
+      - name: Revalidate Stage 19.2 unsigned publication refusal
+        shell: pwsh
+        run: |
+          Remove-Item Env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT -ErrorAction SilentlyContinue
+          $refused = $false
+          try {
+            ./release/verify-stage19-2-signing.ps1 -EvidencePath ./release/installer-dist/STAGE19-3-INHERITED-SIGNING-EVIDENCE.json -RequirePublishable
+          } catch {
+            $refused = $true
+            Write-Host "Expected inherited unsigned refusal: $($_.Exception.Message)"
+          }
+          if (-not $refused) { throw "Inherited Stage 19.2 publication gate unexpectedly allowed an unsigned build." }
+
+      - name: Create ephemeral CI-only trusted code-signing identities
+        id: certs
+        shell: pwsh
+        run: |
+          $primary = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=Law-Rag Stage 19.3 CI Primary ONLY' -CertStoreLocation 'Cert:\CurrentUser\My' -HashAlgorithm SHA256 -KeyAlgorithm RSA -KeyLength 2048 -NotAfter (Get-Date).AddDays(2)
+          $other = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=Law-Rag Stage 19.3 CI Mismatch ONLY' -CertStoreLocation 'Cert:\CurrentUser\My' -HashAlgorithm SHA256 -KeyAlgorithm RSA -KeyLength 2048 -NotAfter (Get-Date).AddDays(2)
+          foreach ($cert in @($primary, $other)) {
+            $cerPath = Join-Path $env:RUNNER_TEMP ($cert.Thumbprint + '.cer')
+            Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
+            Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+            Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
+          }
+          "primary=$($primary.Thumbprint)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "other=$($other.Thumbprint)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Created ephemeral CI-only signers. No private key leaves the runner."
+
+      - name: Prove positive signed update candidate path
+        shell: pwsh
+        env:
+          LAW_RAG_RELEASE_SIGNER_THUMBPRINT: ${{ steps.certs.outputs.primary }}
+        run: |
+          New-Item -ItemType Directory -Path ./release/update-dist -Force | Out-Null
+          $candidate = './release/update-dist/Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+          Copy-Item './release/installer-dist/Law-Rag-0.8.0-rc2-windows-x64-setup.exe' $candidate -Force
+          $cert = Get-Item "Cert:\CurrentUser\My\${env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT}"
+          $signed = Set-AuthenticodeSignature -FilePath $candidate -Certificate $cert -HashAlgorithm SHA256
+          if ($signed.Status -ne 'Valid') { throw "CI candidate Authenticode signing did not validate: $($signed.Status) $($signed.StatusMessage)" }
+
+          ./release/new-stage19-3-update-manifest.ps1 `
+            -InstallerPath $candidate `
+            -CandidateVersion '0.8.0-rc3' `
+            -ArtifactUrl 'https://updates.example.invalid/Law-Rag-0.8.0-rc3-windows-x64-setup.exe' `
+            -SignerThumbprint $env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT
+
+          ./release/verify-stage19-3-update.ps1 `
+            -ManifestPath './release/update-dist/UPDATE-MANIFEST.json' `
+            -ManifestSignaturePath './release/update-dist/UPDATE-MANIFEST.p7s' `
+            -InstallerPath $candidate `
+            -CurrentVersion '0.8.0-rc2' `
+            -EvidencePath './release/update-dist/STAGE19-3-POSITIVE.json' `
+            -RequireEligible
+
+          $evidence = Get-Content './release/update-dist/STAGE19-3-POSITIVE.json' -Raw | ConvertFrom-Json
+          if (-not $evidence.eligible -or $evidence.decision -ne 'UPDATE_ELIGIBLE') { throw 'Signed positive update candidate was not eligible.' }
+          if ($evidence.manifest.cms_status -ne 'VALID') { throw 'Positive manifest CMS signature did not validate.' }
+          if ($evidence.artifact.authenticode.status -ne 'Valid') { throw 'Positive installer Authenticode signature did not validate.' }
+          if ($evidence.provider_network_uat_executed -or $evidence.private_expert_evidence_executed) { throw 'Stage 19.3 positive validation crossed a forbidden external-evidence boundary.' }
+
+      - name: Reject manifest byte tampering
+        shell: pwsh
+        env:
+          LAW_RAG_RELEASE_SIGNER_THUMBPRINT: ${{ steps.certs.outputs.primary }}
+        run: |
+          $manifest = './release/update-dist/UPDATE-MANIFEST.json'
+          $tampered = './release/update-dist/UPDATE-MANIFEST-TAMPERED.json'
+          Copy-Item $manifest $tampered -Force
+          [IO.File]::AppendAllText((Resolve-Path $tampered), ' ')
+          $refused = $false
+          try {
+            ./release/verify-stage19-3-update.ps1 -ManifestPath $tampered -ManifestSignaturePath './release/update-dist/UPDATE-MANIFEST.p7s' -InstallerPath './release/update-dist/Law-Rag-0.8.0-rc3-windows-x64-setup.exe' -CurrentVersion '0.8.0-rc2' -EvidencePath './release/update-dist/STAGE19-3-MANIFEST-TAMPER.json' -RequireEligible
+          } catch { $refused = $true; Write-Host "Expected manifest-tamper refusal: $($_.Exception.Message)" }
+          if (-not $refused) { throw 'Tampered manifest unexpectedly passed verification.' }
+          $e = Get-Content './release/update-dist/STAGE19-3-MANIFEST-TAMPER.json' -Raw | ConvertFrom-Json
+          if ($e.rejection_reasons -notcontains 'MANIFEST_CMS_INVALID') { throw 'Manifest tamper did not fail at the CMS boundary.' }
+
+      - name: Reject installer byte or hash tampering
+        shell: pwsh
+        env:
+          LAW_RAG_RELEASE_SIGNER_THUMBPRINT: ${{ steps.certs.outputs.primary }}
+        run: |
+          $tamperedDir = './release/update-dist/tampered-artifact'
+          New-Item -ItemType Directory -Path $tamperedDir -Force | Out-Null
+          $tampered = Join-Path $tamperedDir 'Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+          Copy-Item './release/update-dist/Law-Rag-0.8.0-rc3-windows-x64-setup.exe' $tampered -Force
+          $stream = [IO.File]::Open($tampered, [IO.FileMode]::Append, [IO.FileAccess]::Write)
+          try { $stream.WriteByte(0x00) } finally { $stream.Dispose() }
+          $refused = $false
+          try {
+            ./release/verify-stage19-3-update.ps1 -ManifestPath './release/update-dist/UPDATE-MANIFEST.json' -ManifestSignaturePath './release/update-dist/UPDATE-MANIFEST.p7s' -InstallerPath $tampered -CurrentVersion '0.8.0-rc2' -EvidencePath './release/update-dist/STAGE19-3-ARTIFACT-TAMPER.json' -RequireEligible
+          } catch { $refused = $true; Write-Host "Expected artifact-tamper refusal: $($_.Exception.Message)" }
+          if (-not $refused) { throw 'Tampered installer unexpectedly passed verification.' }
+          $e = Get-Content './release/update-dist/STAGE19-3-ARTIFACT-TAMPER.json' -Raw | ConvertFrom-Json
+          if ($e.rejection_reasons -notcontains 'ARTIFACT_SHA256_MISMATCH') { throw 'Installer tamper did not report a SHA-256 mismatch.' }
+          if ($e.rejection_reasons -notcontains 'INSTALLER_AUTHENTICODE_NOT_VALID') { throw 'Installer tamper did not invalidate Authenticode.' }
+
+      - name: Reject signer mismatch
+        shell: pwsh
+        env:
+          LAW_RAG_RELEASE_SIGNER_THUMBPRINT: ${{ steps.certs.outputs.primary }}
+          LAW_RAG_OTHER_SIGNER: ${{ steps.certs.outputs.other }}
+        run: |
+          $mismatchDir = './release/update-dist/signer-mismatch'
+          New-Item -ItemType Directory -Path $mismatchDir -Force | Out-Null
+          $candidate = Join-Path $mismatchDir 'Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+          Copy-Item './release/installer-dist/Law-Rag-0.8.0-rc2-windows-x64-setup.exe' $candidate -Force
+          $otherCert = Get-Item "Cert:\CurrentUser\My\${env:LAW_RAG_OTHER_SIGNER}"
+          $signed = Set-AuthenticodeSignature -FilePath $candidate -Certificate $otherCert -HashAlgorithm SHA256
+          if ($signed.Status -ne 'Valid') { throw "Mismatch candidate did not receive a valid CI signature: $($signed.Status)" }
+
+          ./release/new-stage19-3-update-manifest.ps1 -InstallerPath $candidate -CandidateVersion '0.8.0-rc3' -ArtifactUrl 'https://updates.example.invalid/Law-Rag-0.8.0-rc3-windows-x64-setup.exe' -SignerThumbprint $env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT -ManifestPath (Join-Path $mismatchDir 'manifest.json') -SignaturePath (Join-Path $mismatchDir 'manifest.p7s')
+          $refused = $false
+          try {
+            ./release/verify-stage19-3-update.ps1 -ManifestPath (Join-Path $mismatchDir 'manifest.json') -ManifestSignaturePath (Join-Path $mismatchDir 'manifest.p7s') -InstallerPath $candidate -CurrentVersion '0.8.0-rc2' -EvidencePath './release/update-dist/STAGE19-3-SIGNER-MISMATCH.json' -RequireEligible
+          } catch { $refused = $true; Write-Host "Expected signer-mismatch refusal: $($_.Exception.Message)" }
+          if (-not $refused) { throw 'Signer-mismatched installer unexpectedly passed verification.' }
+          $e = Get-Content './release/update-dist/STAGE19-3-SIGNER-MISMATCH.json' -Raw | ConvertFrom-Json
+          if ($e.rejection_reasons -notcontains 'INSTALLER_SIGNER_MISMATCH') { throw 'Signer mismatch was not detected against the configured trusted signer.' }
+
+      - name: Reject same version and insecure URL even when manifest is signed
+        shell: pwsh
+        env:
+          LAW_RAG_RELEASE_SIGNER_THUMBPRINT: ${{ steps.certs.outputs.primary }}
+        run: |
+          $candidate = './release/update-dist/Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+          $sameDir = './release/update-dist/same-version'
+          New-Item -ItemType Directory -Path $sameDir -Force | Out-Null
+          ./release/new-stage19-3-update-manifest.ps1 -InstallerPath $candidate -CandidateVersion '0.8.0-rc2' -ArtifactUrl 'https://updates.example.invalid/Law-Rag-0.8.0-rc3-windows-x64-setup.exe' -SignerThumbprint $env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT -ManifestPath (Join-Path $sameDir 'manifest.json') -SignaturePath (Join-Path $sameDir 'manifest.p7s')
+          try {
+            ./release/verify-stage19-3-update.ps1 -ManifestPath (Join-Path $sameDir 'manifest.json') -ManifestSignaturePath (Join-Path $sameDir 'manifest.p7s') -InstallerPath $candidate -CurrentVersion '0.8.0-rc2' -EvidencePath './release/update-dist/STAGE19-3-SAME-VERSION.json' -RequireEligible
+            throw 'Same-version candidate unexpectedly passed verification.'
+          } catch {
+            if ($_.Exception.Message -eq 'Same-version candidate unexpectedly passed verification.') { throw }
+          }
+          $same = Get-Content './release/update-dist/STAGE19-3-SAME-VERSION.json' -Raw | ConvertFrom-Json
+          if ($same.rejection_reasons -notcontains 'CANDIDATE_VERSION_NOT_NEWER') { throw 'Same-version candidate was not rejected by version monotonicity.' }
+
+          $httpDir = './release/update-dist/http-url'
+          New-Item -ItemType Directory -Path $httpDir -Force | Out-Null
+          ./release/new-stage19-3-update-manifest.ps1 -InstallerPath $candidate -CandidateVersion '0.8.0-rc3' -ArtifactUrl 'http://updates.example.invalid/Law-Rag-0.8.0-rc3-windows-x64-setup.exe' -SignerThumbprint $env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT -ManifestPath (Join-Path $httpDir 'manifest.json') -SignaturePath (Join-Path $httpDir 'manifest.p7s')
+          try {
+            ./release/verify-stage19-3-update.ps1 -ManifestPath (Join-Path $httpDir 'manifest.json') -ManifestSignaturePath (Join-Path $httpDir 'manifest.p7s') -InstallerPath $candidate -CurrentVersion '0.8.0-rc2' -EvidencePath './release/update-dist/STAGE19-3-HTTP-URL.json' -RequireEligible
+            throw 'HTTP update candidate unexpectedly passed verification.'
+          } catch {
+            if ($_.Exception.Message -eq 'HTTP update candidate unexpectedly passed verification.') { throw }
+          }
+          $http = Get-Content './release/update-dist/STAGE19-3-HTTP-URL.json' -Raw | ConvertFrom-Json
+          if ($http.rejection_reasons -notcontains 'ARTIFACT_URL_NOT_SAFE_HTTPS') { throw 'HTTP candidate was not rejected by the HTTPS boundary.' }
+
+      - name: Upload Stage 19.3 validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-stage19-3-safe-update-evidence
+          path: |
+            release/update-dist/**/*.json
+            release/update-dist/**/*.p7s
+            release/installer-dist/STAGE19-3-INHERITED-SIGNING-EVIDENCE.json
+          retention-days: 7
+          if-no-files-found: error
