@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from enum import Enum
 from uuid import UUID
@@ -84,6 +85,34 @@ class ProviderCallLedgerRecord(BaseModel):
     usage: ProviderUsage = Field(default_factory=ProviderUsage)
     error_type: str | None = Field(default=None, max_length=160)
     checkpoint_fingerprint: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_checkpoint_reference(cls, data):
+        """Canonicalize only imported historical checkpoint references.
+
+        Production/live ledger writes still require a real 64-character lowercase
+        hexadecimal SHA-256 fingerprint. Older Stage 13 test/legacy artifacts may
+        carry opaque raw_response_hash identifiers such as ``hash-issue-1``. When
+        those already-validated audit checkpoints are imported for accounting, the
+        opaque identifier is deterministically SHA-256 hashed so the Stage 18 ledger
+        keeps one canonical fingerprint format without mutating the source artifact.
+        """
+
+        if not isinstance(data, dict):
+            return data
+        value = data.get("checkpoint_fingerprint")
+        source = data.get("source")
+        source_value = source.value if isinstance(source, ProviderCallLedgerSource) else source
+        if value is None or source_value != ProviderCallLedgerSource.IMPORTED_CHECKPOINT.value:
+            return data
+        text = str(value)
+        canonical = len(text) == 64 and all(ch in "0123456789abcdef" for ch in text)
+        if canonical:
+            return data
+        normalized = dict(data)
+        normalized["checkpoint_fingerprint"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        return normalized
 
 
 class ResourceBudgetArtifact(BaseModel):
