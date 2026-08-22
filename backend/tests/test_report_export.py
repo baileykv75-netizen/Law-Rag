@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -122,6 +123,27 @@ def test_docx_and_pdf_render_to_openable_files(tmp_path: Path) -> None:
     reader = PdfReader(str(pdf_path))
     assert len(reader.pages) >= 1
     assert pdf_path.read_bytes().startswith(b"%PDF")
+
+
+def test_atomic_render_fsync_descriptor_is_writable(tmp_path: Path, monkeypatch) -> None:
+    destination = tmp_path / "atomic.bin"
+    original = b"stage18-windows-safe"
+    real_fsync = os.fsync
+    observed = {"called": False}
+
+    def require_writable_descriptor(fd: int) -> None:
+        observed["called"] = True
+        original_size = os.fstat(fd).st_size
+        os.lseek(fd, 0, os.SEEK_END)
+        os.write(fd, b"\x00")
+        os.ftruncate(fd, original_size)
+        real_fsync(fd)
+
+    monkeypatch.setattr(report_export.os, "fsync", require_writable_descriptor)
+    report_export._atomic_render(destination, lambda path: path.write_bytes(original))
+
+    assert observed["called"] is True
+    assert destination.read_bytes() == original
 
 
 def test_export_writes_only_job_owned_export_and_hash_manifest(tmp_path: Path, monkeypatch) -> None:
