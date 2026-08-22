@@ -541,7 +541,9 @@ def _atomic_render(destination: Path, renderer) -> None:
         renderer(temp)
         if not temp.is_file() or temp.stat().st_size <= 0:
             raise ReportExportError("Report renderer did not produce a non-empty file.")
-        with temp.open("rb") as handle:
+        # Windows requires a writable descriptor for fsync; reopening read/write
+        # preserves the durable-write intent before the atomic replacement.
+        with temp.open("r+b") as handle:
             os.fsync(handle.fileno())
         os.replace(temp, destination)
     except Exception:
