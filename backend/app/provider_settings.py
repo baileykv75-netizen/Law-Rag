@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import json
-import os
 from enum import Enum
 from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, Field
 
+from .provider_runtime_settings import (
+    DEEPSEEK_DEFAULT_BASE_URL,
+    DEEPSEEK_DEFAULT_MODEL,
+    KIMI_DEFAULT_BASE_URL,
+    KIMI_DEFAULT_MODEL,
+    ProviderRuntimeSettingsError,
+    resolve_provider_runtime,
+)
 from .safe_persistence import atomic_write_text
 from .secret_store import (
     SecretStoreError,
@@ -20,11 +27,10 @@ from .secret_store import (
 from .storage import runtime_dir
 
 SETUP_STATE_SCHEMA_VERSION = "1.0.0"
-DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
-DEFAULT_KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-DEFAULT_KIMI_MODEL = "kimi-k3"
-PROBE_TIMEOUT_SECONDS = 20.0
+DEFAULT_DEEPSEEK_BASE_URL = DEEPSEEK_DEFAULT_BASE_URL
+DEFAULT_DEEPSEEK_MODEL = DEEPSEEK_DEFAULT_MODEL
+DEFAULT_KIMI_BASE_URL = KIMI_DEFAULT_BASE_URL
+DEFAULT_KIMI_MODEL = KIMI_DEFAULT_MODEL
 
 
 class ProviderName(str, Enum):
@@ -42,6 +48,7 @@ class ProviderConfigurationItem(BaseModel):
     source: str | None = None
     model: str
     base_url: str
+    runtime_source: str
 
 
 class ProviderConfigurationOverview(BaseModel):
@@ -97,14 +104,11 @@ def mark_setup_complete() -> None:
     atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
 
 
-def _provider_details(provider: ProviderName) -> tuple[str, str]:
-    if provider == ProviderName.DEEPSEEK:
-        base_url = os.getenv("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE_URL).strip().rstrip("/") or DEFAULT_DEEPSEEK_BASE_URL
-        model = os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL).strip() or DEFAULT_DEEPSEEK_MODEL
-        return base_url, model
-    base_url = os.getenv("MOONSHOT_BASE_URL", DEFAULT_KIMI_BASE_URL).strip().rstrip("/") or DEFAULT_KIMI_BASE_URL
-    model = os.getenv("MOONSHOT_MODEL", DEFAULT_KIMI_MODEL).strip() or DEFAULT_KIMI_MODEL
-    return base_url, model
+def _runtime(provider: ProviderName):
+    try:
+        return resolve_provider_runtime(provider.value)
+    except ProviderRuntimeSettingsError as exc:
+        raise ProviderConfigurationError(str(exc)) from exc
 
 
 def _resolve(provider: ProviderName):
@@ -118,14 +122,15 @@ def provider_overview() -> ProviderConfigurationOverview:
     items: list[ProviderConfigurationItem] = []
     for provider in (ProviderName.DEEPSEEK, ProviderName.KIMI):
         resolved = _resolve(provider)
-        base_url, model = _provider_details(provider)
+        runtime = _runtime(provider)
         items.append(
             ProviderConfigurationItem(
                 provider=provider,
                 configured=bool(resolved.value),
                 source=resolved.source,
-                model=model,
-                base_url=base_url,
+                model=runtime.model,
+                base_url=runtime.base_url,
+                runtime_source=runtime.source.value,
             )
         )
     completed = _load_setup_completed()
@@ -205,14 +210,16 @@ def test_provider_connection(request: ProviderTestRequest) -> ProviderTestResult
             detail="未提供或保存 API Key。",
         )
 
-    base_url, model = _provider_details(request.provider)
+    runtime = _runtime(request.provider)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        with httpx.Client(timeout=httpx.Timeout(PROBE_TIMEOUT_SECONDS, connect=10.0)) as client:
+        with httpx.Client(
+            timeout=httpx.Timeout(runtime.request_timeout_seconds, connect=runtime.connect_timeout_seconds)
+        ) as client:
             response = client.post(
-                f"{base_url}/chat/completions",
+                f"{runtime.base_url}/chat/completions",
                 headers=headers,
-                json=_probe_payload(request.provider, model),
+                json=_probe_payload(request.provider, runtime.model),
             )
     except httpx.HTTPError:
         return ProviderTestResult(
