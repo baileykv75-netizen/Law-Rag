@@ -116,10 +116,10 @@ jobs:
         shell: pwsh
         run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase Tamper
 
-      - name: Stage 19.3 prepare signed small-fixture baseline
+      - name: Stage 19.3 prepare deterministic unsigned small-fixture baseline
         timeout-minutes: 4
         shell: pwsh
-        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase PrepareFixture
+        run: ./release/stage19-3-ci-fixture-and-cleanup.ps1 -Phase PrepareFixture
 
       - name: Stage 19.3 detached CMS tamper refusal
         timeout-minutes: 3
@@ -129,7 +129,7 @@ jobs:
       - name: Stage 19.3 signer mismatch refusal
         timeout-minutes: 4
         shell: pwsh
-        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase SignerMismatch
+        run: ./release/stage19-3-ci-fixture-and-cleanup.ps1 -Phase SignerMismatch
 
       - name: Stage 19.3 version monotonicity refusal
         timeout-minutes: 3
@@ -145,7 +145,7 @@ jobs:
         if: always()
         timeout-minutes: 3
         shell: pwsh
-        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase Cleanup
+        run: ./release/stage19-3-ci-fixture-and-cleanup.ps1 -Phase Cleanup
 
       - name: Upload Stage 19.3 validation artifacts
         if: always()
