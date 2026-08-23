@@ -144,9 +144,14 @@ def test_activation_persists_under_runtime_and_reloads(monkeypatch: pytest.Monke
     assert tester_license.tester_license_path().read_text(encoding="utf-8").strip() == token
 
 
-def test_api_is_locked_until_license_activation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, now: datetime) -> None:
+def test_api_is_locked_until_license_activation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    live_now = datetime.now(timezone.utc).replace(microsecond=0)
     private, public = _keypair()
-    token = _token(private, not_before=now - timedelta(minutes=1), expires_at=now + timedelta(days=7))
+    token = _token(
+        private,
+        not_before=live_now - timedelta(minutes=1),
+        expires_at=live_now + timedelta(days=7),
+    )
     monkeypatch.setenv("LAW_RAG_TESTER_LICENSE_REQUIRED", "1")
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path / "runtime"))
     monkeypatch.setattr(tester_license, "TESTER_LICENSE_PUBLIC_KEY_B64", public)
@@ -159,13 +164,13 @@ def test_api_is_locked_until_license_activation(monkeypatch: pytest.MonkeyPatch,
 
     @inner.get("/api/tester-license/status")
     def license_status() -> dict[str, str]:
-        return {"state": current_tester_license_status(now=now).state.value}
+        return {"state": current_tester_license_status().state.value}
 
     client = TestClient(TesterLicenseMiddleware(inner))
 
     locked = client.get("/api/private")
     allowed_status = client.get("/api/tester-license/status")
-    activate_tester_license(token, now=now)
+    activate_tester_license(token)
     unlocked = client.get("/api/private")
 
     assert locked.status_code == 423
