@@ -299,18 +299,12 @@ function Invoke-Cleanup {
         }
     }
 
+    # Cleanup only the physical stores this helper writes. CurrentUser trust views can
+    # surface certificates inherited from LocalMachine, but those inherited entries are
+    # not owned by the CurrentUser stores and may reject removal with Access denied.
     $CleanupTargets = @(
         [pscustomobject]@{
             StoreName = [System.Security.Cryptography.X509Certificates.StoreName]::My
-            StoreLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
-        },
-        # Compatibility cleanup for earlier failed Stage 19.3 attempts that used CurrentUser trust stores.
-        [pscustomobject]@{
-            StoreName = [System.Security.Cryptography.X509Certificates.StoreName]::Root
-            StoreLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
-        },
-        [pscustomobject]@{
-            StoreName = [System.Security.Cryptography.X509Certificates.StoreName]::TrustedPublisher
             StoreLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
         },
         [pscustomobject]@{
@@ -337,12 +331,13 @@ function Invoke-Cleanup {
         }
     }
 
-    Remove-Item $StatePath -Force -ErrorAction SilentlyContinue
-    Remove-Item $CleanupJournalPath -Force -ErrorAction SilentlyContinue
-
     if ($Failures.Count -gt 0) {
         throw "Stage 19.3 CI signing cleanup was incomplete: $($Failures -join '; ')"
     }
+
+    # Remove recovery metadata only after all owned certificate-store cleanup succeeds.
+    Remove-Item $StatePath -Force -ErrorAction SilentlyContinue
+    Remove-Item $CleanupJournalPath -Force -ErrorAction SilentlyContinue
     Write-Host '[Law-Rag][Stage19.3] PHASE Cleanup PASS'
 }
 
