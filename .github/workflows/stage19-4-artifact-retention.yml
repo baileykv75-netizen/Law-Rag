@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - ops/stage19-4-artifact-retention
+  pull_request:
+    branches:
+      - stage19-4-final-docs-package
   workflow_dispatch:
 
 permissions:
