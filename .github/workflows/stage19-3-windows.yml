@@ -71,10 +71,40 @@ jobs:
           }
           if (-not $refused) { throw "Inherited Stage 19.2 publication gate unexpectedly allowed an unsigned build." }
 
-      - name: Stage 19.3 setup CI-only signing identities
+      - name: Stage 19.3 create primary CI signer in My store
         timeout-minutes: 3
         shell: pwsh
-        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase Setup
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase CreatePrimary
+
+      - name: Stage 19.3 trust primary signer in Root
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase TrustPrimaryRoot
+
+      - name: Stage 19.3 trust primary signer in TrustedPublisher
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase TrustPrimaryPublisher
+
+      - name: Stage 19.3 create mismatch CI signer in My store
+        timeout-minutes: 3
+        shell: pwsh
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase CreateMismatch
+
+      - name: Stage 19.3 trust mismatch signer in Root
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase TrustMismatchRoot
+
+      - name: Stage 19.3 trust mismatch signer in TrustedPublisher
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase TrustMismatchPublisher
+
+      - name: Stage 19.3 finalize CI signing state
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase Finalize
 
       - name: Stage 19.3 real installer positive trust chain
         timeout-minutes: 8
@@ -113,7 +143,7 @@ jobs:
 
       - name: Stage 19.3 cleanup CI-only signing identities
         if: always()
-        timeout-minutes: 2
+        timeout-minutes: 3
         shell: pwsh
         run: ./release/stage19-3-ci-signing-identities.ps1 -Phase Cleanup
 
