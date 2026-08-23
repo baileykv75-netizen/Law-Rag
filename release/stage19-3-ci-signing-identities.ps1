@@ -115,7 +115,7 @@ function Write-RoleState {
 
     $State = [ordered]@{
         schema_version = '1.0.0'
-        source_commit_sha = Get-SourceSha
+        source_commit_sha = (Get-SourceSha)
         primary_thumbprint = $Primary
         other_thumbprint = $Other
         created_at = $CreatedAt
@@ -228,6 +228,12 @@ function Trust-RoleSigner {
     Write-Host "[Law-Rag][Stage19.3] PHASE trust $Role signer in $TargetStore PASS"
 }
 
+function Assert-PrivateSigner {
+    param([string]$Label, [string]$Thumbprint)
+    $Stored = Get-Item "Cert:\CurrentUser\My\$Thumbprint" -ErrorAction Stop
+    if (-not $Stored.HasPrivateKey) { throw "Finalization found no private key for $Label signer." }
+}
+
 function Finalize-State {
     Write-Host '[Law-Rag][Stage19.3] PHASE finalize signing state'
     $State = Read-State
@@ -238,16 +244,12 @@ function Finalize-State {
     }
     if ($Primary -eq $Other) { throw 'CI signing identities unexpectedly share a thumbprint.' }
 
-    foreach ($Pair in @(@('primary', $Primary), @('mismatch', $Other))) {
-        $Label = $Pair[0]
-        $Thumbprint = $Pair[1]
-        $Stored = Get-Item "Cert:\CurrentUser\My\$Thumbprint" -ErrorAction Stop
-        if (-not $Stored.HasPrivateKey) { throw "Finalization found no private key for $Label signer." }
-    }
+    Assert-PrivateSigner -Label primary -Thumbprint $Primary
+    Assert-PrivateSigner -Label mismatch -Thumbprint $Other
 
     $FinalState = [ordered]@{
         schema_version = '1.0.0'
-        source_commit_sha = Get-SourceSha
+        source_commit_sha = (Get-SourceSha)
         primary_thumbprint = $Primary
         other_thumbprint = $Other
         created_at = [string]$State.created_at
