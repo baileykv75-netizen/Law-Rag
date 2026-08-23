@@ -71,12 +71,54 @@ jobs:
           }
           if (-not $refused) { throw "Inherited Stage 19.2 publication gate unexpectedly allowed an unsigned build." }
 
-      - name: Validate signed safe-update trust chain and negative cases
-        timeout-minutes: 15
+      - name: Stage 19.3 setup CI-only signing identities
+        timeout-minutes: 3
         shell: pwsh
-        run: ./release/smoke-stage19-3-safe-update-v2.ps1
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase Setup
+
+      - name: Stage 19.3 real installer positive trust chain
+        timeout-minutes: 8
+        shell: pwsh
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase Positive
+
+      - name: Stage 19.3 real installer tamper refusal
+        timeout-minutes: 4
+        shell: pwsh
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase Tamper
+
+      - name: Stage 19.3 prepare signed small-fixture baseline
+        timeout-minutes: 4
+        shell: pwsh
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase PrepareFixture
+
+      - name: Stage 19.3 detached CMS tamper refusal
+        timeout-minutes: 3
+        shell: pwsh
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase ManifestTamper
+
+      - name: Stage 19.3 signer mismatch refusal
+        timeout-minutes: 4
+        shell: pwsh
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase SignerMismatch
+
+      - name: Stage 19.3 version monotonicity refusal
+        timeout-minutes: 3
+        shell: pwsh
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase SameVersion
+
+      - name: Stage 19.3 HTTPS boundary refusal
+        timeout-minutes: 3
+        shell: pwsh
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase HttpUrl
+
+      - name: Stage 19.3 cleanup CI-only signing identities
+        if: always()
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase Cleanup
 
       - name: Upload Stage 19.3 validation artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: law-rag-stage19-3-safe-update-evidence
@@ -85,4 +127,4 @@ jobs:
             release/update-dist/**/*.p7s
             release/installer-dist/STAGE19-3-INHERITED-SIGNING-EVIDENCE.json
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn
