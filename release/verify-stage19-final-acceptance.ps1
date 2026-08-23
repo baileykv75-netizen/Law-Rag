@@ -2,6 +2,7 @@ param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot "stage19-final-acceptance-config.json"),
     [string]$EngineeringEvidencePath = "",
     [string]$SigningEvidencePath = "",
+    [string]$ReleaseChannelEvidencePath = "",
     [string]$Stage16EvidencePath = "",
     [string]$WindowsSmokeEvidencePath = "",
     [string]$ReleaseChannel = "",
@@ -26,6 +27,21 @@ function New-Gate {
 
 function Is-Sha256([string]$Value) {
     return [bool]($Value -match '^[0-9a-fA-F]{64}$')
+}
+
+function Test-SafeInstallerUrl {
+    param([string]$Url, [string]$ExpectedFilename)
+    $Uri = $null
+    $Valid = (
+        [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$Uri) -and
+        $Uri.Scheme -eq "https" -and
+        [bool]$Uri.Host -and
+        -not $Uri.UserInfo -and
+        -not $Uri.Query -and
+        -not $Uri.Fragment
+    )
+    if (-not $Valid) { return $false }
+    return ([Uri]::UnescapeDataString([IO.Path]::GetFileName($Uri.AbsolutePath)) -eq $ExpectedFilename)
 }
 
 $Config = Read-JsonFile -Path $ConfigPath -Label "Final acceptance config"
@@ -108,23 +124,59 @@ if (-not $SigningEvidencePath) {
 }
 $Gates += $SigningGate
 
-if (-not $ReleaseChannel -or -not $PublicationUrl) {
-    $ChannelGate = New-Gate "RELEASE_CHANNEL" "PENDING" "Final release channel and exact HTTPS installer URL have not both been supplied."
-} else {
-    $ParsedUrl = $null
-    $UrlOk = (
-        [Uri]::TryCreate($PublicationUrl, [UriKind]::Absolute, [ref]$ParsedUrl) -and
-        $ParsedUrl.Scheme -eq "https" -and
-        [bool]$ParsedUrl.Host -and
-        -not $ParsedUrl.UserInfo -and
-        -not $ParsedUrl.Query -and
-        -not $ParsedUrl.Fragment
-    )
-    $UrlFilename = if ($UrlOk) { [Uri]::UnescapeDataString([IO.Path]::GetFileName($ParsedUrl.AbsolutePath)) } else { "" }
-    if ($UrlOk -and $UrlFilename -eq $ExpectedInstallerFilename) {
-        $ChannelGate = New-Gate "RELEASE_CHANNEL" "PASS" "Final release channel records a safe HTTPS URL for the exact RC3 installer filename; no publication was performed."
+$ChannelEvidence = $null
+if (-not $ReleaseChannelEvidencePath) {
+    if ($ReleaseChannel -and $PublicationUrl -and -not (Test-SafeInstallerUrl -Url $PublicationUrl -ExpectedFilename $ExpectedInstallerFilename)) {
+        $ChannelGate = New-Gate "RELEASE_CHANNEL" "FAIL" "Publication URL preflight is unsafe or does not end with the exact frozen RC3 installer filename."
     } else {
-        $ChannelGate = New-Gate "RELEASE_CHANNEL" "FAIL" "Publication URL must be safe absolute HTTPS with no credentials/query/fragment and must end with the exact frozen RC3 installer filename."
+        $ChannelGate = New-Gate "RELEASE_CHANNEL" "PENDING" "Verified production update-channel evidence is not supplied; URL/channel text alone cannot complete this gate."
+    }
+} else {
+    $ChannelEvidence = Read-JsonFile -Path $ReleaseChannelEvidencePath -Label "Final release-channel evidence"
+    $ChannelUrl = [string]$ChannelEvidence.publication_url
+    $ChannelSigner = ([string]$ChannelEvidence.expected_signer_thumbprint).ToUpperInvariant()
+    $ChannelInstallerSha = ([string]$ChannelEvidence.distribution_candidate.installer.sha256).ToLowerInvariant()
+    $ManifestInstallerSha = ([string]$ChannelEvidence.update_manifest.installer_sha256).ToLowerInvariant()
+    $ChannelOk = (
+        [string]$ChannelEvidence.schema_version -eq "1.0.0" -and
+        [string]$ChannelEvidence.stage -eq "19-final-release-channel" -and
+        ([string]$ChannelEvidence.source_sha).ToLowerInvariant() -eq $ExpectedSourceSha -and
+        [string]$ChannelEvidence.release_label -eq $ExpectedReleaseLabel -and
+        [bool]$ChannelEvidence.passed -and
+        [string]$ChannelEvidence.release_channel -match '^[A-Za-z0-9._-]{1,64}$' -and
+        (Test-SafeInstallerUrl -Url $ChannelUrl -ExpectedFilename $ExpectedInstallerFilename) -and
+        $ChannelSigner -and
+        [string]$ChannelEvidence.distribution_candidate.installer.filename -eq $ExpectedInstallerFilename -and
+        (Is-Sha256 $ChannelInstallerSha) -and
+        [string]$ChannelEvidence.distribution_candidate.installer.authenticode_status -eq "Valid" -and
+        ([string]$ChannelEvidence.distribution_candidate.installer.signer_thumbprint).ToUpperInvariant() -eq $ChannelSigner -and
+        [string]$ChannelEvidence.update_manifest.cms_status -eq "VALID" -and
+        ([string]$ChannelEvidence.update_manifest.signer_thumbprint).ToUpperInvariant() -eq $ChannelSigner -and
+        ([string]$ChannelEvidence.update_manifest.source_commit_sha).ToLowerInvariant() -eq $ExpectedSourceSha -and
+        [string]$ChannelEvidence.update_manifest.candidate_version -eq $ExpectedReleaseLabel -and
+        [string]$ChannelEvidence.update_manifest.installer_filename -eq $ExpectedInstallerFilename -and
+        (Is-Sha256 ([string]$ChannelEvidence.update_manifest.sha256)) -and
+        (Is-Sha256 ([string]$ChannelEvidence.update_manifest.signature_sha256)) -and
+        $ManifestInstallerSha -eq $ChannelInstallerSha -and
+        [string]$ChannelEvidence.update_manifest.artifact_url -eq $ChannelUrl -and
+        [bool]$ChannelEvidence.update_manifest.eligible -and
+        -not [bool]$ChannelEvidence.external_actions.manifest_signing_executed_by_this_script -and
+        -not [bool]$ChannelEvidence.external_actions.authenticode_signing_executed_by_this_script -and
+        -not [bool]$ChannelEvidence.external_actions.provider_calls_executed_by_this_script -and
+        -not [bool]$ChannelEvidence.external_actions.publication_executed_by_this_script
+    )
+    if ($ChannelOk -and $ReleaseChannel) { $ChannelOk = ([string]$ChannelEvidence.release_channel -eq $ReleaseChannel) }
+    if ($ChannelOk -and $PublicationUrl) { $ChannelOk = ($ChannelUrl -eq $PublicationUrl) }
+    if ($ChannelOk -and $null -ne $Signing) {
+        $ChannelOk = (
+            $ChannelInstallerSha -eq ([string]$Signing.installer.sha256).ToLowerInvariant() -and
+            $ChannelSigner -eq ([string]$Signing.expected_signer_thumbprint).ToUpperInvariant()
+        )
+    }
+    $ChannelGate = if ($ChannelOk) {
+        New-Gate "RELEASE_CHANNEL" "PASS" "Production update-channel evidence binds the exact signed RC3 installer, safe HTTPS URL, detached CMS and production signer without publishing."
+    } else {
+        New-Gate "RELEASE_CHANNEL" "FAIL" "Final release-channel evidence is invalid or does not bind the exact signed RC3 installer/update manifest/source/signer."
     }
 }
 $Gates += $ChannelGate
@@ -245,10 +297,13 @@ if (-not $WindowsSmokeEvidencePath) {
             ([string]$Smoke.distribution_candidate.installer.sha256).ToLowerInvariant() -eq ([string]$Signing.installer.sha256).ToLowerInvariant()
         )
     }
+    if ($SmokeOk -and $null -ne $ChannelEvidence) {
+        $SmokeOk = (([string]$Smoke.distribution_candidate.installer.sha256).ToLowerInvariant() -eq ([string]$ChannelEvidence.distribution_candidate.installer.sha256).ToLowerInvariant())
+    }
     $SmokeGate = if ($SmokeOk) {
         New-Gate "FINAL_WINDOWS_SMOKE" "PASS" "Final Windows smoke passed on one signed distribution candidate and proves exact Stage 19.4 baseline-to-signed provenance."
     } else {
-        New-Gate "FINAL_WINDOWS_SMOKE" "FAIL" "Final Windows smoke evidence is invalid, lacks exact baseline provenance, or does not match the production signing evidence."
+        New-Gate "FINAL_WINDOWS_SMOKE" "FAIL" "Final Windows smoke evidence is invalid, lacks exact baseline provenance, or does not match production signing/channel evidence."
     }
 }
 $Gates += $SmokeGate
@@ -263,6 +318,9 @@ $AcceptanceState = if ($AnyFail) {
     "FINAL_ACCEPTANCE_PENDING"
 }
 
+$EffectiveReleaseChannel = if ($null -ne $ChannelEvidence) { [string]$ChannelEvidence.release_channel } elseif ($ReleaseChannel) { $ReleaseChannel } else { $null }
+$EffectivePublicationUrl = if ($null -ne $ChannelEvidence) { [string]$ChannelEvidence.publication_url } elseif ($PublicationUrl) { $PublicationUrl } else { $null }
+
 $Report = [ordered]@{
     schema_version = "1.0.0"
     acceptance_id = [string]$Config.acceptance_id
@@ -276,8 +334,8 @@ $Report = [ordered]@{
     complete = $AllPass
     gates = @($Gates)
     distribution_candidate = if ($null -ne $Smoke) { $Smoke.distribution_candidate } else { $null }
-    release_channel = if ($ReleaseChannel) { $ReleaseChannel } else { $null }
-    publication_url = if ($PublicationUrl) { $PublicationUrl } else { $null }
+    release_channel = $EffectiveReleaseChannel
+    publication_url = $EffectivePublicationUrl
     external_actions = [ordered]@{
         production_signing_executed_by_this_script = $false
         provider_network_calls_executed_by_this_script = $false
@@ -286,6 +344,7 @@ $Report = [ordered]@{
     }
     warnings = @(
         "Stage 19.4 hashes identify the unsigned engineering baseline. Production Authenticode signing changes distribution bytes and therefore creates new signed candidate hashes.",
+        "The RELEASE_CHANNEL gate requires verified production update-manifest/CMS evidence; channel/URL text alone cannot complete it.",
         "Final acceptance completion is an evidence state; this verifier never performs the publication action.",
         "DeepSeek/Kimi completion evidence and private expert evidence remain separate Stage 16 evidence classes and are not converted into an overall legal-accuracy score."
     )
