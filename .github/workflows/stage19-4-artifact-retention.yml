@@ -1,0 +1,130 @@
+name: Law-Rag Stage 19.4 Artifact Retention
+
+on:
+  push:
+    branches:
+      - ops/stage19-4-artifact-retention
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  retain-exact-candidate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Download accepted Stage 19.4 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: law-rag-stage19-4-rc3-engineering-candidate
+          path: retained-candidate
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: '32621922885'
+
+      - name: Verify exact candidate before retention
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExpectedSourceSha = '933d637b42c0ad038cefc64970a4c9d08f230fcd'
+          $ExpectedSourceRun = '32621922885'
+          $ExpectedSourceArtifactId = '9488752611'
+          $ExpectedSourceArtifactDigest = 'sha256:3a0af1169b6a016be9297f816e2f50bc0b8b131bcad01b29031553a69f688190'
+
+          function Find-One([string]$Name) {
+            $matches = @(Get-ChildItem retained-candidate -Recurse -File | Where-Object Name -eq $Name)
+            if ($matches.Count -ne 1) {
+              throw "Expected exactly one '$Name', found $($matches.Count)."
+            }
+            return $matches[0]
+          }
+
+          function Sha256([string]$Path) {
+            return (Get-FileHash -Algorithm SHA256 $Path).Hash.ToLowerInvariant()
+          }
+
+          $FinalEvidenceFile = Find-One 'STAGE19-4-FINAL-PACKAGE-EVIDENCE.json'
+          $ManifestFile = Find-One 'RC-MANIFEST.json'
+          $SumsFile = Find-One 'SHA256SUMS.txt'
+          $InstallerEvidenceFile = Find-One 'STAGE19-1-INSTALLER-EVIDENCE.json'
+          $SigningEvidenceFile = Find-One 'STAGE19-4-SIGNING-EVIDENCE.json'
+          $ZipFile = Find-One 'Law-Rag-0.8.0-rc3-windows-x64.zip'
+          $InstallerFile = Find-One 'Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+
+          $Final = Get-Content $FinalEvidenceFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Manifest = Get-Content $ManifestFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+          $InstallerEvidence = Get-Content $InstallerEvidenceFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Signing = Get-Content $SigningEvidenceFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+
+          if ([string]$Final.source_sha -ne $ExpectedSourceSha) { throw 'Final evidence source SHA mismatch.' }
+          if ([string]$Manifest.source_commit_sha -ne $ExpectedSourceSha) { throw 'RC manifest source SHA mismatch.' }
+          if ([string]$InstallerEvidence.source_sha -ne $ExpectedSourceSha) { throw 'Installer evidence source SHA mismatch.' }
+          if ([string]$Signing.source_sha -ne $ExpectedSourceSha) { throw 'Signing evidence source SHA mismatch.' }
+          if ([string]$Final.release_label -ne '0.8.0-rc3') { throw 'Final evidence release label mismatch.' }
+          if ([string]$Final.engineering_state -ne 'READY_FOR_FINAL_ACCEPTANCE') { throw 'Engineering state mismatch.' }
+          if ([string]$Final.publication_state -ne 'FINAL_ACCEPTANCE_PENDING') { throw 'Publication state mismatch.' }
+          if ([bool]$Final.production_signing_executed -or [bool]$Final.public_release_published) { throw 'Candidate unexpectedly claims production signing/publication.' }
+          if ([bool]$Final.provider_network_uat_executed -or [bool]$Final.private_expert_evidence_executed) { throw 'Candidate unexpectedly claims external evidence.' }
+          if ([bool]$Signing.publication_allowed) { throw 'Stage 19.4 signing gate unexpectedly allows publication.' }
+
+          $ZipSha = Sha256 $ZipFile.FullName
+          $InstallerSha = Sha256 $InstallerFile.FullName
+          if ($ZipSha -ne [string]$Final.portable.sha256) { throw 'Portable ZIP hash mismatch against final evidence.' }
+          if ($ZipSha -ne [string]$Manifest.artifact.sha256) { throw 'Portable ZIP hash mismatch against RC manifest.' }
+          if ($InstallerSha -ne [string]$Final.installer.sha256) { throw 'Installer hash mismatch against final evidence.' }
+          if ($InstallerSha -ne [string]$InstallerEvidence.installer.sha256) { throw 'Installer hash mismatch against installer evidence.' }
+          if ((Get-Item $ZipFile.FullName).Length -ne [int64]$Final.portable.size_bytes) { throw 'Portable ZIP size mismatch.' }
+          if ((Get-Item $InstallerFile.FullName).Length -ne [int64]$Final.installer.size_bytes) { throw 'Installer size mismatch.' }
+
+          $SumsText = Get-Content $SumsFile.FullName -Raw -Encoding UTF8
+          if ($SumsText -notmatch [regex]::Escape("$ZipSha  Law-Rag-0.8.0-rc3-windows-x64.zip")) {
+            throw 'SHA256SUMS.txt does not bind the exact portable ZIP.'
+          }
+
+          $SourceFiles = @(
+            $ZipFile,
+            $ManifestFile,
+            $SumsFile,
+            $InstallerFile,
+            $InstallerEvidenceFile,
+            $SigningEvidenceFile,
+            $FinalEvidenceFile
+          )
+          $Inventory = @($SourceFiles | ForEach-Object {
+            [ordered]@{
+              filename = $_.Name
+              sha256 = Sha256 $_.FullName
+              size_bytes = $_.Length
+            }
+          })
+
+          $Preservation = [ordered]@{
+            schema_version = '1.0.0'
+            purpose = 'STAGE19_4_EXACT_CANDIDATE_RETENTION'
+            source_sha = $ExpectedSourceSha
+            source_workflow_run_id = $ExpectedSourceRun
+            source_artifact_id = $ExpectedSourceArtifactId
+            source_artifact_digest = $ExpectedSourceArtifactDigest
+            release_label = '0.8.0-rc3'
+            engineering_state = 'READY_FOR_FINAL_ACCEPTANCE'
+            publication_state = 'FINAL_ACCEPTANCE_PENDING'
+            archival_copy_only = $true
+            publication_authorized = $false
+            files = $Inventory
+          }
+          $Preservation | ConvertTo-Json -Depth 8 | Set-Content retained-candidate/STAGE19-4-ARTIFACT-PRESERVATION.json -Encoding UTF8
+          Write-Host '[Law-Rag] Exact Stage 19.4 candidate revalidated for archival retention.'
+          Write-Host "[Law-Rag] Source SHA: $ExpectedSourceSha"
+          Write-Host "[Law-Rag] Portable SHA-256: $ZipSha"
+          Write-Host "[Law-Rag] Installer SHA-256: $InstallerSha"
+
+      - name: Upload retained exact candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-stage19-4-rc3-exact-candidate-retained
+          path: retained-candidate/**
+          retention-days: 90
+          if-no-files-found: error
