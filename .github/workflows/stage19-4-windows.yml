@@ -64,6 +64,15 @@ jobs:
           if ($manifest.artifact.filename -ne 'Law-Rag-0.8.0-rc3-windows-x64.zip') { throw 'RC3 ZIP filename mismatch.' }
           if ($manifest.publication_state -ne 'NOT_PUBLISHED') { throw 'Stage 19.4 portable candidate must remain NOT_PUBLISHED.' }
 
+      - name: Smoke actual packaged RC3 portable
+        shell: pwsh
+        run: |
+          ./release/smoke-rc-windows.ps1 `
+            -RcDir ./release/rc-stage19-4 `
+            -Port 8910 `
+            -RequiredReleaseLabel 0.8.0-rc3 `
+            -RequiredGuideText @('Windows Credential Manager', 'release-specific signing evidence', 'FINAL_ACCEPTANCE_PENDING')
+
       - name: Build RC3 unsigned validation installer
         shell: pwsh
         run: ./release/build-installer.ps1 -ReleaseLabel 0.8.0-rc3 -AppVersion 0.8.0
