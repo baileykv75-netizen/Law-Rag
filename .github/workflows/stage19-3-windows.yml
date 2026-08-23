@@ -74,7 +74,7 @@ jobs:
       - name: Stage 19.3 setup CI-only signing identities
         timeout-minutes: 3
         shell: pwsh
-        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase Setup
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase Setup
 
       - name: Stage 19.3 real installer positive trust chain
         timeout-minutes: 8
@@ -115,7 +115,7 @@ jobs:
         if: always()
         timeout-minutes: 2
         shell: pwsh
-        run: ./release/smoke-stage19-3-safe-update-v3.ps1 -Phase Cleanup
+        run: ./release/stage19-3-ci-signing-identities.ps1 -Phase Cleanup
 
       - name: Upload Stage 19.3 validation artifacts
         if: always()
