@@ -34,11 +34,51 @@ Use non-sensitive test material.
 
 - Input type tested: PDF / scanned PDF / JPG / JPEG / PNG / DOCX
 - Local ingest completed: Yes / No
-- OCR required: Yes / No
-- OCR result usable: Yes / No / Not applicable
 - Results/workspace opened correctly: Yes / No
 - Provider approval boundary behaved as expected: Yes / No / Not tested
 - DeepSeek/Kimi provider calls performed with tester-owned credentials: Yes / No
+
+## Required — Offline OCR
+
+Use a scanned PDF or image that genuinely requires OCR. Disconnect the PC from the Internet before importing it and keep provider calls disabled.
+
+- Test file type: scanned PDF / JPG / JPEG / PNG
+- Internet disconnected before import: Yes / No
+- Confirmed no active Internet connection: Yes / No
+- OCR started while offline: Yes / No
+- OCR completed while offline: Yes / No
+- Any Paddle/PaddleOCR/model/runtime download prompt or attempt observed: Yes / No
+- Any missing-model or network-required error: Yes / No
+- OCR text produced: Yes / No
+- OCR result usable: Yes / No
+- Approximate OCR time:
+- Offline OCR overall result: PASS / FAIL
+- Notes or screenshot/log reference:
+
+## Required — Report export
+
+Use an export-eligible result/review state with non-sensitive test material.
+
+### DOCX
+
+- DOCX export action available: Yes / No
+- DOCX export completed: Yes / No
+- Exported file had non-zero size: Yes / No / Not tested
+- Exported DOCX opened successfully: Yes / No / Not tested
+- Major sections/content present: Yes / No / Not tested
+- Obvious broken characters/layout/tables: Yes / No / Not tested
+- Word/viewer reported file corruption: Yes / No / Not tested
+- DOCX report export overall result: PASS / FAIL / NOT TESTED
+
+### PDF
+
+- PDF export action offered for this result/state: Yes / No
+- If offered, PDF export completed: Yes / No / Not applicable
+- If exported, PDF opened successfully: Yes / No / Not applicable
+- Obvious broken characters/layout: Yes / No / Not applicable
+- PDF report export overall result: PASS / FAIL / NOT OFFERED
+
+- Report export notes or screenshot reference:
 
 ## Reinstall / uninstall
 
