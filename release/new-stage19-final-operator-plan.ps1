@@ -45,13 +45,14 @@ $ExpectedInstallerSha = ([string]$Baseline.installer.sha256).ToLowerInvariant()
 $SourceRunId = [string]$Baseline.source_workflow_run_id
 $SourceArtifactId = [string]$Baseline.source_artifact_id
 $RetainedArtifactId = [string]$Baseline.retained_artifact_id
-$RetainedUntil = [string]$Baseline.retained_until
+$RetainedUntilUtc = [string]$Baseline.retained_until_utc
 
 if ($ExpectedSourceSha -notmatch '^[0-9a-f]{40}$') { throw "Configured source SHA is invalid." }
 if ($ExpectedPortableSha -notmatch '^[0-9a-f]{64}$') { throw "Configured portable SHA-256 is invalid." }
 if ($ExpectedInstallerSha -notmatch '^[0-9a-f]{64}$') { throw "Configured installer SHA-256 is invalid." }
 if ($ExpectedPortableFilename -ne [IO.Path]::GetFileName($ExpectedPortableFilename)) { throw "Configured portable filename is invalid." }
 if ($ExpectedInstallerFilename -ne [IO.Path]::GetFileName($ExpectedInstallerFilename)) { throw "Configured installer filename is invalid." }
+if ($RetainedUntilUtc -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$') { throw "Configured retained_until_utc is invalid." }
 if ($Config.external_action_policy.production_signing_automatic -or
     $Config.external_action_policy.provider_network_calls_automatic -or
     $Config.external_action_policy.private_expert_execution_automatic -or
@@ -105,7 +106,7 @@ $Plan = [ordered]@{
         source_workflow_run_id = $SourceRunId
         source_artifact_id = $SourceArtifactId
         retained_artifact_id = $RetainedArtifactId
-        retained_until = $RetainedUntil
+        retained_until_utc = $RetainedUntilUtc
         portable = [ordered]@{ filename = $ExpectedPortableFilename; sha256 = $ExpectedPortableSha }
         installer = [ordered]@{ filename = $ExpectedInstallerFilename; sha256 = $ExpectedInstallerSha }
     }
