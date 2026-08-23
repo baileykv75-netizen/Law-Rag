@@ -114,13 +114,13 @@ try {
         throw "Signed portable file list differs from the exact Stage 19.4 baseline."
     }
 
-    $ChangedPaths = New-Object System.Collections.Generic.List[string]
+    $ChangedPaths = @()
     foreach ($RelativePath in $BaselineFiles) {
         $BaselineFile = Join-Path $BaselineBundle ($RelativePath.Replace('/', '\'))
         $SignedFile = Join-Path $Bundle ($RelativePath.Replace('/', '\'))
         $BaselineHash = Sha256 $BaselineFile
         $SignedHash = Sha256 $SignedFile
-        if ($BaselineHash -ne $SignedHash) { $ChangedPaths.Add($RelativePath) }
+        if ($BaselineHash -ne $SignedHash) { $ChangedPaths += $RelativePath }
     }
     if ($ChangedPaths.Count -ne 1 -or $ChangedPaths[0] -ne "Law-Rag.exe") {
         throw "Signed portable may differ from the exact Stage 19.4 baseline only at Law-Rag.exe; changed paths: $($ChangedPaths -join ', ')."
