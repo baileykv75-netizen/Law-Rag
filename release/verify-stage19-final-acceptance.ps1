@@ -190,6 +190,7 @@ if (-not $WindowsSmokeEvidencePath) {
 } else {
     $Smoke = Read-JsonFile -Path $WindowsSmokeEvidencePath -Label "Final Windows smoke evidence"
     $SmokeThumbprint = ([string]$Smoke.expected_signer_thumbprint).ToUpperInvariant()
+    $SmokeChangedPaths = @($Smoke.transformation.changed_paths)
     $SmokeOk = (
         [string]$Smoke.schema_version -eq "1.0.0" -and
         [string]$Smoke.stage -eq "19-final-windows-smoke" -and
@@ -199,9 +200,21 @@ if (-not $WindowsSmokeEvidencePath) {
         [int]$Smoke.provider_network_calls -eq 0 -and
         [bool]$Smoke.production_signed -and
         $SmokeThumbprint -and
+        ([string]$Smoke.engineering_baseline.portable_sha256).ToLowerInvariant() -eq $ExpectedPortableSha -and
+        ([string]$Smoke.engineering_baseline.installer_sha256).ToLowerInvariant() -eq $ExpectedInstallerSha -and
+        [bool]$Smoke.transformation.exact_baseline_portable_verified -and
+        [bool]$Smoke.transformation.file_list_identical -and
+        $SmokeChangedPaths.Count -eq 1 -and
+        [string]$SmokeChangedPaths[0] -eq "Law-Rag.exe" -and
+        [bool]$Smoke.transformation.only_authenticode_target_changed -and
+        [bool]$Smoke.transformation.installer_built_from_same_signed_executable -and
+        [bool]$Smoke.checks.baseline_to_signed_transformation -and
+        [bool]$Smoke.checks.installer_contains_same_signed_executable -and
         (Is-Sha256 ([string]$Smoke.distribution_candidate.portable.sha256)) -and
         (Is-Sha256 ([string]$Smoke.distribution_candidate.executable.sha256)) -and
         (Is-Sha256 ([string]$Smoke.distribution_candidate.installer.sha256)) -and
+        ([string]$Smoke.distribution_candidate.portable.sha256).ToLowerInvariant() -ne $ExpectedPortableSha -and
+        ([string]$Smoke.distribution_candidate.installer.sha256).ToLowerInvariant() -ne $ExpectedInstallerSha -and
         [string]$Smoke.distribution_candidate.executable.authenticode_status -eq "Valid" -and
         [string]$Smoke.distribution_candidate.installer.authenticode_status -eq "Valid" -and
         ([string]$Smoke.distribution_candidate.executable.signer_thumbprint).ToUpperInvariant() -eq $SmokeThumbprint -and
@@ -219,9 +232,9 @@ if (-not $WindowsSmokeEvidencePath) {
         )
     }
     $SmokeGate = if ($SmokeOk) {
-        New-Gate "FINAL_WINDOWS_SMOKE" "PASS" "Final Windows smoke passed on one signed distribution candidate and is source/signer-bound to the Stage 19.4 baseline."
+        New-Gate "FINAL_WINDOWS_SMOKE" "PASS" "Final Windows smoke passed on one signed distribution candidate and proves exact Stage 19.4 baseline-to-signed provenance."
     } else {
-        New-Gate "FINAL_WINDOWS_SMOKE" "FAIL" "Final Windows smoke evidence is invalid, failed, or does not match the production signing evidence."
+        New-Gate "FINAL_WINDOWS_SMOKE" "FAIL" "Final Windows smoke evidence is invalid, lacks exact baseline provenance, or does not match the production signing evidence."
     }
 }
 $Gates.Add($SmokeGate)
