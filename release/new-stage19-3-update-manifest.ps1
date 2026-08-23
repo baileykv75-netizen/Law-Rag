@@ -11,7 +11,8 @@ param(
     [string]$SignaturePath = (Join-Path $PSScriptRoot "update-dist\UPDATE-MANIFEST.p7s"),
     [string]$ApplicationId = "law-rag",
     [string]$Target = "windows-x64",
-    [string]$PublishedAt = ([DateTimeOffset]::UtcNow.ToString("o"))
+    [string]$PublishedAt = ([DateTimeOffset]::UtcNow.ToString("o")),
+    [string]$EvidenceSourceSha = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,6 +34,9 @@ $NormalizedSigner = Normalize-Thumbprint $SignerThumbprint
 if ($NormalizedSigner.Length -ne 40 -and $NormalizedSigner.Length -ne 64) {
     throw "SignerThumbprint must be a normalized SHA-1 or SHA-256 certificate thumbprint."
 }
+if ($EvidenceSourceSha -and $EvidenceSourceSha -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "EvidenceSourceSha must be a full 40-character Git SHA when supplied."
+}
 
 $InstallerPath = (Resolve-Path $InstallerPath).Path
 if (-not (Test-Path $InstallerPath -PathType Leaf)) {
@@ -48,9 +52,13 @@ if ((Normalize-Thumbprint ([string]$Certificate.Thumbprint)) -ne $NormalizedSign
     throw "Resolved signer certificate thumbprint does not match the requested signer."
 }
 
-$SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
-if ($LASTEXITCODE -ne 0 -or $SourceSha -notmatch '^[0-9a-f]{40}$') {
-    throw "Could not resolve exact source SHA for Stage 19.3 update manifest."
+if ($EvidenceSourceSha) {
+    $SourceSha = $EvidenceSourceSha.Trim().ToLowerInvariant()
+} else {
+    $SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $SourceSha -notmatch '^[0-9a-f]{40}$') {
+        throw "Could not resolve exact source SHA for Stage 19.3 update manifest."
+    }
 }
 
 $Artifact = [ordered]@{
@@ -95,5 +103,6 @@ Write-Host "[Law-Rag] Stage 19.3 signed update manifest created."
 Write-Host "[Law-Rag] Manifest: $ManifestPath"
 Write-Host "[Law-Rag] Signature: $SignaturePath"
 Write-Host "[Law-Rag] Candidate: $CandidateVersion"
+Write-Host "[Law-Rag] Evidence source SHA: $SourceSha"
 Write-Host "[Law-Rag] Installer SHA-256: $($Artifact.sha256)"
 Write-Host "[Law-Rag] Signer: $NormalizedSigner"
