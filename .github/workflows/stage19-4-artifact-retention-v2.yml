@@ -19,6 +19,35 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      - name: Assert source artifact metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExpectedRun = '32629468653'
+          $ExpectedArtifactId = '9490770536'
+          $ExpectedDigest = 'sha256:3baa68daf4ed2bdd7e644b19965c45a2234f39e84fadb0fbaf2d92a9de53b728'
+          $ExpectedSourceSha = '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593'
+          $Name = 'law-rag-stage19-4-rc3-engineering-candidate'
+          $Headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $Uri = "https://api.github.com/repos/${{ github.repository }}/actions/runs/$ExpectedRun/artifacts?name=$Name"
+          $Response = Invoke-RestMethod -Uri $Uri -Headers $Headers -Method Get
+          $Artifacts = @($Response.artifacts)
+          if ($Artifacts.Count -ne 1) { throw "Expected exactly one source artifact, found $($Artifacts.Count)." }
+          $Artifact = $Artifacts[0]
+          if ([string]$Artifact.id -ne $ExpectedArtifactId) { throw 'Source artifact ID mismatch.' }
+          if ([string]$Artifact.name -ne $Name) { throw 'Source artifact name mismatch.' }
+          if ([string]$Artifact.digest -ne $ExpectedDigest) { throw 'Source artifact digest mismatch.' }
+          if ([bool]$Artifact.expired) { throw 'Source artifact has expired.' }
+          if ([string]$Artifact.workflow_run.id -ne $ExpectedRun) { throw 'Source artifact workflow run mismatch.' }
+          if ([string]$Artifact.workflow_run.head_sha -ne $ExpectedSourceSha) { throw 'Source artifact head SHA mismatch.' }
+          Write-Host "[Law-Rag] Source artifact metadata PASS: id=$ExpectedArtifactId digest=$ExpectedDigest sha=$ExpectedSourceSha"
+
       - name: Download accepted Stage 19.4 artifact
         uses: actions/download-artifact@v4
         with:
@@ -34,8 +63,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $ExpectedSourceSha = '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593'
           $ExpectedSourceRun = '32629468653'
-          $ExpectedSourceArtifactId = '9490922586'
-          $ExpectedSourceArtifactDigest = 'sha256:a8794a18113fabbfaf1ac56f09b74640048f59967ba41611afbac3bd7d98cbc3'
+          $ExpectedSourceArtifactId = '9490770536'
+          $ExpectedSourceArtifactDigest = 'sha256:3baa68daf4ed2bdd7e644b19965c45a2234f39e84fadb0fbaf2d92a9de53b728'
 
           function Find-One([string]$Name) {
             $matches = @(Get-ChildItem retained-candidate -Recurse -File | Where-Object Name -eq $Name)
