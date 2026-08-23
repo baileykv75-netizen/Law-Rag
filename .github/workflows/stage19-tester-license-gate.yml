@@ -191,7 +191,6 @@ jobs:
 
           $Head = (git rev-parse HEAD).Trim().ToLowerInvariant()
           $InstallerSha = (Get-FileHash -Algorithm SHA256 (Join-Path $Dist $InstallerName)).Hash.ToLowerInvariant()
-          $InstallerSize = (Get-Item (Join-Path $Dist $InstallerName).Length)
           $ExeSha = (Get-FileHash -Algorithm SHA256 './release/dist/Law-Rag/Law-Rag.exe').Hash.ToLowerInvariant()
           [IO.File]::WriteAllText(
             (Join-Path $Dist 'SHA256SUMS-TESTER1.txt'),
