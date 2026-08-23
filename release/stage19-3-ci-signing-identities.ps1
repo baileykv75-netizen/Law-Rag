@@ -34,32 +34,45 @@ function Get-SourceSha {
     return $SourceSha
 }
 
+function Get-StoreLocationForAdd {
+    param([System.Security.Cryptography.X509Certificates.StoreName]$StoreName)
+    if ($StoreName -eq [System.Security.Cryptography.X509Certificates.StoreName]::My) {
+        return [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+    }
+    return [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
+}
+
 function Add-CertificateToStore {
     param(
         [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
         [System.Security.Cryptography.X509Certificates.StoreName]$StoreName,
         [string]$Label
     )
-    Write-Host "[Law-Rag][Stage19.3] START store add: $Label -> CurrentUser/$StoreName"
+    $StoreLocation = Get-StoreLocationForAdd -StoreName $StoreName
+    Write-Host "[Law-Rag][Stage19.3] START store add: $Label -> $StoreLocation/$StoreName"
     $Store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
         $StoreName,
-        [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+        $StoreLocation
     )
     try {
         $Store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
         $Store.Add($Certificate)
     }
     finally { $Store.Close() }
-    Write-Host "[Law-Rag][Stage19.3] PASS store add: $Label -> CurrentUser/$StoreName"
+    Write-Host "[Law-Rag][Stage19.3] PASS store add: $Label -> $StoreLocation/$StoreName"
 }
 
 function Remove-CertificateFromStore {
-    param([string]$Thumbprint, [System.Security.Cryptography.X509Certificates.StoreName]$StoreName)
+    param(
+        [string]$Thumbprint,
+        [System.Security.Cryptography.X509Certificates.StoreName]$StoreName,
+        [System.Security.Cryptography.X509Certificates.StoreLocation]$StoreLocation
+    )
     $Normalized = Normalize-Thumbprint $Thumbprint
     if (-not $Normalized) { return }
     $Store = [System.Security.Cryptography.X509Certificates.X509Store]::new(
         $StoreName,
-        [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+        $StoreLocation
     )
     try {
         $Store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
@@ -210,7 +223,7 @@ function Trust-RoleSigner {
         [ValidateSet('Root', 'TrustedPublisher')][string]$TargetStore
     )
 
-    Write-Host "[Law-Rag][Stage19.3] PHASE trust $Role signer in $TargetStore"
+    Write-Host "[Law-Rag][Stage19.3] PHASE trust $Role signer in LocalMachine/$TargetStore"
     $Thumbprint = Get-RoleThumbprint -Role $Role
     $Signer = Get-Item "Cert:\CurrentUser\My\$Thumbprint" -ErrorAction Stop
     if (-not $Signer.HasPrivateKey) { throw "CI $Role signer in My store has no private key." }
@@ -225,7 +238,7 @@ function Trust-RoleSigner {
     finally {
         if ($null -ne $PublicCertificate) { $PublicCertificate.Dispose() }
     }
-    Write-Host "[Law-Rag][Stage19.3] PHASE trust $Role signer in $TargetStore PASS"
+    Write-Host "[Law-Rag][Stage19.3] PHASE trust $Role signer in LocalMachine/$TargetStore PASS"
 }
 
 function Assert-PrivateSigner {
@@ -286,16 +299,40 @@ function Invoke-Cleanup {
         }
     }
 
+    $CleanupTargets = @(
+        [pscustomobject]@{
+            StoreName = [System.Security.Cryptography.X509Certificates.StoreName]::My
+            StoreLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+        },
+        # Compatibility cleanup for earlier failed Stage 19.3 attempts that used CurrentUser trust stores.
+        [pscustomobject]@{
+            StoreName = [System.Security.Cryptography.X509Certificates.StoreName]::Root
+            StoreLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+        },
+        [pscustomobject]@{
+            StoreName = [System.Security.Cryptography.X509Certificates.StoreName]::TrustedPublisher
+            StoreLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+        },
+        [pscustomobject]@{
+            StoreName = [System.Security.Cryptography.X509Certificates.StoreName]::Root
+            StoreLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
+        },
+        [pscustomobject]@{
+            StoreName = [System.Security.Cryptography.X509Certificates.StoreName]::TrustedPublisher
+            StoreLocation = [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
+        }
+    )
+
     $Failures = [System.Collections.Generic.List[string]]::new()
     foreach ($Thumbprint in $Thumbprints) {
-        foreach ($StoreName in @('My', 'Root', 'TrustedPublisher')) {
+        foreach ($Target in $CleanupTargets) {
             try {
-                Write-Host "[Law-Rag][Stage19.3] START cleanup signer $Thumbprint from CurrentUser/$StoreName"
-                Remove-CertificateFromStore -Thumbprint $Thumbprint -StoreName $StoreName
-                Write-Host "[Law-Rag][Stage19.3] PASS cleanup signer $Thumbprint from CurrentUser/$StoreName"
+                Write-Host "[Law-Rag][Stage19.3] START cleanup signer $Thumbprint from $($Target.StoreLocation)/$($Target.StoreName)"
+                Remove-CertificateFromStore -Thumbprint $Thumbprint -StoreName $Target.StoreName -StoreLocation $Target.StoreLocation
+                Write-Host "[Law-Rag][Stage19.3] PASS cleanup signer $Thumbprint from $($Target.StoreLocation)/$($Target.StoreName)"
             }
             catch {
-                $Failures.Add("${Thumbprint}@${StoreName}: $($_.Exception.Message)")
+                $Failures.Add("${Thumbprint}@$($Target.StoreLocation)/$($Target.StoreName): $($_.Exception.Message)")
             }
         }
     }
