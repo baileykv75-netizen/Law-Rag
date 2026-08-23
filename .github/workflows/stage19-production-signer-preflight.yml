@@ -1,0 +1,153 @@
+name: Law-Rag Stage 19 Production Signer Preflight
+
+on:
+  pull_request:
+    branches:
+      - stage19-final-acceptance-operator-handoff
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signer-interface-provider-free:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+          Write-Host "Exact PR head: $actual"
+
+      - name: Parse production signer preflight PowerShell
+        shell: pwsh
+        run: |
+          $Tokens = $null
+          $Errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path './release/test-stage19-production-signer-capability.ps1'),
+            [ref]$Tokens,
+            [ref]$Errors
+          ) | Out-Null
+          if (@($Errors).Count -ne 0) {
+            throw "Signer preflight PowerShell parse failure: $(@($Errors | ForEach-Object ToString) -join '; ')"
+          }
+          Write-Host '[Law-Rag] production signer preflight PowerShell parse PASS'
+
+      - name: Create disposable CNG code-signing identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject 'CN=Law-Rag Stage19 Signer Preflight CI' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -HashAlgorithm SHA256 `
+            -KeyExportPolicy Exportable `
+            -NotAfter (Get-Date).AddDays(2)
+
+          $CerPath = Join-Path $env:RUNNER_TEMP 'law-rag-stage19-preflight-ci.cer'
+          Export-Certificate -Cert $Cert -FilePath $CerPath -Force | Out-Null
+          Import-Certificate -FilePath $CerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+          Import-Certificate -FilePath $CerPath -CertStoreLocation 'Cert:\CurrentUser\TrustedPublisher' | Out-Null
+
+          "PREFLIGHT_CI_THUMBPRINT=$($Cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host '[Law-Rag] disposable CNG code-signing identity created and trusted only in this runner'
+
+      - name: Prove one Windows key interface can Authenticode-sign and detached-CMS-sign
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'stage19-production-signer-preflight.json'
+          ./release/test-stage19-production-signer-capability.ps1 `
+            -SignerThumbprint $env:PREFLIGHT_CI_THUMBPRINT `
+            -OutputPath $Output `
+            -RequireTrustedAuthenticode
+
+          $Evidence = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Evidence.candidate_touched) { throw 'Signer preflight touched the frozen candidate.' }
+          if ($Evidence.production_candidate_signing_executed) { throw 'Signer preflight claims production candidate signing.' }
+          if ($Evidence.authorization_evaluated_by_this_script) { throw 'Signer preflight must not evaluate owner authorization.' }
+          if ($Evidence.engineering_candidate_source_sha -ne '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593') { throw 'Frozen engineering candidate source SHA mismatch.' }
+          if (-not $Evidence.signer.has_private_key) { throw 'Disposable signer private key was not visible through Windows.' }
+          if (-not $Evidence.signer.code_signing_eku_present) { throw 'Disposable signer lacks code-signing EKU.' }
+          if ($Evidence.authenticode_probe.status -ne 'Valid') { throw "Authenticode probe did not validate: $($Evidence.authenticode_probe.status)" }
+          if (-not $Evidence.authenticode_probe.signer_matches_requested) { throw 'Authenticode probe signer mismatch.' }
+          if (-not $Evidence.detached_cms_probe.compute_succeeded) { throw 'Detached CMS signing did not execute.' }
+          if (-not $Evidence.detached_cms_probe.signature_only_valid) { throw 'Detached CMS signature did not verify.' }
+          if (-not $Evidence.detached_cms_probe.signer_matches_requested) { throw 'Detached CMS probe signer mismatch.' }
+          if (-not $Evidence.signer_interface_capable) { throw 'Signer interface was not marked capable.' }
+          if ($Evidence.preflight_state -ne 'SIGNING_INTERFACE_CAPABLE') { throw "Unexpected preflight state: $($Evidence.preflight_state)" }
+          Write-Host '[Law-Rag] one-key Authenticode + detached CMS interface PASS'
+
+      - name: Certificate without private key fails closed before signing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PublicOnlySource = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject 'CN=Law-Rag Stage19 Public Only CI' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -HashAlgorithm SHA256 `
+            -KeyExportPolicy Exportable `
+            -NotAfter (Get-Date).AddDays(2)
+
+          $PublicOnlyThumbprint = $PublicOnlySource.Thumbprint
+          $CerPath = Join-Path $env:RUNNER_TEMP 'law-rag-stage19-public-only-ci.cer'
+          Export-Certificate -Cert $PublicOnlySource -FilePath $CerPath -Force | Out-Null
+          Remove-Item "Cert:\CurrentUser\My\$PublicOnlyThumbprint" -Force
+          Import-Certificate -FilePath $CerPath -CertStoreLocation 'Cert:\CurrentUser\My' | Out-Null
+          "PUBLIC_ONLY_THUMBPRINT=$PublicOnlyThumbprint" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $Output = Join-Path $env:RUNNER_TEMP 'stage19-public-only-preflight.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile',
+            '-File', (Resolve-Path './release/test-stage19-production-signer-capability.ps1'),
+            '-SignerThumbprint', $PublicOnlyThumbprint,
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+
+          if ($Process.ExitCode -eq 0) { throw 'Public-only certificate unexpectedly passed signer preflight.' }
+          if (Test-Path $Output) { throw 'Public-only certificate unexpectedly produced successful signer evidence.' }
+          Write-Host '[Law-Rag] missing-private-key fail-closed PASS'
+
+      - name: Prove production boundaries remain untouched
+        shell: pwsh
+        run: |
+          if ($env:DEEPSEEK_API_KEY -or $env:MOONSHOT_API_KEY) { throw 'Signer preflight CI must not receive provider keys.' }
+          Write-Host '[Law-Rag] real production certificate used: false'
+          Write-Host '[Law-Rag] frozen RC3 candidate downloaded: false'
+          Write-Host '[Law-Rag] frozen RC3 candidate signed: false'
+          Write-Host '[Law-Rag] paid/network provider UAT performed: false'
+          Write-Host '[Law-Rag] private expert evidence performed: false'
+          Write-Host '[Law-Rag] publication performed: false'
+
+      - name: Cleanup disposable signing identities
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($Thumbprint in @($env:PREFLIGHT_CI_THUMBPRINT, $env:PUBLIC_ONLY_THUMBPRINT)) {
+            if (-not $Thumbprint) { continue }
+            foreach ($Store in @('My', 'Root', 'TrustedPublisher')) {
+              $Path = "Cert:\CurrentUser\$Store\$Thumbprint"
+              if (Test-Path $Path) {
+                Remove-Item $Path -Force -ErrorAction SilentlyContinue
+              }
+            }
+          }
+          Write-Host '[Law-Rag] disposable signing identities cleaned up'
