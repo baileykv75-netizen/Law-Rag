@@ -1,0 +1,126 @@
+name: Law-Rag Stage 19.4 Final RC3 Package
+
+on:
+  pull_request:
+    branches:
+      - stage19-3-safe-updates
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-final-package:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+          Write-Host "Exact PR head: $actual"
+
+      - name: Set up CPython 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Set up Node 22.23.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build exact Windows onedir bundle
+        shell: pwsh
+        run: ./release/build-windows.ps1
+
+      - name: Revalidate inherited Stage 18 packaged boundaries
+        shell: pwsh
+        run: ./release/smoke-stage18-5-windows.ps1 -BundleDir ./release/dist/Law-Rag -Port 8894
+
+      - name: Package deterministic RC3 portable ZIP
+        shell: pwsh
+        run: ./release/package-rc.ps1 -Config ./release/stage19-4-rc-config.json -Output ./release/rc-stage19-4
+
+      - name: Verify RC3 portable identity
+        shell: pwsh
+        run: |
+          $manifest = Get-Content ./release/rc-stage19-4/RC-MANIFEST.json -Raw | ConvertFrom-Json
+          $head = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($manifest.rc_version -ne '0.8.0-rc3') { throw 'RC3 manifest version mismatch.' }
+          if ($manifest.source_commit_sha -ne $head) { throw 'RC3 manifest source SHA mismatch.' }
+          if ($manifest.artifact.filename -ne 'Law-Rag-0.8.0-rc3-windows-x64.zip') { throw 'RC3 ZIP filename mismatch.' }
+          if ($manifest.publication_state -ne 'NOT_PUBLISHED') { throw 'Stage 19.4 portable candidate must remain NOT_PUBLISHED.' }
+
+      - name: Build RC3 unsigned validation installer
+        shell: pwsh
+        run: ./release/build-installer.ps1 -ReleaseLabel 0.8.0-rc3 -AppVersion 0.8.0
+
+      - name: Validate RC3 install, reinstall, and uninstall lifecycle
+        shell: pwsh
+        run: ./release/smoke-stage19-1-installer.ps1 -InstallerPath ./release/installer-dist/Law-Rag-0.8.0-rc3-windows-x64-setup.exe
+
+      - name: Prove RC3 remains non-publishable without production signer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ./release/final-package -Force | Out-Null
+          Remove-Item Env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT -ErrorAction SilentlyContinue
+          $refused = $false
+          try {
+            ./release/verify-stage19-2-signing.ps1 `
+              -InstallerPath ./release/installer-dist/Law-Rag-0.8.0-rc3-windows-x64-setup.exe `
+              -EvidencePath ./release/final-package/STAGE19-4-SIGNING-EVIDENCE.json `
+              -RequirePublishable
+          } catch {
+            $refused = $true
+            Write-Host "Expected Stage 19.4 unsigned publication refusal: $($_.Exception.Message)"
+          }
+          if (-not $refused) { throw 'Stage 19.4 unexpectedly allowed publication without a production signer.' }
+          $evidence = Get-Content ./release/final-package/STAGE19-4-SIGNING-EVIDENCE.json -Raw | ConvertFrom-Json
+          if ($evidence.publication_allowed) { throw 'Unsigned RC3 publication gate unexpectedly returned true.' }
+          if ($evidence.publication_state -ne 'VALIDATION_ONLY_NOT_PUBLISHABLE') { throw 'Unexpected RC3 signing publication state.' }
+          if ($evidence.provider_network_uat_executed -or $evidence.private_expert_evidence_executed) { throw 'Stage 19.4 crossed an external-evidence boundary.' }
+
+      - name: Assemble exact-head final package evidence
+        shell: pwsh
+        run: ./release/new-stage19-4-package-evidence.ps1
+
+      - name: Assert Stage 19.4 final engineering state
+        shell: pwsh
+        run: |
+          $evidence = Get-Content ./release/final-package/STAGE19-4-FINAL-PACKAGE-EVIDENCE.json -Raw | ConvertFrom-Json
+          $head = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($evidence.source_sha -ne $head) { throw 'Stage 19.4 package evidence source SHA mismatch.' }
+          if ($evidence.release_label -ne '0.8.0-rc3') { throw 'Stage 19.4 package release label mismatch.' }
+          if ($evidence.engineering_state -ne 'READY_FOR_FINAL_ACCEPTANCE') { throw 'Stage 19.4 engineering state mismatch.' }
+          if ($evidence.publication_state -ne 'FINAL_ACCEPTANCE_PENDING') { throw 'Stage 19.4 must keep final acceptance pending.' }
+          if ($evidence.production_signing_executed -or $evidence.public_release_published) { throw 'Stage 19.4 must not claim production signing/publication.' }
+          if ($evidence.provider_network_uat_executed -or $evidence.private_expert_evidence_executed) { throw 'Stage 19.4 must remain provider/private-evidence free.' }
+          Write-Host ($evidence | ConvertTo-Json -Depth 10)
+
+      - name: Upload Stage 19.4 RC3 engineering artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-stage19-4-rc3-engineering-candidate
+          path: |
+            release/rc-stage19-4/Law-Rag-0.8.0-rc3-windows-x64.zip
+            release/rc-stage19-4/RC-MANIFEST.json
+            release/rc-stage19-4/SHA256SUMS.txt
+            release/installer-dist/Law-Rag-0.8.0-rc3-windows-x64-setup.exe
+            release/installer-dist/STAGE19-1-INSTALLER-EVIDENCE.json
+            release/final-package/STAGE19-4-SIGNING-EVIDENCE.json
+            release/final-package/STAGE19-4-FINAL-PACKAGE-EVIDENCE.json
+          retention-days: 7
+          if-no-files-found: error

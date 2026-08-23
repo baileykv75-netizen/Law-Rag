@@ -1,6 +1,8 @@
 param(
     [string]$BundleDir = (Join-Path $PSScriptRoot "dist\Law-Rag"),
-    [string]$OutputDir = (Join-Path $PSScriptRoot "installer-dist")
+    [string]$OutputDir = (Join-Path $PSScriptRoot "installer-dist"),
+    [string]$ReleaseLabel = "0.8.0-rc2",
+    [string]$AppVersion = "0.8.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +13,11 @@ $MarkerFile = Join-Path $PSScriptRoot "installer\.law-rag-installed"
 $Exe = Join-Path $BundleDir "Law-Rag.exe"
 
 if ($env:OS -ne "Windows_NT") { throw "Stage 19.1 installer build is Windows-only." }
+if ($ReleaseLabel -notmatch '^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$') { throw "ReleaseLabel must look like 0.8.0-rc3." }
+if ($AppVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "AppVersion must look like 0.8.0." }
+if (-not $ReleaseLabel.StartsWith("$AppVersion-", [StringComparison]::Ordinal)) {
+    throw "ReleaseLabel '$ReleaseLabel' must belong to AppVersion '$AppVersion'."
+}
 if (-not (Test-Path $Exe)) { throw "Validated onedir Law-Rag.exe is missing: $Exe" }
 if (Test-Path (Join-Path $BundleDir "runtime")) {
     throw "Refusing to package a bundle that already contains runtime user data."
@@ -32,12 +39,12 @@ New-Item -ItemType Directory -Path $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
 
 # The .iss script validates PREPROCVER during the actual compile and rejects
-# compiler families older than 6.x or newer than 6.x. This avoids relying on
-# Windows PE version metadata or CLI options that differ between Inno families.
-& $Iscc "/DBundleDir=$BundleDir" "/DOutputDir=$OutputDir" "/DMarkerFile=$MarkerFile" $InstallerScript
+# compiler families older than 6.x or newer than 6.x. Release identity is passed
+# explicitly so later release candidates do not mutate historical Stage 19.1 defaults.
+& $Iscc "/DBundleDir=$BundleDir" "/DOutputDir=$OutputDir" "/DMarkerFile=$MarkerFile" "/DAppVersion=$AppVersion" "/DReleaseLabel=$ReleaseLabel" $InstallerScript
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed with exit code $LASTEXITCODE." }
 
-$Installer = Join-Path $OutputDir "Law-Rag-0.8.0-rc2-windows-x64-setup.exe"
+$Installer = Join-Path $OutputDir "Law-Rag-$ReleaseLabel-windows-x64-setup.exe"
 if (-not (Test-Path $Installer)) { throw "Expected installer was not produced: $Installer" }
 
 $SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim()
@@ -49,6 +56,8 @@ $Evidence = [ordered]@{
     schema_version = "1.0.0"
     stage = "19.1"
     source_sha = $SourceSha.ToLowerInvariant()
+    release_label = $ReleaseLabel
+    application_version = $AppVersion
     distribution_mode = "PER_USER_INSTALLER"
     install_root = "%LOCALAPPDATA%\\Programs\\Law-Rag"
     runtime_root = "%LOCALAPPDATA%\\Law-Rag\\runtime"
@@ -74,6 +83,7 @@ $EvidencePath = Join-Path $OutputDir "STAGE19-1-INSTALLER-EVIDENCE.json"
 $Evidence | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $EvidencePath
 
 Write-Host "[Law-Rag] Stage 19.1 validation installer: $Installer"
+Write-Host "[Law-Rag] Release identity: $ReleaseLabel / application $AppVersion"
 Write-Host "[Law-Rag] Inno Setup compiler family: 6.x (validated by ISPP PREPROCVER during compilation)"
 Write-Host "[Law-Rag] Installer state: VALIDATION_ONLY_UNSIGNED"
 Write-Host "[Law-Rag] Runtime data is owned outside the application directory and is not an uninstall target."

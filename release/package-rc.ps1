@@ -1,10 +1,13 @@
+param(
+    [string]$Config = (Join-Path $PSScriptRoot "rc-config.json"),
+    [string]$Output = (Join-Path $PSScriptRoot "rc")
+)
+
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Backend = Join-Path $RepoRoot "backend"
 $ReleasePython = Join-Path $PSScriptRoot ".build-venv\Scripts\python.exe"
 $Bundle = Join-Path $PSScriptRoot "dist\Law-Rag"
-$Config = Join-Path $PSScriptRoot "rc-config.json"
-$Output = Join-Path $PSScriptRoot "rc"
 
 if (-not (Test-Path $ReleasePython)) {
     throw "Stage 11D isolated release environment is missing. Run release/build-windows.ps1 first."
@@ -12,6 +15,12 @@ if (-not (Test-Path $ReleasePython)) {
 if (-not (Test-Path (Join-Path $Bundle "Law-Rag.exe"))) {
     throw "Stage 11D onedir bundle is missing. Run release/build-windows.ps1 first."
 }
+if (-not (Test-Path $Config -PathType Leaf)) {
+    throw "RC packaging config is missing: $Config"
+}
+
+$Config = (Resolve-Path $Config).Path
+$Output = [IO.Path]::GetFullPath($Output)
 
 Push-Location $Backend
 try {
