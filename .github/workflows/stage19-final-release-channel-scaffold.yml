@@ -1,0 +1,169 @@
+name: Law-Rag Stage 19 Final Release Channel Scaffold
+
+on:
+  pull_request:
+    branches:
+      - stage19-4-final-docs-package
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-channel-scaffold:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+
+      - name: Parse final channel PowerShell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($File in @(
+            './release/new-stage19-3-update-manifest.ps1',
+            './release/verify-stage19-3-update.ps1',
+            './release/verify-stage19-final-release-channel.ps1',
+            './release/verify-stage19-final-acceptance.ps1'
+          )) {
+            $Tokens = $null
+            $Errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $File), [ref]$Tokens, [ref]$Errors) | Out-Null
+            if (@($Errors).Count -ne 0) {
+              throw "PowerShell parse failure in ${File}: $(@($Errors | ForEach-Object ToString) -join '; ')"
+            }
+            Write-Host "[Law-Rag] PowerShell parse PASS: $File"
+          }
+
+      - name: Exact safe URL without production channel evidence stays pending
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'channel-preflight-pending.json'
+          $Url = 'https://downloads.example.invalid/law-rag/Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-ReleaseChannel', 'test-channel',
+            '-PublicationUrl', $Url,
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 0) { throw "Safe preflight expected exit 0, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Gate = @($Report.gates | Where-Object name -eq 'RELEASE_CHANNEL')
+          if ($Report.acceptance_state -ne 'FINAL_ACCEPTANCE_PENDING' -or $Gate.Count -ne 1 -or $Gate[0].status -ne 'PENDING') {
+            throw 'Safe URL/channel text incorrectly completed RELEASE_CHANNEL without production CMS evidence.'
+          }
+          Write-Host '[Law-Rag] safe URL text without production channel evidence -> PENDING PASS'
+
+      - name: HTTPS URL for wrong file fails closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'channel-wrong-file.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-ReleaseChannel', 'test-channel',
+            '-PublicationUrl', 'https://downloads.example.invalid/law-rag/not-law-rag.exe',
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 2) { throw "Wrong-file URL expected exit 2, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Gate = @($Report.gates | Where-Object name -eq 'RELEASE_CHANNEL')
+          if ($Gate.Count -ne 1 -or $Gate[0].status -ne 'FAIL') { throw 'Wrong installer URL was not rejected.' }
+          Write-Host '[Law-Rag] HTTPS wrong installer filename -> FAIL PASS'
+
+      - name: HTTPS URL with query fails closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'channel-query.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-ReleaseChannel', 'test-channel',
+            '-PublicationUrl', 'https://downloads.example.invalid/law-rag/Law-Rag-0.8.0-rc3-windows-x64-setup.exe?token=fake',
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 2) { throw "Query URL expected exit 2, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Gate = @($Report.gates | Where-Object name -eq 'RELEASE_CHANNEL')
+          if ($Gate.Count -ne 1 -or $Gate[0].status -ne 'FAIL') { throw 'Query-bearing publication URL was not rejected.' }
+          Write-Host '[Law-Rag] HTTPS query-bearing installer URL -> FAIL PASS'
+
+      - name: Fabricated channel evidence without valid CMS semantics fails closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Evidence = Join-Path $env:RUNNER_TEMP 'fake-channel-evidence.json'
+          $Output = Join-Path $env:RUNNER_TEMP 'fake-channel-result.json'
+          $InstallerSha = '7' * 64
+          $Thumbprint = 'C' * 40
+          $Url = 'https://downloads.example.invalid/law-rag/Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+          @{
+            schema_version = '1.0.0'
+            stage = '19-final-release-channel'
+            source_sha = '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593'
+            release_label = '0.8.0-rc3'
+            release_channel = 'test-channel'
+            publication_url = $Url
+            passed = $true
+            expected_signer_thumbprint = $Thumbprint
+            distribution_candidate = @{
+              installer = @{
+                filename = 'Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+                sha256 = $InstallerSha
+                authenticode_status = 'Valid'
+                signer_thumbprint = $Thumbprint
+              }
+            }
+            update_manifest = @{
+              sha256 = ('8' * 64)
+              signature_sha256 = ('9' * 64)
+              cms_status = 'INVALID'
+              signer_thumbprint = $Thumbprint
+              source_commit_sha = '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593'
+              candidate_version = '0.8.0-rc3'
+              installer_filename = 'Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
+              installer_sha256 = $InstallerSha
+              artifact_url = $Url
+              eligible = $true
+            }
+            external_actions = @{
+              manifest_signing_executed_by_this_script = $false
+              authenticode_signing_executed_by_this_script = $false
+              provider_calls_executed_by_this_script = $false
+              publication_executed_by_this_script = $false
+            }
+          } | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 $Evidence
+
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-ReleaseChannelEvidencePath', $Evidence,
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 2) { throw "Fabricated channel evidence expected exit 2, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Gate = @($Report.gates | Where-Object name -eq 'RELEASE_CHANNEL')
+          if ($Gate.Count -ne 1 -or $Gate[0].status -ne 'FAIL') { throw 'Invalid CMS channel evidence was not rejected.' }
+          Write-Host '[Law-Rag] fabricated/invalid CMS channel evidence -> FAIL PASS'
+
+      - name: Confirm no signing or publication occurred
+        shell: pwsh
+        run: |
+          if ($env:DEEPSEEK_API_KEY -or $env:MOONSHOT_API_KEY) { throw 'Channel scaffold CI must not receive provider keys.' }
+          Write-Host '[Law-Rag] production Authenticode signing performed: false'
+          Write-Host '[Law-Rag] detached CMS production signing performed: false'
+          Write-Host '[Law-Rag] provider/network calls performed: false'
+          Write-Host '[Law-Rag] publication performed: false'
