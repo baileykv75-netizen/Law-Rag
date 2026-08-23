@@ -1,11 +1,11 @@
 param(
     [Parameter(Mandatory = $true)]
+    [string]$EngineeringPortablePath,
+    [Parameter(Mandatory = $true)]
     [string]$SignedRcDir,
     [Parameter(Mandatory = $true)]
     [string]$InstallerPath,
-    [Parameter(Mandatory = $true)]
-    [string]$ExpectedSourceSha,
-    [string]$ExpectedReleaseLabel = "0.8.0-rc3",
+    [string]$ConfigPath = (Join-Path $PSScriptRoot "stage19-final-acceptance-config.json"),
     [string]$ExpectedSignerThumbprint = $env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT,
     [string]$OutputPath = (Join-Path $PSScriptRoot "final-acceptance\STAGE19-FINAL-WINDOWS-SMOKE-EVIDENCE.json"),
     [int]$Port = 8920
@@ -13,8 +13,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 if ($env:OS -ne "Windows_NT") { throw "Stage 19 final Windows smoke is Windows-only." }
-if ($ExpectedSourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw "ExpectedSourceSha must be a full Git SHA." }
-$ExpectedSourceSha = $ExpectedSourceSha.ToLowerInvariant()
 
 function Normalize-Thumbprint([string]$Value) {
     if (-not $Value) { return "" }
@@ -38,25 +36,52 @@ function Signature-Record([string]$Path) {
     }
 }
 
+function Relative-Files([string]$Root) {
+    return @(Get-ChildItem $Root -Recurse -File | ForEach-Object {
+        [IO.Path]::GetRelativePath($Root, $_.FullName).Replace('\', '/')
+    } | Sort-Object)
+}
+
+if (-not (Test-Path $ConfigPath -PathType Leaf)) { throw "Final acceptance config is missing." }
+$Config = Get-Content $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$Baseline = $Config.engineering_candidate
+$ExpectedSourceSha = ([string]$Baseline.source_sha).ToLowerInvariant()
+$ExpectedReleaseLabel = [string]$Baseline.release_label
+$ExpectedEngineeringPortableSha = ([string]$Baseline.portable.sha256).ToLowerInvariant()
+$ExpectedEngineeringInstallerSha = ([string]$Baseline.installer.sha256).ToLowerInvariant()
+if ($ExpectedSourceSha -notmatch '^[0-9a-f]{40}$') { throw "Configured source SHA is invalid." }
+if ($ExpectedEngineeringPortableSha -notmatch '^[0-9a-f]{64}$') { throw "Configured engineering portable hash is invalid." }
+if ($ExpectedEngineeringInstallerSha -notmatch '^[0-9a-f]{64}$') { throw "Configured engineering installer hash is invalid." }
+
 $ExpectedSigner = Normalize-Thumbprint $ExpectedSignerThumbprint
 if (-not $ExpectedSigner) { throw "An explicit expected production signer thumbprint is required." }
 if ($ExpectedSigner.Length -ne 40 -and $ExpectedSigner.Length -ne 64) {
     throw "Expected signer thumbprint must normalize to SHA-1 or SHA-256 length."
 }
 
+$EngineeringPortablePath = (Resolve-Path $EngineeringPortablePath).Path
 $SignedRcDir = (Resolve-Path $SignedRcDir).Path
 $InstallerPath = (Resolve-Path $InstallerPath).Path
+if ((Sha256 $EngineeringPortablePath) -ne $ExpectedEngineeringPortableSha) {
+    throw "Engineering portable input does not match the frozen Stage 19.4 baseline hash."
+}
+if ((Sha256 $InstallerPath) -eq $ExpectedEngineeringInstallerSha) {
+    throw "Final installer is byte-identical to the unsigned Stage 19.4 installer; production signing/rebuild was not applied."
+}
+
 $ManifestPath = Join-Path $SignedRcDir "RC-MANIFEST.json"
 $SumsPath = Join-Path $SignedRcDir "SHA256SUMS.txt"
 if (-not (Test-Path $ManifestPath -PathType Leaf)) { throw "Signed portable RC manifest is missing." }
 if (-not (Test-Path $SumsPath -PathType Leaf)) { throw "Signed portable RC SHA256SUMS is missing." }
-
 $Manifest = Get-Content $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$Manifest.rc_version -ne $ExpectedReleaseLabel) { throw "Signed portable release label mismatch." }
 if (([string]$Manifest.source_commit_sha).ToLowerInvariant() -ne $ExpectedSourceSha) { throw "Signed portable source SHA mismatch." }
 $ZipPath = Join-Path $SignedRcDir ([string]$Manifest.artifact.filename)
 if (-not (Test-Path $ZipPath -PathType Leaf)) { throw "Manifest-declared signed portable ZIP is missing." }
 $ZipSha = Sha256 $ZipPath
+if ($ZipSha -eq $ExpectedEngineeringPortableSha) {
+    throw "Signed portable is byte-identical to the unsigned Stage 19.4 portable; production executable signing was not applied."
+}
 if ($ZipSha -ne ([string]$Manifest.artifact.sha256).ToLowerInvariant()) { throw "Signed portable ZIP hash does not match manifest." }
 if ((Get-Item $ZipPath).Length -ne [int64]$Manifest.artifact.size_bytes) { throw "Signed portable ZIP size does not match manifest." }
 $SumsText = Get-Content $SumsPath -Raw -Encoding UTF8
@@ -64,17 +89,42 @@ if ($SumsText -notmatch [regex]::Escape("$ZipSha  $([IO.Path]::GetFileName($ZipP
     throw "Signed portable SHA256SUMS does not bind the exact ZIP."
 }
 
-$ExtractRoot = Join-Path $env:RUNNER_TEMP ("law-rag-final-signed-" + [guid]::NewGuid().ToString("N"))
+$BaselineExtractRoot = Join-Path $env:RUNNER_TEMP ("law-rag-final-baseline-" + [guid]::NewGuid().ToString("N"))
+$SignedExtractRoot = Join-Path $env:RUNNER_TEMP ("law-rag-final-signed-" + [guid]::NewGuid().ToString("N"))
 $PreviousDeepSeek = $env:DEEPSEEK_API_KEY
 $PreviousKimi = $env:MOONSHOT_API_KEY
 try {
     Remove-Item Env:DEEPSEEK_API_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:MOONSHOT_API_KEY -ErrorAction SilentlyContinue
 
-    Expand-Archive -Path $ZipPath -DestinationPath $ExtractRoot -Force
-    $Bundle = Join-Path $ExtractRoot "Law-Rag"
+    Expand-Archive -Path $EngineeringPortablePath -DestinationPath $BaselineExtractRoot -Force
+    Expand-Archive -Path $ZipPath -DestinationPath $SignedExtractRoot -Force
+    $BaselineBundle = Join-Path $BaselineExtractRoot "Law-Rag"
+    $Bundle = Join-Path $SignedExtractRoot "Law-Rag"
+    $BaselineExe = Join-Path $BaselineBundle "Law-Rag.exe"
     $ExePath = Join-Path $Bundle "Law-Rag.exe"
-    if (-not (Test-Path $ExePath -PathType Leaf)) { throw "Signed portable ZIP does not contain Law-Rag.exe." }
+    if (-not (Test-Path $BaselineExe -PathType Leaf) -or -not (Test-Path $ExePath -PathType Leaf)) {
+        throw "Baseline or signed portable ZIP does not contain Law-Rag.exe."
+    }
+
+    $BaselineFiles = Relative-Files $BaselineBundle
+    $SignedFiles = Relative-Files $Bundle
+    $FileListDifference = @(Compare-Object $BaselineFiles $SignedFiles)
+    if ($FileListDifference.Count -ne 0) {
+        throw "Signed portable file list differs from the exact Stage 19.4 baseline."
+    }
+
+    $ChangedPaths = New-Object System.Collections.Generic.List[string]
+    foreach ($RelativePath in $BaselineFiles) {
+        $BaselineFile = Join-Path $BaselineBundle ($RelativePath.Replace('/', '\'))
+        $SignedFile = Join-Path $Bundle ($RelativePath.Replace('/', '\'))
+        $BaselineHash = Sha256 $BaselineFile
+        $SignedHash = Sha256 $SignedFile
+        if ($BaselineHash -ne $SignedHash) { $ChangedPaths.Add($RelativePath) }
+    }
+    if ($ChangedPaths.Count -ne 1 -or $ChangedPaths[0] -ne "Law-Rag.exe") {
+        throw "Signed portable may differ from the exact Stage 19.4 baseline only at Law-Rag.exe; changed paths: $($ChangedPaths -join ', ')."
+    }
 
     $MetadataPath = Join-Path $Bundle "_internal\release\release-metadata.json"
     if (-not (Test-Path $MetadataPath -PathType Leaf)) { throw "Signed portable release metadata is missing." }
@@ -123,6 +173,17 @@ try {
         production_signed = $true
         provider_network_calls = 0
         expected_signer_thumbprint = $ExpectedSigner
+        engineering_baseline = [ordered]@{
+            portable_sha256 = $ExpectedEngineeringPortableSha
+            installer_sha256 = $ExpectedEngineeringInstallerSha
+        }
+        transformation = [ordered]@{
+            exact_baseline_portable_verified = $true
+            file_list_identical = $true
+            changed_paths = @($ChangedPaths)
+            only_authenticode_target_changed = $true
+            installer_built_from_same_signed_executable = $true
+        }
         distribution_candidate = [ordered]@{
             portable = [ordered]@{
                 filename = [IO.Path]::GetFileName($ZipPath)
@@ -147,6 +208,7 @@ try {
             }
         }
         checks = [ordered]@{
+            baseline_to_signed_transformation = $true
             portable_manifest_hash = $true
             embedded_source_identity = $true
             portable_executable_signature = $true
@@ -166,8 +228,10 @@ try {
 
     $Parent = Split-Path $OutputPath -Parent
     if ($Parent) { New-Item -ItemType Directory -Path $Parent -Force | Out-Null }
-    $Evidence | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 $OutputPath
+    $Evidence | ConvertTo-Json -Depth 12 | Set-Content -Encoding UTF8 $OutputPath
     Write-Host "[Law-Rag] Stage 19 final signed Windows smoke PASS"
+    Write-Host "[Law-Rag] Exact engineering baseline -> signed candidate transformation PASS"
+    Write-Host "[Law-Rag] Changed portable path: Law-Rag.exe only"
     Write-Host "[Law-Rag] Source SHA: $ExpectedSourceSha"
     Write-Host "[Law-Rag] Signed portable SHA-256: $ZipSha"
     Write-Host "[Law-Rag] Signed executable SHA-256: $($ExeSignature.sha256)"
@@ -177,5 +241,6 @@ try {
 finally {
     if ($null -eq $PreviousDeepSeek) { Remove-Item Env:DEEPSEEK_API_KEY -ErrorAction SilentlyContinue } else { $env:DEEPSEEK_API_KEY = $PreviousDeepSeek }
     if ($null -eq $PreviousKimi) { Remove-Item Env:MOONSHOT_API_KEY -ErrorAction SilentlyContinue } else { $env:MOONSHOT_API_KEY = $PreviousKimi }
-    if (Test-Path $ExtractRoot) { Remove-Item $ExtractRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $BaselineExtractRoot) { Remove-Item $BaselineExtractRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $SignedExtractRoot) { Remove-Item $SignedExtractRoot -Recurse -Force -ErrorAction SilentlyContinue }
 }
