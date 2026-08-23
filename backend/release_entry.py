@@ -87,6 +87,17 @@ if __name__ == "__main__":
 
         raise SystemExit(run_packaged_report_renderer_diagnostic())
 
+    # This branch intentionally builds the limited tester distribution. The
+    # release entry point sets the requirement itself instead of trusting an
+    # external environment value, so a tester cannot disable the gate by
+    # launching the packaged EXE with LAW_RAG_TESTER_LICENSE_REQUIRED=0.
+    os.environ["LAW_RAG_TESTER_LICENSE_REQUIRED"] = "1"
+
+    import app.main as main_module
+    from app.tester_license import TesterLicenseMiddleware
+
+    main_module.app = TesterLicenseMiddleware(main_module.app)
+
     from app.release_launcher import main
 
     raise SystemExit(main())
