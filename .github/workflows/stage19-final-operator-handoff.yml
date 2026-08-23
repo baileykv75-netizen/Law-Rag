@@ -55,6 +55,10 @@ jobs:
           if ($Plan.authorization_state -ne 'NOT_EVALUATED_BY_THIS_SCRIPT') { throw 'Operator plan claimed an authorization state.' }
           if ($Plan.executes_external_actions) { throw 'Operator plan claims it executes external actions.' }
           if ($Plan.engineering_baseline.source_sha -ne '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593') { throw 'Frozen source SHA mismatch.' }
+          if ($Plan.engineering_baseline.source_workflow_run_id -ne '32629468653') { throw 'Frozen source workflow run mismatch.' }
+          if ($Plan.engineering_baseline.source_artifact_id -ne '9490770536') { throw 'Frozen source artifact ID mismatch.' }
+          if ($Plan.engineering_baseline.retained_artifact_id -ne '9491794952') { throw 'Frozen retained artifact ID mismatch.' }
+          if ($Plan.engineering_baseline.retained_until_utc -ne '2026-11-21T10:29:51Z') { throw 'Frozen retention expiry mismatch.' }
           if ($Plan.engineering_baseline.portable.sha256 -ne '9ba6c15cab5aa97820311ee97589ed338d88b9fad81ab6b96d06ff6162b6e796') { throw 'Frozen portable SHA mismatch.' }
           if ($Plan.engineering_baseline.installer.sha256 -ne 'cc94adf002984c7bfd7d2c0b7c7fc30e4bf19a95add655c448ace8a5deeb1ef8') { throw 'Frozen installer SHA mismatch.' }
           Write-Host '[Law-Rag] missing owner inputs -> pending provider-free plan PASS'
