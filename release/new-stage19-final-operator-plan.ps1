@@ -45,7 +45,7 @@ $ExpectedInstallerSha = ([string]$Baseline.installer.sha256).ToLowerInvariant()
 $SourceRunId = [string]$Baseline.source_workflow_run_id
 $SourceArtifactId = [string]$Baseline.source_artifact_id
 $RetainedArtifactId = [string]$Baseline.retained_artifact_id
-$RetainedUntilUtc = [string]$Baseline.retained_until_utc
+$RetainedUntilRaw = $Baseline.retained_until_utc
 
 if ($ExpectedSourceSha -notmatch '^[0-9a-f]{40}$') { throw "Configured source SHA is invalid." }
 if ($ExpectedPortableSha -notmatch '^[0-9a-f]{64}$') { throw "Configured portable SHA-256 is invalid." }
@@ -53,7 +53,8 @@ if ($ExpectedInstallerSha -notmatch '^[0-9a-f]{64}$') { throw "Configured instal
 if ($ExpectedPortableFilename -ne [IO.Path]::GetFileName($ExpectedPortableFilename)) { throw "Configured portable filename is invalid." }
 if ($ExpectedInstallerFilename -ne [IO.Path]::GetFileName($ExpectedInstallerFilename)) { throw "Configured installer filename is invalid." }
 $RetainedUntilParsed = [DateTimeOffset]::MinValue
-if (-not [DateTimeOffset]::TryParse($RetainedUntilUtc, [ref]$RetainedUntilParsed)) { throw "Configured retained_until_utc is invalid." }
+if (-not [DateTimeOffset]::TryParse([string]$RetainedUntilRaw, [ref]$RetainedUntilParsed)) { throw "Configured retained_until_utc is invalid." }
+$RetainedUntilUtc = $RetainedUntilParsed.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", [Globalization.CultureInfo]::InvariantCulture)
 if ($Config.external_action_policy.production_signing_automatic -or
     $Config.external_action_policy.provider_network_calls_automatic -or
     $Config.external_action_policy.private_expert_execution_automatic -or
