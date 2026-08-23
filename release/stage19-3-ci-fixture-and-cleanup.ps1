@@ -285,7 +285,7 @@ function Read-CleanupThumbprintsLoose {
             }
         }
         catch {
-            Write-Warning "Could not snapshot cleanup identifiers from $Path: $($_.Exception.Message)"
+            Write-Warning "Could not snapshot cleanup identifiers from ${Path}: $($_.Exception.Message)"
         }
     }
     return @($Values)
