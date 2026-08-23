@@ -46,6 +46,38 @@ jobs:
           }
           Write-Host '[Law-Rag] tester-distribution PowerShell parse PASS'
 
+      - name: Assert required tester scenarios are documented
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Guide = Get-Content './docs/STAGE19_UNSIGNED_TESTER_DISTRIBUTION.md' -Raw -Encoding UTF8
+          $Feedback = Get-Content './docs/STAGE19_TESTER_FEEDBACK_TEMPLATE.md' -Raw -Encoding UTF8
+
+          foreach ($Required in @(
+            '## Required test — Offline OCR',
+            'Fully disconnect the test PC from the network',
+            'no model/runtime download is required',
+            '## Required test — Report export',
+            'Export **DOCX**',
+            'PDF_REPORT_EXPORT'
+          )) {
+            if (-not $Guide.Contains($Required)) { throw "Tester guide is missing required scenario text: $Required" }
+          }
+
+          foreach ($Required in @(
+            '## Required — Offline OCR',
+            'Internet disconnected before import',
+            'Offline OCR overall result: PASS / FAIL',
+            '## Required — Report export',
+            'DOCX report export overall result',
+            'PDF report export overall result'
+          )) {
+            if (-not $Feedback.Contains($Required)) { throw "Tester feedback template is missing required field: $Required" }
+          }
+
+          Write-Host '[Law-Rag] required offline OCR tester scenario PASS'
+          Write-Host '[Law-Rag] required report export tester scenario PASS'
+
       - name: Download exact retained Stage 19.4 candidate
         uses: actions/download-artifact@v4
         with:
