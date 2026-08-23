@@ -9,7 +9,7 @@ portable:  Law-Rag-0.8.0-rc3-windows-x64.zip
 installer: Law-Rag-0.8.0-rc3-windows-x64-setup.exe
 ```
 
-The RC3 engineering candidate is not yet production-signed or publicly published. Final signing/publication remains a separate acceptance gate.
+This static packaged guide does not assert the live signing or publication state of the particular RC3 file in front of you. Stage 19.4 produces a validation-only engineering baseline; any later production signing/publication state must be established by the release-specific signing evidence, exact hashes and final-acceptance record for that distribution candidate.
 
 ## Start and quit
 
@@ -138,7 +138,7 @@ Stage 19.3 defines a fail-closed candidate verification boundary. An update cand
 
 There is no unsigned fallback, signer substitution, HTTP fallback, same/older-version acceptance, background polling, unattended download, or silent installer execution in Stage 19.3/19.4.
 
-The final public update channel and publication URL are owner/final-acceptance decisions.
+The effective public update channel and publication URL, when one exists, are recorded by the owner/final-acceptance evidence rather than inferred from this static packaged guide.
 
 ## Release metadata and notices
 
@@ -146,13 +146,15 @@ Packaged artifacts include reproducibility metadata, dependency inventories, OCR
 
 These records support release review; they are not an automatic legal conclusion that every redistribution obligation is satisfied. Project-level licensing/public-distribution decisions remain explicit owner review items.
 
-## RC3 acceptance status
+## RC3 acceptance semantics
 
-Stage 19.4 may conclude only:
+The Stage 19.4 engineering baseline may conclude only:
 
 ```text
 engineering: READY_FOR_FINAL_ACCEPTANCE
 publication: FINAL_ACCEPTANCE_PENDING
 ```
 
-Before a broader public release, final acceptance still requires the real production signing/publication decision, private expert evidence, explicit paid/network DeepSeek + Kimi UAT, Stage 16 complete-evidence closure, and a final packaged Windows acceptance run on the intended distribution candidate.
+A later RC3 distribution is publishable only if separate final-acceptance evidence records the required production signer, release channel/URL decision, private expert evidence, explicit paid/network DeepSeek + Kimi UAT, Stage 16 complete-evidence closure, and final packaged Windows acceptance on the intended signed distribution candidate.
+
+Do not infer that those gates are pending or complete from this static guide alone. Use the release-specific final-acceptance evidence and exact artifact hashes for the particular distribution candidate.
