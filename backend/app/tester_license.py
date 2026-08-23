@@ -98,7 +98,7 @@ def verify_tester_license_token(
     token: str,
     *,
     now: datetime | None = None,
-    public_key_b64: str = TESTER_LICENSE_PUBLIC_KEY_B64,
+    public_key_b64: str | None = None,
     expected_release_label: str = TESTER_RELEASE_LABEL,
 ) -> TesterLicenseStatus:
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -110,7 +110,7 @@ def verify_tester_license_token(
     try:
         payload_bytes = _b64url_decode(parts[1])
         signature = _b64url_decode(parts[2])
-        public_key_bytes = _b64url_decode(public_key_b64)
+        public_key_bytes = _b64url_decode(public_key_b64 or TESTER_LICENSE_PUBLIC_KEY_B64)
         if len(public_key_bytes) != 32:
             raise ValueError("Ed25519 public key must contain 32 bytes")
         Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(signature, payload_bytes)
