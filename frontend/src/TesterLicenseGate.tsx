@@ -135,7 +135,7 @@ export default function TesterLicenseGate({ children }: Props) {
 
         <div className="tester-license-state" data-state={status?.state ?? 'UNKNOWN'}>
           <strong>{status?.state ?? 'STATUS UNAVAILABLE'}</strong>
-          <span>{status?.detail ?? message || '无法读取许可证状态。'}</span>
+          <span>{status?.detail ?? (message || '无法读取许可证状态。')}</span>
           {status?.expires_at_utc ? <span>当前许可证到期：{formatExpiry(status.expires_at_utc)}</span> : null}
         </div>
 
