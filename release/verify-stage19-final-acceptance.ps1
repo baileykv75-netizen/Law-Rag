@@ -47,7 +47,7 @@ if ($Config.external_action_policy.production_signing_automatic -or
     throw "Final acceptance config must not authorize automatic external/signing/publication actions."
 }
 
-$Gates = New-Object System.Collections.Generic.List[object]
+$Gates = @()
 
 if (-not $EngineeringEvidencePath) {
     $EngineeringGate = New-Gate "ENGINEERING_BASELINE" "PENDING" "Stage 19.4 final package evidence was not supplied to this run."
@@ -71,7 +71,7 @@ if (-not $EngineeringEvidencePath) {
         New-Gate "ENGINEERING_BASELINE" "FAIL" "Stage 19.4 evidence does not match the frozen engineering baseline."
     }
 }
-$Gates.Add($EngineeringGate)
+$Gates += $EngineeringGate
 
 $Signing = $null
 if (-not $SigningEvidencePath) {
@@ -102,7 +102,7 @@ if (-not $SigningEvidencePath) {
         New-Gate "PRODUCTION_SIGNING" "FAIL" "Production signing evidence is present but not publishable under the configured signer identity."
     }
 }
-$Gates.Add($SigningGate)
+$Gates += $SigningGate
 
 if (-not $ReleaseChannel -or -not $PublicationUrl) {
     $ChannelGate = New-Gate "RELEASE_CHANNEL" "PENDING" "Final release channel and HTTPS publication URL have not both been supplied."
@@ -115,7 +115,7 @@ if (-not $ReleaseChannel -or -not $PublicationUrl) {
         $ChannelGate = New-Gate "RELEASE_CHANNEL" "FAIL" "Publication URL must be an absolute HTTPS URL."
     }
 }
-$Gates.Add($ChannelGate)
+$Gates += $ChannelGate
 
 $Stage16 = $null
 if (-not $Stage16EvidencePath) {
@@ -180,9 +180,9 @@ if (-not $Stage16EvidencePath) {
         $Stage16Gate = New-Gate "STAGE16_COMPLETE_EVIDENCE" "PENDING" "Stage 16 matrix is structurally recognized but required external evidence is still incomplete."
     }
 }
-$Gates.Add($PrivateGate)
-$Gates.Add($UatGate)
-$Gates.Add($Stage16Gate)
+$Gates += $PrivateGate
+$Gates += $UatGate
+$Gates += $Stage16Gate
 
 $Smoke = $null
 if (-not $WindowsSmokeEvidencePath) {
@@ -237,7 +237,7 @@ if (-not $WindowsSmokeEvidencePath) {
         New-Gate "FINAL_WINDOWS_SMOKE" "FAIL" "Final Windows smoke evidence is invalid, lacks exact baseline provenance, or does not match the production signing evidence."
     }
 }
-$Gates.Add($SmokeGate)
+$Gates += $SmokeGate
 
 $AnyFail = @($Gates | Where-Object { $_.status -eq "FAIL" }).Count -gt 0
 $AllPass = @($Gates | Where-Object { $_.status -ne "PASS" }).Count -eq 0
