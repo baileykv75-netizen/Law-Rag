@@ -1,0 +1,170 @@
+name: Law-Rag Stage 19 Final Acceptance Scaffold
+
+on:
+  pull_request:
+    branches:
+      - stage19-4-final-docs-package
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  final-acceptance-scaffold:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+
+      - name: Parse final acceptance PowerShell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Files = @(
+            './release/package-rc.ps1',
+            './release/build-installer.ps1',
+            './release/verify-stage19-2-signing.ps1',
+            './release/smoke-stage19-1-installer.ps1',
+            './release/smoke-stage19-final-windows.ps1',
+            './release/verify-stage19-final-acceptance.ps1'
+          )
+          foreach ($File in $Files) {
+            $Tokens = $null
+            $Errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $File), [ref]$Tokens, [ref]$Errors) | Out-Null
+            if (@($Errors).Count -ne 0) {
+              $Rendered = @($Errors | ForEach-Object { $_.ToString() }) -join "`n"
+              throw "PowerShell parse failure in ${File}:`n$Rendered"
+            }
+            Write-Host "[Law-Rag] PowerShell parse PASS: $File"
+          }
+
+      - name: Validate frozen final-acceptance baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Config = Get-Content ./release/stage19-final-acceptance-config.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Config.schema_version -ne '1.0.0') { throw 'Config schema mismatch.' }
+          if ($Config.engineering_candidate.source_sha -ne '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593') { throw 'Frozen source SHA mismatch.' }
+          if ($Config.engineering_candidate.portable.sha256 -ne '9ba6c15cab5aa97820311ee97589ed338d88b9fad81ab6b96d06ff6162b6e796') { throw 'Frozen portable SHA mismatch.' }
+          if ($Config.engineering_candidate.installer.sha256 -ne 'cc94adf002984c7bfd7d2c0b7c7fc30e4bf19a95add655c448ace8a5deeb1ef8') { throw 'Frozen installer SHA mismatch.' }
+          if ($Config.engineering_candidate.source_artifact_id -ne '9490770536') { throw 'Frozen source artifact mismatch.' }
+          if ($Config.engineering_candidate.retained_artifact_id -ne '9491794952') { throw 'Frozen retained artifact mismatch.' }
+          if ($Config.external_action_policy.production_signing_automatic) { throw 'Production signing must remain non-automatic.' }
+          if ($Config.external_action_policy.provider_network_calls_automatic) { throw 'Provider network calls must remain non-automatic.' }
+          if ($Config.external_action_policy.private_expert_execution_automatic) { throw 'Private expert execution must remain non-automatic.' }
+          if ($Config.external_action_policy.publication_automatic) { throw 'Publication must remain non-automatic.' }
+          $ExpectedGates = @('ENGINEERING_BASELINE','PRODUCTION_SIGNING','RELEASE_CHANNEL','PRIVATE_EXPERT','REAL_PROVIDER_UAT','STAGE16_COMPLETE_EVIDENCE','FINAL_WINDOWS_SMOKE')
+          if (@($Config.required_gates).Count -ne $ExpectedGates.Count) { throw 'Required final gate count mismatch.' }
+          foreach ($Gate in $ExpectedGates) {
+            if ($Gate -notin @($Config.required_gates)) { throw "Required final gate missing: $Gate" }
+          }
+          Write-Host '[Law-Rag] Frozen Stage 19 final acceptance baseline PASS'
+
+      - name: Prove incomplete evidence remains pending
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'stage19-final-pending.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 0) { throw "Pending verifier unexpectedly exited $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Report.acceptance_state -ne 'FINAL_ACCEPTANCE_PENDING') { throw 'Incomplete acceptance did not remain PENDING.' }
+          if ($Report.complete) { throw 'Incomplete acceptance unexpectedly reported complete.' }
+          if (@($Report.gates | Where-Object status -eq 'FAIL').Count -ne 0) { throw 'Missing evidence was incorrectly converted into FAIL.' }
+          if ($Report.external_actions.production_signing_executed_by_this_script -or
+              $Report.external_actions.provider_network_calls_executed_by_this_script -or
+              $Report.external_actions.private_expert_evaluation_executed_by_this_script -or
+              $Report.external_actions.publication_executed_by_this_script) {
+            throw 'Verifier crossed an external-action boundary.'
+          }
+          Write-Host '[Law-Rag] Missing external evidence -> FINAL_ACCEPTANCE_PENDING PASS'
+
+      - name: Prove require-complete refuses pending evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'stage19-final-required.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-OutputPath', $Output, '-RequireComplete'
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 1) { throw "RequireComplete expected exit 1, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Report.acceptance_state -ne 'FINAL_ACCEPTANCE_PENDING' -or $Report.complete) {
+            throw 'RequireComplete changed the truthful pending evidence state.'
+          }
+          Write-Host '[Law-Rag] RequireComplete fail-closed pending refusal PASS'
+
+      - name: Prove invalid release URL fails closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'stage19-final-invalid-channel.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-ReleaseChannel', 'test-only',
+            '-PublicationUrl', 'http://example.invalid/law-rag',
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 2) { throw "Invalid channel expected exit 2, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Report.acceptance_state -ne 'FINAL_ACCEPTANCE_FAILED') { throw 'Invalid release URL did not fail final acceptance.' }
+          $Gate = @($Report.gates | Where-Object name -eq 'RELEASE_CHANNEL')
+          if ($Gate.Count -ne 1 -or $Gate[0].status -ne 'FAIL') { throw 'Invalid release URL did not fail RELEASE_CHANNEL.' }
+          Write-Host '[Law-Rag] HTTP publication URL fail-closed PASS'
+
+      - name: Prove malformed Stage 16 evidence fails closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Stage16 = Join-Path $env:RUNNER_TEMP 'stage16-malformed.json'
+          @{
+            schema_version = '1.0.0'
+            evaluator_version = 'stage16e-1.0.0'
+            engineering_ready = $true
+            stage16_evidence_complete = $true
+            pending_evidence_classes = @()
+            evidence = @(
+              @{ evidence_class = 'PUBLIC_REGRESSION'; status = 'PASS'; source_fingerprint = ('a' * 64) },
+              @{ evidence_class = 'PUBLIC_REGRESSION'; status = 'PASS'; source_fingerprint = ('b' * 64) }
+            )
+          } | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $Stage16
+          $Output = Join-Path $env:RUNNER_TEMP 'stage19-final-invalid-stage16.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-Stage16EvidencePath', $Stage16,
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 2) { throw "Malformed Stage 16 expected exit 2, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Gate = @($Report.gates | Where-Object name -eq 'STAGE16_COMPLETE_EVIDENCE')
+          if ($Gate.Count -ne 1 -or $Gate[0].status -ne 'FAIL') { throw 'Malformed Stage 16 evidence was not rejected.' }
+          Write-Host '[Law-Rag] Malformed/duplicate Stage 16 evidence fail-closed PASS'
+
+      - name: Confirm no external acceptance actions ran
+        shell: pwsh
+        run: |
+          if ($env:DEEPSEEK_API_KEY -or $env:MOONSHOT_API_KEY) {
+            throw 'Final acceptance scaffold CI must not receive provider API keys.'
+          }
+          Write-Host '[Law-Rag] production signing performed: false'
+          Write-Host '[Law-Rag] provider/network UAT performed: false'
+          Write-Host '[Law-Rag] private expert evidence performed: false'
+          Write-Host '[Law-Rag] publication performed: false'
