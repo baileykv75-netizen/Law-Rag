@@ -1,6 +1,12 @@
 param(
     [string]$RcDir = (Join-Path $PSScriptRoot "rc"),
-    [int]$Port = 8766
+    [int]$Port = 8766,
+    [string]$RequiredReleaseLabel = "0.8.0-rc2",
+    [string[]]$RequiredGuideText = @(
+        "Windows Credential Manager",
+        "500 MiB",
+        "继续 / 重试审计"
+    )
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,9 +17,15 @@ if (-not (Test-Path $ManifestPath) -or -not (Test-Path $SumsPath)) {
 }
 
 $Manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
+if ([string]$Manifest.rc_version -ne $RequiredReleaseLabel) {
+    throw "RC manifest version '$($Manifest.rc_version)' does not match required release label '$RequiredReleaseLabel'."
+}
 $ZipPath = Join-Path $RcDir $Manifest.artifact.filename
 if (-not (Test-Path $ZipPath)) {
     throw "Manifest-declared RC ZIP is missing: $($Manifest.artifact.filename)"
+}
+if (-not ([string]$Manifest.artifact.filename).Contains($RequiredReleaseLabel)) {
+    throw "Manifest artifact filename does not contain required release label '$RequiredReleaseLabel'."
 }
 
 $ActualZipHash = (Get-FileHash -Algorithm SHA256 $ZipPath).Hash.ToLowerInvariant()
@@ -38,14 +50,9 @@ try {
         throw "Extracted RC does not contain README-WINDOWS.md."
     }
     $BundledGuide = Get-Content $BundledGuidePath -Raw
-    foreach ($RequiredGuideText in @(
-        "0.8.0-rc2",
-        "Windows Credential Manager",
-        "500 MiB",
-        "继续 / 重试审计"
-    )) {
-        if (-not $BundledGuide.Contains($RequiredGuideText)) {
-            throw "Bundled README-WINDOWS.md is stale or incomplete; missing: $RequiredGuideText"
+    foreach ($RequiredText in @($RequiredReleaseLabel) + @($RequiredGuideText)) {
+        if (-not $BundledGuide.Contains($RequiredText)) {
+            throw "Bundled README-WINDOWS.md is stale or incomplete; missing: $RequiredText"
         }
     }
 
