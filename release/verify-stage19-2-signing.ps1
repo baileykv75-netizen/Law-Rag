@@ -3,6 +3,7 @@ param(
     [string]$InstallerPath = (Join-Path $PSScriptRoot "installer-dist\Law-Rag-0.8.0-rc2-windows-x64-setup.exe"),
     [string]$EvidencePath = (Join-Path $PSScriptRoot "installer-dist\STAGE19-2-SIGNING-EVIDENCE.json"),
     [string]$ExpectedSignerThumbprint = $env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT,
+    [string]$EvidenceSourceSha = "",
     [switch]$RequirePublishable
 )
 
@@ -81,9 +82,16 @@ if (-not $SignerConfigured) {
     $DecisionReason = "AUTHENTICODE_VALID_EXPECTED_SIGNER"
 }
 
-$SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
-if ($LASTEXITCODE -ne 0 -or $SourceSha -notmatch '^[0-9a-f]{40}$') {
-    throw "Could not resolve exact source SHA for Stage 19.2 signing evidence."
+if ($EvidenceSourceSha) {
+    $SourceSha = $EvidenceSourceSha.Trim().ToLowerInvariant()
+    if ($SourceSha -notmatch '^[0-9a-f]{40}$') {
+        throw "EvidenceSourceSha must be a full 40-character Git SHA when supplied."
+    }
+} else {
+    $SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $SourceSha -notmatch '^[0-9a-f]{40}$') {
+        throw "Could not resolve exact source SHA for Stage 19.2 signing evidence."
+    }
 }
 
 $Evidence = [ordered]@{
@@ -110,6 +118,7 @@ $Evidence | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $EvidencePath
 Write-Host "[Law-Rag] Stage 19.2 Authenticode state: $($Evidence.publication_state)"
 Write-Host "[Law-Rag] Publication allowed: $PublicationAllowed"
 Write-Host "[Law-Rag] Decision reason: $DecisionReason"
+Write-Host "[Law-Rag] Evidence source SHA: $SourceSha"
 Write-Host "[Law-Rag] Executable signature: $($Executable.authenticode_status)"
 Write-Host "[Law-Rag] Installer signature: $($Installer.authenticode_status)"
 Write-Host "[Law-Rag] Evidence: $EvidencePath"
