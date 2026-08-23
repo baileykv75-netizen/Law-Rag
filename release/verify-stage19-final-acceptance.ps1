@@ -33,10 +33,14 @@ if ([string]$Config.schema_version -ne "1.0.0") { throw "Unsupported final accep
 $Baseline = $Config.engineering_candidate
 $ExpectedSourceSha = ([string]$Baseline.source_sha).ToLowerInvariant()
 $ExpectedReleaseLabel = [string]$Baseline.release_label
+$ExpectedPortableFilename = [string]$Baseline.portable.filename
+$ExpectedInstallerFilename = [string]$Baseline.installer.filename
 $ExpectedPortableSha = ([string]$Baseline.portable.sha256).ToLowerInvariant()
 $ExpectedInstallerSha = ([string]$Baseline.installer.sha256).ToLowerInvariant()
 
 if ($ExpectedSourceSha -notmatch '^[0-9a-f]{40}$') { throw "Configured engineering source SHA is invalid." }
+if (-not $ExpectedPortableFilename -or $ExpectedPortableFilename -ne [IO.Path]::GetFileName($ExpectedPortableFilename)) { throw "Configured portable filename is invalid." }
+if (-not $ExpectedInstallerFilename -or $ExpectedInstallerFilename -ne [IO.Path]::GetFileName($ExpectedInstallerFilename)) { throw "Configured installer filename is invalid." }
 if (-not (Is-Sha256 $ExpectedPortableSha) -or -not (Is-Sha256 $ExpectedInstallerSha)) {
     throw "Configured Stage 19.4 artifact hashes are invalid."
 }
@@ -105,14 +109,22 @@ if (-not $SigningEvidencePath) {
 $Gates += $SigningGate
 
 if (-not $ReleaseChannel -or -not $PublicationUrl) {
-    $ChannelGate = New-Gate "RELEASE_CHANNEL" "PENDING" "Final release channel and HTTPS publication URL have not both been supplied."
+    $ChannelGate = New-Gate "RELEASE_CHANNEL" "PENDING" "Final release channel and exact HTTPS installer URL have not both been supplied."
 } else {
     $ParsedUrl = $null
-    $UrlOk = [Uri]::TryCreate($PublicationUrl, [UriKind]::Absolute, [ref]$ParsedUrl) -and $ParsedUrl.Scheme -eq "https"
-    if ($UrlOk) {
-        $ChannelGate = New-Gate "RELEASE_CHANNEL" "PASS" "Final release channel and HTTPS publication URL are explicitly recorded; no publication was performed."
+    $UrlOk = (
+        [Uri]::TryCreate($PublicationUrl, [UriKind]::Absolute, [ref]$ParsedUrl) -and
+        $ParsedUrl.Scheme -eq "https" -and
+        [bool]$ParsedUrl.Host -and
+        -not $ParsedUrl.UserInfo -and
+        -not $ParsedUrl.Query -and
+        -not $ParsedUrl.Fragment
+    )
+    $UrlFilename = if ($UrlOk) { [Uri]::UnescapeDataString([IO.Path]::GetFileName($ParsedUrl.AbsolutePath)) } else { "" }
+    if ($UrlOk -and $UrlFilename -eq $ExpectedInstallerFilename) {
+        $ChannelGate = New-Gate "RELEASE_CHANNEL" "PASS" "Final release channel records a safe HTTPS URL for the exact RC3 installer filename; no publication was performed."
     } else {
-        $ChannelGate = New-Gate "RELEASE_CHANNEL" "FAIL" "Publication URL must be an absolute HTTPS URL."
+        $ChannelGate = New-Gate "RELEASE_CHANNEL" "FAIL" "Publication URL must be safe absolute HTTPS with no credentials/query/fragment and must end with the exact frozen RC3 installer filename."
     }
 }
 $Gates += $ChannelGate
@@ -210,6 +222,8 @@ if (-not $WindowsSmokeEvidencePath) {
         [bool]$Smoke.transformation.installer_built_from_same_signed_executable -and
         [bool]$Smoke.checks.baseline_to_signed_transformation -and
         [bool]$Smoke.checks.installer_contains_same_signed_executable -and
+        [string]$Smoke.distribution_candidate.portable.filename -eq $ExpectedPortableFilename -and
+        [string]$Smoke.distribution_candidate.installer.filename -eq $ExpectedInstallerFilename -and
         (Is-Sha256 ([string]$Smoke.distribution_candidate.portable.sha256)) -and
         (Is-Sha256 ([string]$Smoke.distribution_candidate.executable.sha256)) -and
         (Is-Sha256 ([string]$Smoke.distribution_candidate.installer.sha256)) -and
