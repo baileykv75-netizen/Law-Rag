@@ -29,6 +29,14 @@ function Is-Sha256([string]$Value) {
     return [bool]($Value -match '^[0-9a-fA-F]{64}$')
 }
 
+function Is-Stage16Sha256([string]$Value) {
+    return [bool]($Value -match '^[0-9a-f]{64}$')
+}
+
+function Test-OptionalStage16Sha256([string]$Value) {
+    return (-not $Value -or (Is-Stage16Sha256 $Value))
+}
+
 function Test-SafeInstallerUrl {
     param([string]$Url, [string]$ExpectedFilename)
     $Uri = $null
@@ -208,23 +216,61 @@ if (-not $Stage16EvidencePath) {
     $PublicStatus = [string]$PublicItem.status
     $PrivateStatus = [string]$PrivateItem.status
     $UatStatus = [string]$UatItem.status
+    $PublicFingerprint = [string]$PublicItem.source_fingerprint
+    $PrivateFingerprint = [string]$PrivateItem.source_fingerprint
+    $UatFingerprint = [string]$UatItem.source_fingerprint
+
+    $FingerprintShapeOk = (
+        (Test-OptionalStage16Sha256 $PublicFingerprint) -and
+        (Test-OptionalStage16Sha256 $PrivateFingerprint) -and
+        (Test-OptionalStage16Sha256 $UatFingerprint)
+    )
+    $RequiredFingerprintsOk = (
+        ($PublicStatus -ne "PASS" -or (Is-Stage16Sha256 $PublicFingerprint)) -and
+        ($PrivateStatus -ne "PRESENT" -or (Is-Stage16Sha256 $PrivateFingerprint)) -and
+        ($UatStatus -ne "PASS" -or (Is-Stage16Sha256 $UatFingerprint))
+    )
+    $FingerprintsOk = (
+        (Is-Stage16Sha256 $PublicFingerprint) -and
+        (Is-Stage16Sha256 $PrivateFingerprint) -and
+        (Is-Stage16Sha256 $UatFingerprint)
+    )
 
     $PrivateGate = switch ($PrivateStatus) {
-        "PRESENT" { New-Gate "PRIVATE_EXPERT" "PASS" "Sanitized real private expert evidence is present in the Stage 16 matrix." }
-        "PENDING" { New-Gate "PRIVATE_EXPERT" "PENDING" "Real private expert evidence remains pending." }
+        "PRESENT" {
+            if (Is-Stage16Sha256 $PrivateFingerprint) {
+                New-Gate "PRIVATE_EXPERT" "PASS" "Sanitized real private expert evidence is present in the Stage 16 matrix."
+            } else {
+                New-Gate "PRIVATE_EXPERT" "FAIL" "Private expert evidence claims PRESENT without a valid Stage 16 source fingerprint."
+            }
+        }
+        "PENDING" {
+            if (Test-OptionalStage16Sha256 $PrivateFingerprint) {
+                New-Gate "PRIVATE_EXPERT" "PENDING" "Real private expert evidence remains pending."
+            } else {
+                New-Gate "PRIVATE_EXPERT" "FAIL" "Pending private expert evidence contains a malformed source fingerprint."
+            }
+        }
         default { New-Gate "PRIVATE_EXPERT" "FAIL" "Private expert evidence is absent, invalid, or structurally unusable." }
     }
     $UatGate = switch ($UatStatus) {
-        "PASS" { New-Gate "REAL_PROVIDER_UAT" "PASS" "Real-provider ISSUE_V1 UAT evidence passed Stage 16 validation." }
-        "PENDING" { New-Gate "REAL_PROVIDER_UAT" "PENDING" "Real-provider ISSUE_V1 UAT remains pending." }
+        "PASS" {
+            if (Is-Stage16Sha256 $UatFingerprint) {
+                New-Gate "REAL_PROVIDER_UAT" "PASS" "Real-provider ISSUE_V1 UAT evidence passed Stage 16 validation."
+            } else {
+                New-Gate "REAL_PROVIDER_UAT" "FAIL" "Real-provider UAT claims PASS without a valid Stage 16 source fingerprint."
+            }
+        }
+        "PENDING" {
+            if (Test-OptionalStage16Sha256 $UatFingerprint) {
+                New-Gate "REAL_PROVIDER_UAT" "PENDING" "Real-provider ISSUE_V1 UAT remains pending."
+            } else {
+                New-Gate "REAL_PROVIDER_UAT" "FAIL" "Pending real-provider UAT contains a malformed source fingerprint."
+            }
+        }
         default { New-Gate "REAL_PROVIDER_UAT" "FAIL" "Real-provider UAT evidence is present but did not pass Stage 16 validation." }
     }
 
-    $FingerprintsOk = (
-        (Is-Sha256 ([string]$PublicItem.source_fingerprint)) -and
-        (Is-Sha256 ([string]$PrivateItem.source_fingerprint)) -and
-        (Is-Sha256 ([string]$UatItem.source_fingerprint))
-    )
     $CompleteOk = (
         $Stage16SchemaOk -and
         $ClassShapeOk -and
@@ -238,8 +284,16 @@ if (-not $Stage16EvidencePath) {
     )
     if ($CompleteOk) {
         $Stage16Gate = New-Gate "STAGE16_COMPLETE_EVIDENCE" "PASS" "Stage 16 matrix has the pinned schema/evaluator, exact evidence classes, source fingerprints and complete public/private/UAT closure."
-    } elseif (-not $Stage16SchemaOk -or -not $ClassShapeOk -or $PublicStatus -eq "FAIL" -or $PrivateStatus -eq "FAIL" -or $UatStatus -eq "FAIL") {
-        $Stage16Gate = New-Gate "STAGE16_COMPLETE_EVIDENCE" "FAIL" "Stage 16 matrix is invalid or contains failed evidence."
+    } elseif (
+        -not $Stage16SchemaOk -or
+        -not $ClassShapeOk -or
+        -not $FingerprintShapeOk -or
+        -not $RequiredFingerprintsOk -or
+        $PublicStatus -eq "FAIL" -or
+        $PrivateStatus -eq "FAIL" -or
+        $UatStatus -eq "FAIL"
+    ) {
+        $Stage16Gate = New-Gate "STAGE16_COMPLETE_EVIDENCE" "FAIL" "Stage 16 matrix is invalid, contains failed evidence, or has malformed/missing fingerprints for completed evidence."
     } else {
         $Stage16Gate = New-Gate "STAGE16_COMPLETE_EVIDENCE" "PENDING" "Stage 16 matrix is structurally recognized but required external evidence is still incomplete."
     }
