@@ -105,7 +105,8 @@ if ((Normalize-Thumbprint ([string]$Manifest.artifact.authenticode_signer_thumbp
     throw "Update manifest declared signer does not match production signer."
 }
 
-$Scratch = Join-Path $env:RUNNER_TEMP ("law-rag-final-channel-" + [guid]::NewGuid().ToString('N'))
+$TempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+$Scratch = Join-Path $TempRoot ("law-rag-final-channel-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $Scratch -Force | Out-Null
 $Stage19EvidencePath = Join-Path $Scratch 'STAGE19-3-UPDATE-EVIDENCE.json'
 try {
