@@ -52,7 +52,8 @@ if ($ExpectedPortableSha -notmatch '^[0-9a-f]{64}$') { throw "Configured portabl
 if ($ExpectedInstallerSha -notmatch '^[0-9a-f]{64}$') { throw "Configured installer SHA-256 is invalid." }
 if ($ExpectedPortableFilename -ne [IO.Path]::GetFileName($ExpectedPortableFilename)) { throw "Configured portable filename is invalid." }
 if ($ExpectedInstallerFilename -ne [IO.Path]::GetFileName($ExpectedInstallerFilename)) { throw "Configured installer filename is invalid." }
-if ($RetainedUntilUtc -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$') { throw "Configured retained_until_utc is invalid." }
+$RetainedUntilParsed = [DateTimeOffset]::MinValue
+if (-not [DateTimeOffset]::TryParse($RetainedUntilUtc, [ref]$RetainedUntilParsed)) { throw "Configured retained_until_utc is invalid." }
 if ($Config.external_action_policy.production_signing_automatic -or
     $Config.external_action_policy.provider_network_calls_automatic -or
     $Config.external_action_policy.private_expert_execution_automatic -or
