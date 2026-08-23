@@ -84,16 +84,131 @@ function New-DotNetCiSigner {
     }
 }
 
+function Resolve-SignTool {
+    $Candidates = @()
+    $SdkBin = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    if (Test-Path $SdkBin -PathType Container) {
+        $Candidates += Get-Item (Join-Path $SdkBin '*\x64\signtool.exe') -ErrorAction SilentlyContinue
+    }
+    $OnPath = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($null -ne $OnPath) {
+        $Candidates += Get-Item $OnPath.Source -ErrorAction SilentlyContinue
+    }
+    $Tool = $Candidates |
+        Sort-Object @{ Expression = {
+            try { [version]$_.Directory.Parent.Name }
+            catch { [version]'0.0' }
+        }; Descending = $true } |
+        Select-Object -First 1
+    if ($null -eq $Tool) { throw "Windows SDK signtool.exe was not found." }
+    return $Tool.FullName
+}
+
+function Invoke-BoundedProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [int]$TimeoutSeconds,
+        [string]$Label
+    )
+    Write-Host "[Law-Rag][Stage19.3] START $Label"
+    $Start = [DateTimeOffset]::UtcNow
+    $Psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $Psi.FileName = $FilePath
+    $Psi.UseShellExecute = $false
+    foreach ($Argument in $Arguments) {
+        [void]$Psi.ArgumentList.Add($Argument)
+    }
+    $Process = [System.Diagnostics.Process]::new()
+    $Process.StartInfo = $Psi
+    try {
+        if (-not $Process.Start()) { throw "$Label failed to start." }
+        if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
+            try { $Process.Kill($true) } catch { }
+            throw "$Label timed out after $TimeoutSeconds seconds."
+        }
+        if ($Process.ExitCode -ne 0) {
+            throw "$Label failed with exit code $($Process.ExitCode)."
+        }
+        $Elapsed = [Math]::Round(([DateTimeOffset]::UtcNow - $Start).TotalSeconds, 1)
+        Write-Host "[Law-Rag][Stage19.3] PASS $Label (${Elapsed}s)"
+    }
+    finally {
+        $Process.Dispose()
+    }
+}
+
 function Sign-FileChecked {
     param(
         [string]$Path,
         [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
         [string]$Label
     )
-    Write-Host "[Law-Rag][Stage19.3] Signing $Label"
-    $Signed = Set-AuthenticodeSignature -FilePath $Path -Certificate $Certificate -HashAlgorithm SHA256
+    Invoke-BoundedProcess `
+        -FilePath $script:SignToolPath `
+        -Arguments @('sign', '/fd', 'SHA256', '/s', 'My', '/sha1', $Certificate.Thumbprint, $Path) `
+        -TimeoutSeconds 300 `
+        -Label "Authenticode signing: $Label"
+    Write-Host "[Law-Rag][Stage19.3] Checking Authenticode status for $Label"
+    $Signed = Get-AuthenticodeSignature -FilePath $Path
     if ($Signed.Status -ne 'Valid') {
         throw "$Label signature did not validate: $($Signed.Status) $($Signed.StatusMessage)"
+    }
+}
+
+function Corrupt-PeSectionByte {
+    param([string]$Path)
+
+    $Stream = $null
+    $Reader = $null
+    $Writer = $null
+    try {
+        $Stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        $Reader = [IO.BinaryReader]::new($Stream, [Text.Encoding]::ASCII, $true)
+        $Writer = [IO.BinaryWriter]::new($Stream, [Text.Encoding]::ASCII, $true)
+        if ($Stream.Length -lt 256) { throw "PE candidate is unexpectedly small." }
+
+        $Stream.Position = 0x3C
+        $PeOffset = $Reader.ReadInt32()
+        if ($PeOffset -lt 0x40 -or ($PeOffset + 24) -ge $Stream.Length) { throw "Invalid PE header offset." }
+        $Stream.Position = $PeOffset
+        if ($Reader.ReadUInt32() -ne 0x00004550) { throw "Invalid PE signature." }
+
+        $Stream.Position = $PeOffset + 6
+        $SectionCount = $Reader.ReadUInt16()
+        $Stream.Position = $PeOffset + 20
+        $OptionalHeaderSize = $Reader.ReadUInt16()
+        $SectionTable = [long]$PeOffset + 24 + $OptionalHeaderSize
+        if ($SectionCount -lt 1 -or ($SectionTable + (40L * $SectionCount)) -gt $Stream.Length) {
+            throw "Invalid PE section table."
+        }
+
+        $Mutated = $false
+        for ($Index = 0; $Index -lt $SectionCount; $Index++) {
+            $SectionOffset = $SectionTable + (40L * $Index)
+            $Stream.Position = $SectionOffset + 16
+            $RawSize = [long]$Reader.ReadUInt32()
+            $Stream.Position = $SectionOffset + 20
+            $RawPointer = [long]$Reader.ReadUInt32()
+            if ($RawSize -le 128 -or $RawPointer -le 0 -or ($RawPointer + $RawSize) -gt $Stream.Length) { continue }
+
+            $Delta = [Math]::Min(4096L, $RawSize - 1)
+            $MutationOffset = $RawPointer + $Delta
+            $Stream.Position = $MutationOffset
+            $Original = $Reader.ReadByte()
+            $Stream.Position = $MutationOffset
+            $Writer.Write([byte]($Original -bxor 0x01))
+            $Writer.Flush()
+            Write-Host "[Law-Rag][Stage19.3] Mutated hashed PE section byte at offset $MutationOffset"
+            $Mutated = $true
+            break
+        }
+        if (-not $Mutated) { throw "No suitable PE section was available for tamper validation." }
+    }
+    finally {
+        if ($null -ne $Writer) { $Writer.Dispose() }
+        if ($null -ne $Reader) { $Reader.Dispose() }
+        if ($null -ne $Stream) { $Stream.Dispose() }
     }
 }
 
@@ -145,12 +260,15 @@ try {
     $OtherThumbprint = $Other.Thumbprint.ToUpperInvariant()
     if ($PrimaryThumbprint -eq $OtherThumbprint) { throw "CI signing identities unexpectedly share a thumbprint." }
     $env:LAW_RAG_RELEASE_SIGNER_THUMBPRINT = $PrimaryThumbprint
+    $script:SignToolPath = Resolve-SignTool
+    Write-Host "[Law-Rag][Stage19.3] Using bounded Windows SDK signer: $script:SignToolPath"
 
     # Strong release-artifact path. The inherited Stage 19.1 installer has already
     # passed the unsigned-publication gate in the preceding workflow step. Move it
     # within the same workspace instead of copying hundreds of megabytes, then
     # sign and verify the exact bytes. After the positive decision is recorded,
-    # mutate that same candidate in place for the real artifact-tamper check.
+    # mutate a hashed PE section byte in that same candidate so the file remains a
+    # structurally parseable PE while both content hash and Authenticode must fail.
     Write-Host "[Law-Rag][Stage19.3] Validating real installer positive path"
     $Candidate = Join-Path $OutputDir 'Law-Rag-0.8.0-rc3-windows-x64-setup.exe'
     if (Test-Path $Candidate) { Remove-Item $Candidate -Force }
@@ -179,8 +297,7 @@ try {
     if ($Positive.provider_network_uat_executed -or $Positive.private_expert_evidence_executed) { throw "Stage 19.3 crossed a forbidden external-evidence boundary." }
 
     Write-Host "[Law-Rag][Stage19.3] Validating real installer tamper rejection"
-    $Stream = [IO.File]::Open($Candidate, [IO.FileMode]::Append, [IO.FileAccess]::Write)
-    try { $Stream.WriteByte(0x00) } finally { $Stream.Dispose() }
+    Corrupt-PeSectionByte -Path $Candidate
     $TamperedEvidence = Join-Path $OutputDir 'STAGE19-3-ARTIFACT-TAMPER.json'
     Invoke-ExpectedRefusal -Label 'installer-tamper' -Action {
         ./release/verify-stage19-3-update.ps1 -ManifestPath $ReleaseManifest.Manifest -ManifestSignaturePath $ReleaseManifest.Cms -InstallerPath $Candidate -CurrentVersion '0.8.0-rc2' -ExpectedSignerThumbprint $PrimaryThumbprint -EvidencePath $TamperedEvidence -RequireEligible
@@ -259,7 +376,7 @@ try {
     if ((Read-Evidence $HttpEvidence).rejection_reasons -notcontains 'ARTIFACT_URL_NOT_SAFE_HTTPS') { throw "HTTP candidate was not rejected." }
 
     Write-Host "[Law-Rag] Stage 19.3 safe-update trust chain PASS"
-    Write-Host "[Law-Rag] real installer positive + byte-tamper paths PASS"
+    Write-Host "[Law-Rag] real installer positive + PE-section-tamper paths PASS"
     Write-Host "[Law-Rag] manifest/signer/version/HTTPS negative paths PASS"
     Write-Host "[Law-Rag] provider/network calls: 0"
 }
