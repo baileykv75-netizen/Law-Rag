@@ -1,0 +1,158 @@
+name: Law-Rag Stage 19 Final Operator Handoff
+
+on:
+  pull_request:
+    branches:
+      - stage19-final-acceptance-scaffold-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  operator-handoff-provider-free:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+
+      - name: Parse provider-free operator plan
+        shell: pwsh
+        run: |
+          $Tokens = $null
+          $Errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path './release/new-stage19-final-operator-plan.ps1'),
+            [ref]$Tokens,
+            [ref]$Errors
+          ) | Out-Null
+          if (@($Errors).Count -ne 0) {
+            throw "Operator plan PowerShell parse failure: $(@($Errors | ForEach-Object ToString) -join '; ')"
+          }
+          Write-Host '[Law-Rag] operator plan PowerShell parse PASS'
+
+      - name: Missing owner inputs remain pending without external actions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'operator-plan-pending.json'
+          ./release/new-stage19-final-operator-plan.ps1 -OutputPath $Output
+          $Plan = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Plan.plan_state -ne 'OWNER_INPUTS_PENDING') { throw 'Missing owner inputs did not remain pending.' }
+          if ($Plan.authorization_state -ne 'NOT_EVALUATED_BY_THIS_SCRIPT') { throw 'Operator plan claimed an authorization state.' }
+          if ($Plan.executes_external_actions) { throw 'Operator plan claims it executes external actions.' }
+          if ($Plan.engineering_baseline.source_sha -ne '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593') { throw 'Frozen source SHA mismatch.' }
+          if ($Plan.engineering_baseline.portable.sha256 -ne '9ba6c15cab5aa97820311ee97589ed338d88b9fad81ab6b96d06ff6162b6e796') { throw 'Frozen portable SHA mismatch.' }
+          if ($Plan.engineering_baseline.installer.sha256 -ne 'cc94adf002984c7bfd7d2c0b7c7fc30e4bf19a95add655c448ace8a5deeb1ef8') { throw 'Frozen installer SHA mismatch.' }
+          Write-Host '[Law-Rag] missing owner inputs -> pending provider-free plan PASS'
+
+      - name: Structurally valid inputs never imply authorization
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'operator-plan-structurally-valid.json'
+          ./release/new-stage19-final-operator-plan.ps1 `
+            -ExpectedSignerThumbprint ('A' * 40) `
+            -ReleaseChannel 'test-channel' `
+            -PublicationUrl 'https://downloads.example.invalid/law-rag/Law-Rag-0.8.0-rc3-windows-x64-setup.exe' `
+            -OutputPath $Output `
+            -RequireOwnerInputs
+          $Plan = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Plan.plan_state -ne 'OWNER_INPUTS_STRUCTURALLY_VALID') { throw 'Structurally valid owner inputs were not recognized.' }
+          if (-not $Plan.owner_inputs.complete) { throw 'Complete structural owner inputs were not recorded.' }
+          if ($Plan.authorization_state -ne 'NOT_EVALUATED_BY_THIS_SCRIPT') { throw 'Structural validation was incorrectly treated as authorization.' }
+          if ($Plan.executes_external_actions) { throw 'Plan executed or claimed external actions.' }
+          foreach ($Boundary in @(
+            'production_signing_executed_by_this_script',
+            'cms_signing_executed_by_this_script',
+            'provider_network_calls_executed_by_this_script',
+            'private_expert_evaluation_executed_by_this_script',
+            'publication_executed_by_this_script'
+          )) {
+            if ([bool]$Plan.boundaries.$Boundary) { throw "External boundary crossed: $Boundary" }
+          }
+          Write-Host '[Law-Rag] structurally valid inputs != authorization PASS'
+
+      - name: Unsafe publication URL is rejected before plan creation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'operator-plan-unsafe-url.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/new-stage19-final-operator-plan.ps1'),
+            '-ExpectedSignerThumbprint', ('B' * 40),
+            '-ReleaseChannel', 'test-channel',
+            '-PublicationUrl', 'https://downloads.example.invalid/law-rag/Law-Rag-0.8.0-rc3-windows-x64-setup.exe?token=fake',
+            '-OutputPath', $Output,
+            '-RequireOwnerInputs'
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -eq 0) { throw 'Unsafe query-bearing URL was accepted.' }
+          if (Test-Path $Output) { throw 'Unsafe URL unexpectedly produced an operator plan.' }
+          Write-Host '[Law-Rag] unsafe publication URL rejection PASS'
+
+      - name: Required external steps stay explicitly classified
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Output = Join-Path $env:RUNNER_TEMP 'operator-plan-classification.json'
+          ./release/new-stage19-final-operator-plan.ps1 -OutputPath $Output
+          $Plan = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          $ExpectedExternal = @(
+            'SIGN_LAW_RAG_EXE',
+            'SIGN_INSTALLER',
+            'SIGN_UPDATE_MANIFEST_CMS',
+            'PRIVATE_EXPERT_EVIDENCE',
+            'REAL_PROVIDER_ISSUE_V1_UAT',
+            'PUBLICATION'
+          )
+          foreach ($Id in $ExpectedExternal) {
+            $Step = @($Plan.steps | Where-Object id -eq $Id)
+            if ($Step.Count -ne 1 -or -not [bool]$Step[0].executes_external_action -or [string]$Step[0].classification -notmatch '^AUTHORIZATION_REQUIRED_') {
+              throw "External step is not authorization-gated in the plan: $Id"
+            }
+          }
+          $SafeVerifier = @($Plan.steps | Where-Object id -eq 'VERIFY_FINAL_ACCEPTANCE')
+          if ($SafeVerifier.Count -ne 1 -or [bool]$SafeVerifier[0].executes_external_action) {
+            throw 'Final verifier was incorrectly classified as an external action.'
+          }
+          Write-Host '[Law-Rag] external-action classification PASS'
+
+      - name: Runbook preserves production boundaries
+        shell: pwsh
+        run: |
+          $Text = Get-Content ./docs/STAGE19_FINAL_ACCEPTANCE_OPERATOR_RUNBOOK.md -Raw -Encoding UTF8
+          foreach ($Required in @(
+            '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593',
+            '9ba6c15cab5aa97820311ee97589ed338d88b9fad81ab6b96d06ff6162b6e796',
+            'cc94adf002984c7bfd7d2c0b7c7fc30e4bf19a95add655c448ace8a5deeb1ef8',
+            'AUTHORIZATION REQUIRED',
+            'new-stage19-3-update-manifest.ps1',
+            'performs a real private-key CMS signing operation',
+            'FINAL_ACCEPTANCE_COMPLETE_NOT_PUBLISHED'
+          )) {
+            if (-not $Text.Contains($Required)) { throw "Operator runbook is missing required boundary text: $Required" }
+          }
+          Write-Host '[Law-Rag] operator runbook boundary text PASS'
+
+      - name: Confirm CI crossed no external boundary
+        shell: pwsh
+        run: |
+          if ($env:DEEPSEEK_API_KEY -or $env:MOONSHOT_API_KEY) { throw 'Operator handoff CI must not receive provider keys.' }
+          Write-Host '[Law-Rag] production signing performed: false'
+          Write-Host '[Law-Rag] CMS production signing performed: false'
+          Write-Host '[Law-Rag] provider/network UAT performed: false'
+          Write-Host '[Law-Rag] private expert evidence performed: false'
+          Write-Host '[Law-Rag] publication performed: false'
