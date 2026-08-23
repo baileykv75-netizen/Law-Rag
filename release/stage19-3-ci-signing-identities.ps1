@@ -62,7 +62,8 @@ function Record-CleanupThumbprint {
     param([string]$Thumbprint)
     $Normalized = Normalize-Thumbprint $Thumbprint
     if (-not $Normalized) { throw 'Refusing to journal an empty CI signing thumbprint.' }
-    $Thumbprints = @((Read-CleanupThumbprints) + @($Normalized) | Sort-Object -Unique)
+    $Existing = @(Read-CleanupThumbprints)
+    $Thumbprints = @($Existing + @($Normalized) | Sort-Object -Unique)
     $Journal = [ordered]@{
         schema_version = '1.0.0'
         thumbprints = $Thumbprints
@@ -177,7 +178,7 @@ function Invoke-Cleanup {
                 Write-Host "[Law-Rag][Stage19.3] PASS cleanup signer $Thumbprint from CurrentUser/$StoreName"
             }
             catch {
-                $Failures.Add("$Thumbprint@$StoreName: $($_.Exception.Message)")
+                $Failures.Add("${Thumbprint}@${StoreName}: $($_.Exception.Message)")
             }
         }
     }
