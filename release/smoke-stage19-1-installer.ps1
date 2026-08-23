@@ -1,7 +1,8 @@
 param(
     [string]$InstallerPath = (Join-Path $PSScriptRoot "installer-dist\Law-Rag-0.8.0-rc2-windows-x64-setup.exe"),
     [string]$ExpectedSourceSha = "",
-    [string]$ExpectedReleaseLabel = ""
+    [string]$ExpectedReleaseLabel = "",
+    [string]$ExpectedExecutableSha256 = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,7 +10,11 @@ if ($env:OS -ne "Windows_NT") { throw "Stage 19.1 installer smoke is Windows-onl
 if ($ExpectedSourceSha -and $ExpectedSourceSha -notmatch '^[0-9a-fA-F]{40}$') {
     throw "ExpectedSourceSha must be a full 40-character Git SHA when supplied."
 }
+if ($ExpectedExecutableSha256 -and $ExpectedExecutableSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+    throw "ExpectedExecutableSha256 must be a full SHA-256 when supplied."
+}
 $ExpectedSourceSha = $ExpectedSourceSha.ToLowerInvariant()
+$ExpectedExecutableSha256 = $ExpectedExecutableSha256.ToLowerInvariant()
 $InstallerPath = (Resolve-Path $InstallerPath).Path
 if ($ExpectedReleaseLabel -and -not ([IO.Path]::GetFileName($InstallerPath)).Contains($ExpectedReleaseLabel)) {
     throw "Installer filename does not contain expected release label '$ExpectedReleaseLabel'."
@@ -117,6 +122,12 @@ try {
         throw "Installer incorrectly owns an adjacent runtime directory."
     }
 
+    if ($ExpectedExecutableSha256) {
+        $InstalledExeSha = (Get-FileHash -Algorithm SHA256 $InstalledExe).Hash.ToLowerInvariant()
+        if ($InstalledExeSha -ne $ExpectedExecutableSha256) {
+            throw "Installed Law-Rag.exe SHA-256 does not match the expected signed portable executable."
+        }
+    }
     if ($ExpectedSourceSha) {
         $InstalledMetadataPath = Join-Path $InstallDir "_internal\release\release-metadata.json"
         if (-not (Test-Path $InstalledMetadataPath -PathType Leaf)) {
@@ -164,6 +175,12 @@ try {
     Install-LawRag -LogPath $ReinstallLog -Label "in-place reinstall"
     if (-not (Test-Path $Sentinel)) { throw "In-place reinstall deleted user runtime data." }
     if (-not (Test-Path $InstalledExe)) { throw "Law-Rag.exe disappeared after in-place reinstall." }
+    if ($ExpectedExecutableSha256) {
+        $ReinstalledExeSha = (Get-FileHash -Algorithm SHA256 $InstalledExe).Hash.ToLowerInvariant()
+        if ($ReinstalledExeSha -ne $ExpectedExecutableSha256) {
+            throw "Reinstalled Law-Rag.exe SHA-256 changed from the expected signed executable."
+        }
+    }
 
     Invoke-CheckedProcess -FilePath $Uninstaller -Label "per-user uninstall" -TimeoutSeconds 420 -Arguments @(
         "/VERYSILENT",
@@ -179,6 +196,7 @@ try {
     Write-Host "[Law-Rag] Stage 19.1 installer smoke PASS"
     if ($ExpectedSourceSha) { Write-Host "[Law-Rag] installed source identity PASS: $ExpectedSourceSha" }
     if ($ExpectedReleaseLabel) { Write-Host "[Law-Rag] installed release label PASS: $ExpectedReleaseLabel" }
+    if ($ExpectedExecutableSha256) { Write-Host "[Law-Rag] installer/portable executable identity PASS: $ExpectedExecutableSha256" }
     Write-Host "[Law-Rag] per-user application install PASS"
     Write-Host "[Law-Rag] installed LocalAppData runtime separation PASS"
     Write-Host "[Law-Rag] installed Stage 18.2 renderer + corpus diagnostics PASS"
