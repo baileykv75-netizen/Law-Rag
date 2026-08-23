@@ -2,7 +2,8 @@ param(
     [string]$BundleDir = (Join-Path $PSScriptRoot "dist\Law-Rag"),
     [string]$OutputDir = (Join-Path $PSScriptRoot "installer-dist"),
     [string]$ReleaseLabel = "0.8.0-rc2",
-    [string]$AppVersion = "0.8.0"
+    [string]$AppVersion = "0.8.0",
+    [string]$EvidenceSourceSha = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +18,9 @@ if ($ReleaseLabel -notmatch '^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$') { throw "Releas
 if ($AppVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "AppVersion must look like 0.8.0." }
 if (-not $ReleaseLabel.StartsWith("$AppVersion-", [StringComparison]::Ordinal)) {
     throw "ReleaseLabel '$ReleaseLabel' must belong to AppVersion '$AppVersion'."
+}
+if ($EvidenceSourceSha -and $EvidenceSourceSha -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "EvidenceSourceSha must be a full 40-character Git SHA when supplied."
 }
 if (-not (Test-Path $Exe)) { throw "Validated onedir Law-Rag.exe is missing: $Exe" }
 if (Test-Path (Join-Path $BundleDir "runtime")) {
@@ -38,24 +42,25 @@ if (Test-Path $OutputDir) { Remove-Item $OutputDir -Recurse -Force }
 New-Item -ItemType Directory -Path $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
 
-# The .iss script validates PREPROCVER during the actual compile and rejects
-# compiler families older than 6.x or newer than 6.x. Release identity is passed
-# explicitly so later release candidates do not mutate historical Stage 19.1 defaults.
 & $Iscc "/DBundleDir=$BundleDir" "/DOutputDir=$OutputDir" "/DMarkerFile=$MarkerFile" "/DAppVersion=$AppVersion" "/DReleaseLabel=$ReleaseLabel" $InstallerScript
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed with exit code $LASTEXITCODE." }
 
 $Installer = Join-Path $OutputDir "Law-Rag-$ReleaseLabel-windows-x64-setup.exe"
 if (-not (Test-Path $Installer)) { throw "Expected installer was not produced: $Installer" }
 
-$SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or $SourceSha -notmatch '^[0-9a-fA-F]{40}$') {
-    throw "Could not resolve exact source SHA for installer evidence."
+if ($EvidenceSourceSha) {
+    $SourceSha = $EvidenceSourceSha.Trim().ToLowerInvariant()
+} else {
+    $SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $SourceSha -notmatch '^[0-9a-f]{40}$') {
+        throw "Could not resolve exact source SHA for installer evidence."
+    }
 }
 
 $Evidence = [ordered]@{
     schema_version = "1.0.0"
     stage = "19.1"
-    source_sha = $SourceSha.ToLowerInvariant()
+    source_sha = $SourceSha
     release_label = $ReleaseLabel
     application_version = $AppVersion
     distribution_mode = "PER_USER_INSTALLER"
@@ -84,6 +89,7 @@ $Evidence | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $EvidencePath
 
 Write-Host "[Law-Rag] Stage 19.1 validation installer: $Installer"
 Write-Host "[Law-Rag] Release identity: $ReleaseLabel / application $AppVersion"
+Write-Host "[Law-Rag] Evidence source SHA: $SourceSha"
 Write-Host "[Law-Rag] Inno Setup compiler family: 6.x (validated by ISPP PREPROCVER during compilation)"
 Write-Host "[Law-Rag] Installer state: VALIDATION_ONLY_UNSIGNED"
 Write-Host "[Law-Rag] Runtime data is owned outside the application directory and is not an uninstall target."

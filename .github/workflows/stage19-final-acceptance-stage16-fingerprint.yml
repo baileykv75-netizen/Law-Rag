@@ -1,0 +1,120 @@
+name: Law-Rag Stage 19 Final Acceptance Stage16 Fingerprints
+
+on:
+  pull_request:
+    branches:
+      - stage19-4-final-docs-package
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage16-fingerprint-fail-closed:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+
+      - name: Prove legitimate pending Stage 16 fingerprints stay pending
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Stage16 = Join-Path $env:RUNNER_TEMP 'stage16-legitimate-pending.json'
+          @{
+            schema_version = '1.0.0'
+            evaluator_version = 'stage16e-1.0.0'
+            engineering_ready = $true
+            stage16_evidence_complete = $false
+            pending_evidence_classes = @('PRIVATE_EXPERT', 'REAL_PROVIDER_UAT')
+            evidence = @(
+              @{ evidence_class = 'PUBLIC_REGRESSION'; status = 'PASS'; source_fingerprint = ('a' * 64) },
+              @{ evidence_class = 'PRIVATE_EXPERT'; status = 'PENDING' },
+              @{ evidence_class = 'REAL_PROVIDER_UAT'; status = 'PENDING' }
+            )
+          } | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $Stage16
+
+          $Output = Join-Path $env:RUNNER_TEMP 'stage19-final-legitimate-pending.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-Stage16EvidencePath', $Stage16,
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 0) { throw "Legitimate pending Stage 16 expected exit 0, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Report.acceptance_state -ne 'FINAL_ACCEPTANCE_PENDING' -or $Report.complete) {
+            throw 'Legitimate pending Stage 16 evidence did not remain FINAL_ACCEPTANCE_PENDING.'
+          }
+          foreach ($Name in @('PRIVATE_EXPERT', 'REAL_PROVIDER_UAT', 'STAGE16_COMPLETE_EVIDENCE')) {
+            $Gate = @($Report.gates | Where-Object name -eq $Name)
+            if ($Gate.Count -ne 1 -or $Gate[0].status -ne 'PENDING') {
+              throw "Legitimate pending Stage 16 evidence did not keep $Name pending."
+            }
+          }
+          if (@($Report.gates | Where-Object status -eq 'FAIL').Count -ne 0) {
+            throw 'Legitimate missing external fingerprints were incorrectly converted into FAIL.'
+          }
+          Write-Host '[Law-Rag] legitimate Stage 16 pending/null fingerprints -> PENDING PASS'
+
+      - name: Prove malformed supplied Stage 16 fingerprint fails closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Stage16 = Join-Path $env:RUNNER_TEMP 'stage16-malformed-fingerprint.json'
+          @{
+            schema_version = '1.0.0'
+            evaluator_version = 'stage16e-1.0.0'
+            engineering_ready = $true
+            stage16_evidence_complete = $true
+            pending_evidence_classes = @()
+            evidence = @(
+              @{ evidence_class = 'PUBLIC_REGRESSION'; status = 'PASS'; source_fingerprint = ('a' * 64) },
+              @{ evidence_class = 'PRIVATE_EXPERT'; status = 'PRESENT'; source_fingerprint = 'not-a-sha256' },
+              @{ evidence_class = 'REAL_PROVIDER_UAT'; status = 'PASS'; source_fingerprint = ('c' * 64) }
+            )
+          } | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $Stage16
+
+          $Output = Join-Path $env:RUNNER_TEMP 'stage19-final-malformed-fingerprint.json'
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-Stage16EvidencePath', $Stage16,
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 2) { throw "Malformed Stage 16 fingerprint expected exit 2, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($Report.acceptance_state -ne 'FINAL_ACCEPTANCE_FAILED' -or $Report.complete) {
+            throw 'Malformed Stage 16 fingerprint did not fail final acceptance.'
+          }
+          $Private = @($Report.gates | Where-Object name -eq 'PRIVATE_EXPERT')
+          if ($Private.Count -ne 1 -or $Private[0].status -ne 'FAIL') {
+            throw 'Malformed private-expert fingerprint did not fail PRIVATE_EXPERT.'
+          }
+          $Stage16Gate = @($Report.gates | Where-Object name -eq 'STAGE16_COMPLETE_EVIDENCE')
+          if ($Stage16Gate.Count -ne 1 -or $Stage16Gate[0].status -ne 'FAIL') {
+            throw 'Malformed private-expert fingerprint did not fail STAGE16_COMPLETE_EVIDENCE.'
+          }
+          Write-Host '[Law-Rag] malformed supplied Stage 16 fingerprint -> FAIL PASS'
+
+      - name: Confirm fingerprint tests performed no external acceptance actions
+        shell: pwsh
+        run: |
+          if ($env:DEEPSEEK_API_KEY -or $env:MOONSHOT_API_KEY) {
+            throw 'Stage 16 fingerprint CI must not receive provider API keys.'
+          }
+          Write-Host '[Law-Rag] production signing performed: false'
+          Write-Host '[Law-Rag] provider/network UAT performed: false'
+          Write-Host '[Law-Rag] private expert evidence performed: false'
+          Write-Host '[Law-Rag] publication performed: false'

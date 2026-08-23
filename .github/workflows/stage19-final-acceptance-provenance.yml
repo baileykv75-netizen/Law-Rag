@@ -1,0 +1,162 @@
+name: Law-Rag Stage 19 Final Acceptance Provenance
+
+on:
+  pull_request:
+    branches:
+      - stage19-4-final-docs-package
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reject-unproven-signed-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+
+      - name: Reject PASS-looking smoke without baseline provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $SmokePath = Join-Path $env:RUNNER_TEMP 'fake-signed-smoke-no-provenance.json'
+          $Output = Join-Path $env:RUNNER_TEMP 'final-no-provenance.json'
+          $FakeShaA = '1' * 64
+          $FakeShaB = '2' * 64
+          $FakeShaC = '3' * 64
+          $FakeThumbprint = 'A' * 40
+
+          @{
+            schema_version = '1.0.0'
+            stage = '19-final-windows-smoke'
+            source_sha = '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593'
+            release_label = '0.8.0-rc3'
+            passed = $true
+            production_signed = $true
+            provider_network_calls = 0
+            expected_signer_thumbprint = $FakeThumbprint
+            distribution_candidate = @{
+              portable = @{ sha256 = $FakeShaA }
+              executable = @{
+                sha256 = $FakeShaB
+                authenticode_status = 'Valid'
+                signer_thumbprint = $FakeThumbprint
+              }
+              installer = @{
+                sha256 = $FakeShaC
+                authenticode_status = 'Valid'
+                signer_thumbprint = $FakeThumbprint
+              }
+            }
+            external_actions = @{
+              signing_executed_by_this_script = $false
+              provider_calls_executed_by_this_script = $false
+              publication_executed_by_this_script = $false
+            }
+          } | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 $SmokePath
+
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-WindowsSmokeEvidencePath', $SmokePath,
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 2) { throw "Unproven smoke expected exit 2, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Gate = @($Report.gates | Where-Object name -eq 'FINAL_WINDOWS_SMOKE')
+          if ($Gate.Count -ne 1 -or $Gate[0].status -ne 'FAIL') {
+            throw 'PASS-looking smoke without exact baseline provenance was not rejected.'
+          }
+          Write-Host '[Law-Rag] PASS-looking signed smoke without baseline provenance -> FAIL PASS'
+
+      - name: Reject smoke that changes more than Law-Rag.exe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $SmokePath = Join-Path $env:RUNNER_TEMP 'fake-signed-smoke-extra-change.json'
+          $Output = Join-Path $env:RUNNER_TEMP 'final-extra-change.json'
+          $FakeShaA = '4' * 64
+          $FakeShaB = '5' * 64
+          $FakeShaC = '6' * 64
+          $FakeThumbprint = 'B' * 40
+
+          @{
+            schema_version = '1.0.0'
+            stage = '19-final-windows-smoke'
+            source_sha = '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593'
+            release_label = '0.8.0-rc3'
+            passed = $true
+            production_signed = $true
+            provider_network_calls = 0
+            expected_signer_thumbprint = $FakeThumbprint
+            engineering_baseline = @{
+              portable_sha256 = '9ba6c15cab5aa97820311ee97589ed338d88b9fad81ab6b96d06ff6162b6e796'
+              installer_sha256 = 'cc94adf002984c7bfd7d2c0b7c7fc30e4bf19a95add655c448ace8a5deeb1ef8'
+            }
+            transformation = @{
+              exact_baseline_portable_verified = $true
+              file_list_identical = $true
+              changed_paths = @('Law-Rag.exe', 'README-WINDOWS.md')
+              only_authenticode_target_changed = $true
+              installer_built_from_same_signed_executable = $true
+            }
+            distribution_candidate = @{
+              portable = @{ sha256 = $FakeShaA }
+              executable = @{
+                sha256 = $FakeShaB
+                authenticode_status = 'Valid'
+                signer_thumbprint = $FakeThumbprint
+              }
+              installer = @{
+                sha256 = $FakeShaC
+                authenticode_status = 'Valid'
+                signer_thumbprint = $FakeThumbprint
+              }
+            }
+            checks = @{
+              baseline_to_signed_transformation = $true
+              installer_contains_same_signed_executable = $true
+            }
+            external_actions = @{
+              signing_executed_by_this_script = $false
+              provider_calls_executed_by_this_script = $false
+              publication_executed_by_this_script = $false
+            }
+          } | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 $SmokePath
+
+          $Process = Start-Process -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', (Resolve-Path './release/verify-stage19-final-acceptance.ps1'),
+            '-WindowsSmokeEvidencePath', $SmokePath,
+            '-OutputPath', $Output
+          ) -Wait -PassThru -NoNewWindow
+          if ($Process.ExitCode -ne 2) { throw "Extra-change smoke expected exit 2, got $($Process.ExitCode)." }
+          $Report = Get-Content $Output -Raw -Encoding UTF8 | ConvertFrom-Json
+          $Gate = @($Report.gates | Where-Object name -eq 'FINAL_WINDOWS_SMOKE')
+          if ($Gate.Count -ne 1 -or $Gate[0].status -ne 'FAIL') {
+            throw 'Signed smoke with extra changed path was not rejected.'
+          }
+          Write-Host '[Law-Rag] Signed smoke changing Law-Rag.exe + another file -> FAIL PASS'
+
+      - name: Confirm provenance test used no external capability
+        shell: pwsh
+        run: |
+          if ($env:DEEPSEEK_API_KEY -or $env:MOONSHOT_API_KEY) {
+            throw 'Provenance CI must not receive provider API keys.'
+          }
+          Write-Host '[Law-Rag] real Authenticode signing performed: false'
+          Write-Host '[Law-Rag] provider/network calls performed: false'
+          Write-Host '[Law-Rag] private expert evidence used: false'
+          Write-Host '[Law-Rag] publication performed: false'

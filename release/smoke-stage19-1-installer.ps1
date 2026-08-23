@@ -1,11 +1,26 @@
 param(
-    [string]$InstallerPath = (Join-Path $PSScriptRoot "installer-dist\Law-Rag-0.8.0-rc2-windows-x64-setup.exe")
+    [string]$InstallerPath = (Join-Path $PSScriptRoot "installer-dist\Law-Rag-0.8.0-rc2-windows-x64-setup.exe"),
+    [string]$ExpectedSourceSha = "",
+    [string]$ExpectedReleaseLabel = "",
+    [string]$ExpectedExecutableSha256 = ""
 )
 
 $ErrorActionPreference = "Stop"
 if ($env:OS -ne "Windows_NT") { throw "Stage 19.1 installer smoke is Windows-only." }
+if ($ExpectedSourceSha -and $ExpectedSourceSha -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "ExpectedSourceSha must be a full 40-character Git SHA when supplied."
+}
+if ($ExpectedExecutableSha256 -and $ExpectedExecutableSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+    throw "ExpectedExecutableSha256 must be a full SHA-256 when supplied."
+}
+$ExpectedSourceSha = $ExpectedSourceSha.ToLowerInvariant()
+$ExpectedExecutableSha256 = $ExpectedExecutableSha256.ToLowerInvariant()
 $InstallerPath = (Resolve-Path $InstallerPath).Path
-$Sandbox = Join-Path $env:RUNNER_TEMP ("law-rag-stage19-1-" + [guid]::NewGuid().ToString("N"))
+if ($ExpectedReleaseLabel -and -not ([IO.Path]::GetFileName($InstallerPath)).Contains($ExpectedReleaseLabel)) {
+    throw "Installer filename does not contain expected release label '$ExpectedReleaseLabel'."
+}
+$TempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+$Sandbox = Join-Path $TempRoot ("law-rag-stage19-1-" + [guid]::NewGuid().ToString("N"))
 $InstallDir = Join-Path $Sandbox "Programs\Law-Rag"
 $FakeLocalAppData = Join-Path $Sandbox "LocalAppData"
 $ExpectedRuntime = Join-Path $FakeLocalAppData "Law-Rag\runtime"
@@ -108,6 +123,33 @@ try {
         throw "Installer incorrectly owns an adjacent runtime directory."
     }
 
+    if ($ExpectedExecutableSha256) {
+        $InstalledExeSha = (Get-FileHash -Algorithm SHA256 $InstalledExe).Hash.ToLowerInvariant()
+        if ($InstalledExeSha -ne $ExpectedExecutableSha256) {
+            throw "Installed Law-Rag.exe SHA-256 does not match the expected signed portable executable."
+        }
+    }
+    if ($ExpectedSourceSha) {
+        $InstalledMetadataPath = Join-Path $InstallDir "_internal\release\release-metadata.json"
+        if (-not (Test-Path $InstalledMetadataPath -PathType Leaf)) {
+            throw "Installed release metadata is missing."
+        }
+        $InstalledMetadata = Get-Content $InstalledMetadataPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (([string]$InstalledMetadata.source_commit_sha).ToLowerInvariant() -ne $ExpectedSourceSha) {
+            throw "Installed source SHA does not match ExpectedSourceSha."
+        }
+    }
+    if ($ExpectedReleaseLabel) {
+        $InstalledGuidePath = Join-Path $InstallDir "README-WINDOWS.md"
+        if (-not (Test-Path $InstalledGuidePath -PathType Leaf)) {
+            throw "Installed README-WINDOWS.md is missing."
+        }
+        $InstalledGuide = Get-Content $InstalledGuidePath -Raw -Encoding UTF8
+        if (-not $InstalledGuide.Contains($ExpectedReleaseLabel)) {
+            throw "Installed README-WINDOWS.md does not contain expected release label '$ExpectedReleaseLabel'."
+        }
+    }
+
     $LayoutRaw = Invoke-CapturedProcess -FilePath $InstalledExe -Arguments @("--diagnose-installation-layout") -Label "installed layout diagnostic"
     $Layout = $LayoutRaw | ConvertFrom-Json
     if (-not $Layout.installed) { throw "Installed executable did not recognize the installation marker." }
@@ -134,6 +176,12 @@ try {
     Install-LawRag -LogPath $ReinstallLog -Label "in-place reinstall"
     if (-not (Test-Path $Sentinel)) { throw "In-place reinstall deleted user runtime data." }
     if (-not (Test-Path $InstalledExe)) { throw "Law-Rag.exe disappeared after in-place reinstall." }
+    if ($ExpectedExecutableSha256) {
+        $ReinstalledExeSha = (Get-FileHash -Algorithm SHA256 $InstalledExe).Hash.ToLowerInvariant()
+        if ($ReinstalledExeSha -ne $ExpectedExecutableSha256) {
+            throw "Reinstalled Law-Rag.exe SHA-256 changed from the expected signed executable."
+        }
+    }
 
     Invoke-CheckedProcess -FilePath $Uninstaller -Label "per-user uninstall" -TimeoutSeconds 420 -Arguments @(
         "/VERYSILENT",
@@ -147,6 +195,9 @@ try {
     if (-not (Test-Path $Sentinel)) { throw "Uninstall deleted user runtime data; this is forbidden." }
 
     Write-Host "[Law-Rag] Stage 19.1 installer smoke PASS"
+    if ($ExpectedSourceSha) { Write-Host "[Law-Rag] installed source identity PASS: $ExpectedSourceSha" }
+    if ($ExpectedReleaseLabel) { Write-Host "[Law-Rag] installed release label PASS: $ExpectedReleaseLabel" }
+    if ($ExpectedExecutableSha256) { Write-Host "[Law-Rag] installer/portable executable identity PASS: $ExpectedExecutableSha256" }
     Write-Host "[Law-Rag] per-user application install PASS"
     Write-Host "[Law-Rag] installed LocalAppData runtime separation PASS"
     Write-Host "[Law-Rag] installed Stage 18.2 renderer + corpus diagnostics PASS"

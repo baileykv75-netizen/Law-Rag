@@ -1,31 +1,33 @@
 param(
     [string]$Config = (Join-Path $PSScriptRoot "rc-config.json"),
-    [string]$Output = (Join-Path $PSScriptRoot "rc")
+    [string]$Output = (Join-Path $PSScriptRoot "rc"),
+    [string]$BundleDir = (Join-Path $PSScriptRoot "dist\Law-Rag"),
+    [string]$PythonPath = (Join-Path $PSScriptRoot ".build-venv\Scripts\python.exe")
 )
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Backend = Join-Path $RepoRoot "backend"
-$ReleasePython = Join-Path $PSScriptRoot ".build-venv\Scripts\python.exe"
-$Bundle = Join-Path $PSScriptRoot "dist\Law-Rag"
 
-if (-not (Test-Path $ReleasePython)) {
-    throw "Stage 11D isolated release environment is missing. Run release/build-windows.ps1 first."
+if (-not (Test-Path $PythonPath -PathType Leaf)) {
+    throw "RC packaging Python environment is missing: $PythonPath"
 }
-if (-not (Test-Path (Join-Path $Bundle "Law-Rag.exe"))) {
-    throw "Stage 11D onedir bundle is missing. Run release/build-windows.ps1 first."
+if (-not (Test-Path (Join-Path $BundleDir "Law-Rag.exe") -PathType Leaf)) {
+    throw "RC onedir bundle is missing Law-Rag.exe: $BundleDir"
 }
 if (-not (Test-Path $Config -PathType Leaf)) {
     throw "RC packaging config is missing: $Config"
 }
 
+$PythonPath = (Resolve-Path $PythonPath).Path
+$BundleDir = (Resolve-Path $BundleDir).Path
 $Config = (Resolve-Path $Config).Path
 $Output = [IO.Path]::GetFullPath($Output)
 
 Push-Location $Backend
 try {
     $env:PYTHONPATH = "."
-    & $ReleasePython -m app.rc_archive_cli --bundle-dir $Bundle --config $Config --output-dir $Output
+    & $PythonPath -m app.rc_archive_cli --bundle-dir $BundleDir --config $Config --output-dir $Output
     if ($LASTEXITCODE -ne 0) {
         throw "Portable RC archive generation failed with exit code $LASTEXITCODE"
     }
@@ -46,6 +48,7 @@ if (-not (Test-Path $Zip)) {
     throw "RC packaging did not produce the manifest-declared ZIP: $($ManifestData.artifact.filename)"
 }
 
+Write-Host "[Law-Rag] Portable RC created from bundle: $BundleDir"
 Write-Host "[Law-Rag] Portable RC created: $Zip"
 Write-Host "[Law-Rag] SHA-256: $($ManifestData.artifact.sha256)"
 Write-Host "[Law-Rag] Publication state remains NOT_PUBLISHED."

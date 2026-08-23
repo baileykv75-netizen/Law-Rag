@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0.0",
+  "acceptance_id": "law-rag-stage19-final-acceptance",
+  "engineering_candidate": {
+    "source_sha": "8c05ddd91712d5d9cdbdafe90e77cc9de03b8593",
+    "release_label": "0.8.0-rc3",
+    "engineering_state": "READY_FOR_FINAL_ACCEPTANCE",
+    "publication_state": "FINAL_ACCEPTANCE_PENDING",
+    "portable": {
+      "filename": "Law-Rag-0.8.0-rc3-windows-x64.zip",
+      "sha256": "9ba6c15cab5aa97820311ee97589ed338d88b9fad81ab6b96d06ff6162b6e796"
+    },
+    "installer": {
+      "filename": "Law-Rag-0.8.0-rc3-windows-x64-setup.exe",
+      "sha256": "cc94adf002984c7bfd7d2c0b7c7fc30e4bf19a95add655c448ace8a5deeb1ef8"
+    },
+    "source_workflow_run_id": "32629468653",
+    "source_artifact_id": "9490770536",
+    "source_artifact_digest": "sha256:3baa68daf4ed2bdd7e644b19965c45a2234f39e84fadb0fbaf2d92a9de53b728",
+    "retained_artifact_id": "9491794952",
+    "retained_artifact_digest": "sha256:af32108fb2989269d73c1ffd28c3633cdab1bb747d4f96bcbb65d14264dfe36c",
+    "retained_until_utc": "2026-11-21T10:29:51Z"
+  },
+  "required_gates": [
+    "ENGINEERING_BASELINE",
+    "PRODUCTION_SIGNING",
+    "RELEASE_CHANNEL",
+    "PRIVATE_EXPERT",
+    "REAL_PROVIDER_UAT",
+    "STAGE16_COMPLETE_EVIDENCE",
+    "FINAL_WINDOWS_SMOKE"
+  ],
+  "external_action_policy": {
+    "production_signing_automatic": false,
+    "provider_network_calls_automatic": false,
+    "private_expert_execution_automatic": false,
+    "publication_automatic": false
+  }
+}
