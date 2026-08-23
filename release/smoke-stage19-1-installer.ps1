@@ -19,7 +19,8 @@ $InstallerPath = (Resolve-Path $InstallerPath).Path
 if ($ExpectedReleaseLabel -and -not ([IO.Path]::GetFileName($InstallerPath)).Contains($ExpectedReleaseLabel)) {
     throw "Installer filename does not contain expected release label '$ExpectedReleaseLabel'."
 }
-$Sandbox = Join-Path $env:RUNNER_TEMP ("law-rag-stage19-1-" + [guid]::NewGuid().ToString("N"))
+$TempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+$Sandbox = Join-Path $TempRoot ("law-rag-stage19-1-" + [guid]::NewGuid().ToString("N"))
 $InstallDir = Join-Path $Sandbox "Programs\Law-Rag"
 $FakeLocalAppData = Join-Path $Sandbox "LocalAppData"
 $ExpectedRuntime = Join-Path $FakeLocalAppData "Law-Rag\runtime"
