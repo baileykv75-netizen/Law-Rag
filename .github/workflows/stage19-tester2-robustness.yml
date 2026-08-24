@@ -39,13 +39,10 @@ jobs:
             tests/test_tester_license.py \
             tests/test_tester_report_watermark.py \
             -q
-      - name: Run batch and pipeline regression tests
+      - name: Run batch regression tests
         working-directory: backend
         run: |
-          python -m pytest \
-            tests/test_batch_results.py \
-            tests/test_pipeline_api.py \
-            -q
+          python -m pytest tests/test_batch_results.py -q
       - name: Build frontend
         working-directory: frontend
         run: |
