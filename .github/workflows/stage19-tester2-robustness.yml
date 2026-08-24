@@ -36,6 +36,7 @@ jobs:
           python -m pytest \
             tests/test_audit_planner_provider_recovery.py \
             tests/test_safe_persistence_windows_retry.py \
+            tests/test_tester2_recoverability_and_ocr_progress.py \
             tests/test_tester_license.py \
             tests/test_tester_report_watermark.py \
             -q
@@ -70,11 +71,14 @@ jobs:
         working-directory: backend
         run: |
           python -m pytest tests/test_safe_persistence_windows_retry.py -q
-      - name: Run Planner recovery tests on Windows
+      - name: Run Planner and recoverability tests on Windows
         shell: pwsh
         working-directory: backend
         run: |
-          python -m pytest tests/test_audit_planner_provider_recovery.py -q
+          python -m pytest `
+            tests/test_audit_planner_provider_recovery.py `
+            tests/test_tester2_recoverability_and_ocr_progress.py `
+            -q
 
   source-contracts:
     runs-on: ubuntu-latest
@@ -94,6 +98,10 @@ jobs:
           grep -q 'NETWORK_MAX_ATTEMPTS = 5' backend/app/audit_planner_provider.py
           grep -q 'bounded_fallback' backend/app/audit_planner_provider.py
           grep -q 'read_text_with_retry' backend/app/safe_persistence.py
-          grep -q 'invalid_jobs' backend/app/batch_results_models.py
+          grep -q 'WAITING_EXTERNAL_SERVICE' backend/app/pipeline_models.py
+          grep -q '_recoverable_provider_error' backend/app/pipeline.py
+          grep -q 'external_service_waiting_jobs' backend/app/batch_results_models.py
+          grep -q 'ocr-progress.json' backend/app/ocr.py
           grep -q 'MAX_TRANSIENT_POLL_FAILURES' frontend/src/BatchResultsApp.tsx
+          grep -q 'WAITING_EXTERNAL_SERVICE' frontend/src/IntakeApp.tsx
           echo '[Law-Rag] tester2 robustness source contracts: PASS'
