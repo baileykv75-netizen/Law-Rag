@@ -65,6 +65,10 @@ def now() -> datetime:
     return datetime(2026, 8, 24, 0, 0, tzinfo=timezone.utc)
 
 
+def test_tester_build_is_bound_to_tester2_release() -> None:
+    assert TESTER_RELEASE_LABEL == "0.8.0-rc3-tester2"
+
+
 def test_valid_signed_license_is_active(now: datetime) -> None:
     private, public = _keypair()
     token = _token(private, not_before=now - timedelta(minutes=1), expires_at=now + timedelta(days=7))
@@ -116,7 +120,7 @@ def test_wrong_release_license_fails_closed(now: datetime) -> None:
     private, public = _keypair()
     token = _token(
         private,
-        release_label="0.8.0-rc3-tester2",
+        release_label="0.8.0-rc3-tester1",
         not_before=now - timedelta(minutes=1),
         expires_at=now + timedelta(days=7),
     )
