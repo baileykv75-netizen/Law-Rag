@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 BATCH_SCHEMA_VERSION = "1.0.0"
-BATCH_RESULT_SCHEMA_VERSION = "1.2.0"
+BATCH_RESULT_SCHEMA_VERSION = "1.3.0"
 
 
 class BatchManifest(BaseModel):
@@ -67,11 +67,17 @@ class BatchResultSummary(BaseModel):
     batch_id: UUID
     created_at: datetime
     jobs: list[BatchJobResult] = Field(default_factory=list)
+    # total_jobs intentionally counts only recoverable/valid contract tasks. Corrupt
+    # historical records remain visible in jobs for cleanup but cannot inflate the
+    # contract denominator or legal-risk statistics.
     total_jobs: int = Field(ge=0)
     complete_jobs: int = Field(ge=0)
     waiting_jobs: int = Field(ge=0)
     cancelled_jobs: int = Field(default=0, ge=0)
     failed_jobs: int = Field(ge=0)
+    invalid_jobs: int = Field(default=0, ge=0)
+    provider_failed_jobs: int = Field(default=0, ge=0)
+    system_error_jobs: int = Field(default=0, ge=0)
     human_review_required_jobs: int = Field(ge=0)
     processing_jobs: int = Field(ge=0)
     issue_v1_jobs: int = Field(default=0, ge=0)
