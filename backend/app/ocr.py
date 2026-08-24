@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
@@ -26,6 +27,7 @@ from .ocr_models import (
     resolve_ocr_pipeline_config_path,
 )
 from .rendering import PdfPageRenderer, PdfRenderError, PdfiumPageRenderer
+from .safe_persistence import atomic_write_text, read_text_with_retry
 from .storage import (
     find_source_path,
     job_document_path,
@@ -174,6 +176,8 @@ class PaddleOcrProvider:
     ) -> None:
         self._pipeline_factory = pipeline_factory
         self._pipeline: Any | None = None
+        self._pipeline_lock = threading.RLock()
+        self._inference_lock = threading.RLock()
         self._model_root = model_root
         self._model_manifest_path = model_manifest_path
         self._pipeline_config_path = pipeline_config_path
@@ -242,13 +246,20 @@ class PaddleOcrProvider:
             ) from exc
 
     def _get_pipeline(self) -> Any:
-        if self._pipeline is None:
-            self._pipeline = self._build_pipeline()
-        return self._pipeline
+        if self._pipeline is not None:
+            return self._pipeline
+        with self._pipeline_lock:
+            if self._pipeline is None:
+                self._pipeline = self._build_pipeline()
+            return self._pipeline
 
     def recognize(self, image_path: Path, page_number: int) -> list[ProviderOcrBlock]:
         try:
-            predictions = list(self._get_pipeline().predict(str(image_path)))
+            # The packaged Paddle pipeline is process-shared. Keep inference itself
+            # serialized because the current CPU/static runtime is not guaranteed
+            # thread-safe; this still avoids reloading the large models per document.
+            with self._inference_lock:
+                predictions = list(self._get_pipeline().predict(str(image_path)))
         except OcrProviderUnavailable:
             raise
         except Exception as exc:
@@ -289,6 +300,69 @@ class PaddleOcrProvider:
         return blocks
 
 
+_DEFAULT_PADDLE_PROVIDER: PaddleOcrProvider | None = None
+_DEFAULT_PADDLE_PROVIDER_LOCK = threading.RLock()
+
+
+def _default_paddle_provider() -> PaddleOcrProvider:
+    global _DEFAULT_PADDLE_PROVIDER
+    if _DEFAULT_PADDLE_PROVIDER is not None:
+        return _DEFAULT_PADDLE_PROVIDER
+    with _DEFAULT_PADDLE_PROVIDER_LOCK:
+        if _DEFAULT_PADDLE_PROVIDER is None:
+            _DEFAULT_PADDLE_PROVIDER = PaddleOcrProvider()
+        return _DEFAULT_PADDLE_PROVIDER
+
+
+def _ocr_progress_path(job_id: UUID) -> Path:
+    return job_ocr_path(job_id).with_name("ocr-progress.json")
+
+
+def _persist_ocr_progress(
+    job_id: UUID,
+    *,
+    state: str,
+    ocr_pages_total: int,
+    ocr_pages_processed: int,
+    current_page: int | None,
+    detail: str,
+) -> None:
+    payload = {
+        "schema_version": "1.0.0",
+        "job_id": str(job_id),
+        "state": state,
+        "ocr_pages_total": ocr_pages_total,
+        "ocr_pages_processed": ocr_pages_processed,
+        "current_page": current_page,
+        "detail": detail,
+    }
+    atomic_write_text(
+        _ocr_progress_path(job_id),
+        json.dumps(payload, ensure_ascii=False, indent=2),
+    )
+
+
+def load_ocr_progress(job_id: UUID) -> dict[str, Any]:
+    path = _ocr_progress_path(job_id)
+    if not path.exists():
+        return {
+            "schema_version": "1.0.0",
+            "job_id": str(job_id),
+            "state": "NOT_STARTED",
+            "ocr_pages_total": 0,
+            "ocr_pages_processed": 0,
+            "current_page": None,
+            "detail": "OCR 尚未开始。",
+        }
+    try:
+        payload = json.loads(read_text_with_retry(path, encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("job_id") != str(job_id):
+            raise ValueError("OCR progress identity mismatch")
+        return payload
+    except Exception as exc:
+        raise OcrProcessingError("OCR 进度记录暂时无法安全读取。") from exc
+
+
 def _load_inspection(job_id: UUID) -> DocumentInspection:
     document_path = job_document_path(job_id)
     evidence_path = job_evidence_path(job_id)
@@ -296,8 +370,8 @@ def _load_inspection(job_id: UUID) -> DocumentInspection:
         raise OcrProcessingError(f"Document job {job_id} does not exist or is incomplete.")
 
     try:
-        document_payload = json.loads(document_path.read_text(encoding="utf-8"))
-        evidence_payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        document_payload = json.loads(read_text_with_retry(document_path, encoding="utf-8"))
+        evidence_payload = json.loads(read_text_with_retry(evidence_path, encoding="utf-8"))
         return DocumentInspection.model_validate({**document_payload, "pages": evidence_payload})
     except Exception as exc:
         raise OcrProcessingError("Persisted document evidence could not be loaded safely.") from exc
@@ -355,9 +429,9 @@ def _block_evidence(
 
 
 def _persist_ocr(result: OcrRunResult) -> None:
-    job_ocr_path(result.job_id).write_text(
+    atomic_write_text(
+        job_ocr_path(result.job_id),
         json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
 
 
@@ -375,7 +449,7 @@ def run_ocr_for_job(
     if provider is not None:
         active_provider = provider
     elif ocr_pages:
-        active_provider = PaddleOcrProvider()
+        active_provider = _default_paddle_provider()
     else:
         class _NoopProvider:
             provider_name = "none"
@@ -389,6 +463,15 @@ def run_ocr_for_job(
 
     active_renderer = renderer or PdfiumPageRenderer()
     pages: list[OcrPageEvidence] = []
+    ocr_processed = 0
+    _persist_ocr_progress(
+        job_id,
+        state="RUNNING" if ocr_pages else "COMPLETE",
+        ocr_pages_total=len(ocr_pages),
+        ocr_pages_processed=0,
+        current_page=None,
+        detail=("正在初始化本地 OCR 引擎。" if ocr_pages else "无需 OCR。"),
+    )
 
     for page in inspection.pages:
         if page.route == PageRoute.NATIVE_TEXT_USABLE:
@@ -402,6 +485,15 @@ def run_ocr_for_job(
                 )
             )
             continue
+
+        _persist_ocr_progress(
+            job_id,
+            state="RUNNING",
+            ocr_pages_total=len(ocr_pages),
+            ocr_pages_processed=ocr_processed,
+            current_page=page.page_number,
+            detail=f"正在识别第 {ocr_processed + 1}/{len(ocr_pages)} 个 OCR 页面（原文第 {page.page_number} 页）。",
+        )
 
         source_image: Path | None = None
         try:
@@ -439,30 +531,29 @@ def run_ocr_for_job(
                         error="OCR completed but returned no recognized text.",
                     )
                 )
-                continue
-
-            low_count = sum(block.low_confidence for block in blocks)
-            confidences = [block.confidence for block in blocks if block.confidence is not None]
-            mean_confidence = sum(confidences) / len(confidences) if confidences else None
-            state = (
-                OcrPageState.OCR_LOW_CONFIDENCE
-                if low_count
-                else OcrPageState.OCR_COMPLETE
-            )
-            pages.append(
-                OcrPageEvidence(
-                    page_number=page.page_number,
-                    state=state,
-                    source_method=SourceMethod.OCR,
-                    text="\n".join(block.text for block in blocks),
-                    source_image_locator=source_image_locator,
-                    width_px=width,
-                    height_px=height,
-                    blocks=blocks,
-                    mean_confidence=mean_confidence,
-                    low_confidence_blocks=low_count,
+            else:
+                low_count = sum(block.low_confidence for block in blocks)
+                confidences = [block.confidence for block in blocks if block.confidence is not None]
+                mean_confidence = sum(confidences) / len(confidences) if confidences else None
+                state = (
+                    OcrPageState.OCR_LOW_CONFIDENCE
+                    if low_count
+                    else OcrPageState.OCR_COMPLETE
                 )
-            )
+                pages.append(
+                    OcrPageEvidence(
+                        page_number=page.page_number,
+                        state=state,
+                        source_method=SourceMethod.OCR,
+                        text="\n".join(block.text for block in blocks),
+                        source_image_locator=source_image_locator,
+                        width_px=width,
+                        height_px=height,
+                        blocks=blocks,
+                        mean_confidence=mean_confidence,
+                        low_confidence_blocks=low_count,
+                    )
+                )
         except OcrProviderUnavailable:
             raise
         except (OcrProviderError, PdfRenderError, OcrProcessingError, OSError) as exc:
@@ -486,6 +577,16 @@ def run_ocr_for_job(
                     source_image_locator=(source_image.name if source_image else None),
                     error=f"Unexpected OCR processing failure: {type(exc).__name__}.",
                 )
+            )
+        finally:
+            ocr_processed += 1
+            _persist_ocr_progress(
+                job_id,
+                state="RUNNING",
+                ocr_pages_total=len(ocr_pages),
+                ocr_pages_processed=ocr_processed,
+                current_page=None,
+                detail=f"已处理 {ocr_processed}/{len(ocr_pages)} 个 OCR 页面。",
             )
 
     native_pages = sum(page.state == OcrPageState.NATIVE_RETAINED for page in pages)
@@ -521,4 +622,16 @@ def run_ocr_for_job(
         pages=pages,
     )
     _persist_ocr(result)
+    _persist_ocr_progress(
+        job_id,
+        state=run_status.upper(),
+        ocr_pages_total=attempted,
+        ocr_pages_processed=attempted,
+        current_page=None,
+        detail=(
+            "OCR 已完成。"
+            if run_status == "complete"
+            else "OCR 已结束，但存在未识别或失败页面，请查看任务详情。"
+        ),
+    )
     return result
