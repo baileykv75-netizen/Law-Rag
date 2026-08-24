@@ -699,16 +699,36 @@ def _run_issue_review_stage(report: PipelineReport) -> None:
         _LOCAL_STAGE_SEMAPHORE.release()
 
 
+def _recoverable_provider_error(exc: Exception) -> Exception | None:
+    """Find a recoverable provider error even after stage code wrapped it.
+
+    Stage 13E/13F persist an INTERRUPTED checkpoint and then raise a stage-level
+    error with the original provider error as ``__cause__``. Walking the chain
+    preserves that checkpoint behavior while still classifying transient network,
+    rate-limit and service failures as resumable instead of legal/audit failures.
+    """
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if bool(getattr(current, "recoverable", False)):
+            return current if isinstance(current, Exception) else exc
+        current = current.__cause__ or current.__context__
+    return None
+
+
 def _mark_recoverable_provider_wait(job_id: UUID, exc: Exception) -> bool:
-    if not bool(getattr(exc, "recoverable", False)):
+    provider_error = _recoverable_provider_error(exc)
+    if provider_error is None:
         return False
     report = load_pipeline_report(job_id)
     _mark_waiting(
         report,
         report.current_stage,
         status=PipelineStatus.WAITING_EXTERNAL_SERVICE,
-        code=str(getattr(exc, "code", type(exc).__name__)),
-        detail=str(exc),
+        code=str(getattr(provider_error, "code", type(provider_error).__name__)),
+        detail=str(provider_error),
     )
     return True
 
@@ -820,16 +840,18 @@ def _run_pipeline(job_id: UUID) -> None:
         IssueReviewReportError,
         PipelineError,
     ) as exc:
-        report = load_pipeline_report(job_id)
-        _mark_failed(report, report.current_stage, type(exc).__name__, str(exc))
+        if not _mark_recoverable_provider_wait(job_id, exc):
+            report = load_pipeline_report(job_id)
+            _mark_failed(report, report.current_stage, type(exc).__name__, str(exc))
     except Exception as exc:
-        report = load_pipeline_report(job_id)
-        _mark_failed(
-            report,
-            report.current_stage,
-            "UNEXPECTED_PIPELINE_ERROR",
-            f"Unexpected pipeline failure: {type(exc).__name__}.",
-        )
+        if not _mark_recoverable_provider_wait(job_id, exc):
+            report = load_pipeline_report(job_id)
+            _mark_failed(
+                report,
+                report.current_stage,
+                "UNEXPECTED_PIPELINE_ERROR",
+                f"Unexpected pipeline failure: {type(exc).__name__}.",
+            )
 
 
 def _active_future(job_id: UUID) -> Future[None] | None:
