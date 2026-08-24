@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 
 from .pipeline_control_models import ProviderExecutionMode
 
-PIPELINE_SCHEMA_VERSION = "1.3.0"
-PIPELINE_ENGINE_VERSION = "stage13g-4-1.0.0"
+PIPELINE_SCHEMA_VERSION = "1.4.0"
+PIPELINE_ENGINE_VERSION = "stage13g-4-tester2-robustness"
 
 
 class PipelineStatus(str, Enum):
@@ -18,6 +18,7 @@ class PipelineStatus(str, Enum):
     RUNNING = "RUNNING"
     WAITING_CONFIGURATION = "WAITING_CONFIGURATION"
     WAITING_OPTIONAL_COMPONENT = "WAITING_OPTIONAL_COMPONENT"
+    WAITING_EXTERNAL_SERVICE = "WAITING_EXTERNAL_SERVICE"
     PAUSED_BEFORE_PROVIDER = "PAUSED_BEFORE_PROVIDER"
     CANCEL_REQUESTED = "CANCEL_REQUESTED"
     CANCELLED = "CANCELLED"
@@ -31,14 +32,14 @@ class PipelineStage(str, Enum):
     STRUCTURE = "STRUCTURE"
     RULES = "RULES"
 
-    # Stage 13G authoritative production chain.
+    # Authoritative issue-by-issue production chain.
     AUDIT_PLAN = "AUDIT_PLAN"
     ISSUE_LEGAL_CONTEXT = "ISSUE_LEGAL_CONTEXT"
     ISSUE_PRIMARY_AUDIT = "ISSUE_PRIMARY_AUDIT"
     ISSUE_SECONDARY_REVIEW = "ISSUE_SECONDARY_REVIEW"
     ISSUE_REVIEW_REPORT = "ISSUE_REVIEW_REPORT"
 
-    # Retained so persisted RC2/Stage 13A pipeline.json files remain parseable.
+    # Retained so persisted RC2 pipeline.json files remain parseable.
     # New pipelines never emit these legacy stage records.
     PRIMARY_AUDIT = "PRIMARY_AUDIT"
     SECONDARY_REVIEW = "SECONDARY_REVIEW"
