@@ -11,6 +11,8 @@ import {
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.jpg', '.jpeg', '.png']
 const CURRENT_MAX_BYTES = 500 * 1024 * 1024
+const TRANSIENT_POLL_STATUSES = new Set([409, 422, 429, 500, 502, 503, 504])
+const MAX_TRANSIENT_POLL_FAILURES = 6
 
 type QueueState =
   | 'queued'
@@ -79,16 +81,30 @@ function validateFile(file: File): string | null {
   return null
 }
 
+function friendlySourceWarning(warning: string) {
+  if (warning.startsWith('DOCX_FOOTER_PRESENT')) {
+    return '检测到页脚内容；当前不会把页脚当作合同正文，技术细节可在高级模式查看。'
+  }
+  if (warning.startsWith('DOCX_HEADER_PRESENT')) {
+    return '检测到页眉内容；当前不会把页眉当作合同正文，技术细节可在高级模式查看。'
+  }
+  if (warning.startsWith('PDF_') || warning.startsWith('IMAGE_') || warning.startsWith('DOCX_')) {
+    return '源文件存在一项解析提示；正文审计仍会按已验证证据继续，技术细节可在高级模式查看。'
+  }
+  return warning.length > 180 ? `${warning.slice(0, 177)}…` : warning
+}
+
 function sourceWarningNotice(warnings: string[]) {
   if (!warnings.length) return null
-  const visible = warnings.slice(0, 2).join('；')
-  const remainder = warnings.length > 2 ? '；其余提示请在工作台源文件视图查看。' : ''
-  return `源文件解析提示（${warnings.length}）：${visible}${remainder}`
+  const friendly = warnings.slice(0, 2).map(friendlySourceWarning)
+  const visible = friendly.join('；')
+  const remainder = warnings.length > 2 ? '；另有解析提示可在高级模式查看。' : ''
+  return `源文件提示：${visible}${remainder}`
 }
 
 function sourceSummary(result: UploadResponse) {
   if (result.document_kind === 'docx') {
-    return `DOCX · ${result.evidence_count} 个源证据`
+    return `DOCX · 已提取 ${result.evidence_count} 项可审计证据`
   }
   return `${result.page_count} 页${result.ocr_required_pages > 0 ? ` · ${result.ocr_required_pages} 页需要 OCR` : ''}`
 }
@@ -106,22 +122,39 @@ function pipelineStageLabel(stage: PipelineReport['current_stage']) {
   if (stage === 'OCR') return '正在识别扫描文本'
   if (stage === 'STRUCTURE') return '正在整理合同结构'
   if (stage === 'RULES') return '正在执行确定性合同检查'
-  if (stage === 'AUDIT_PLAN') return '正在生成完整审计规划'
-  if (stage === 'ISSUE_LEGAL_CONTEXT') return '正在按 Issue 检索法律依据'
-  if (stage === 'ISSUE_PRIMARY_AUDIT') return 'DeepSeek 正在逐 Issue 主审'
-  if (stage === 'ISSUE_SECONDARY_REVIEW') return 'Kimi 正在逐 Issue 独立复核'
-  if (stage === 'ISSUE_REVIEW_REPORT') return '正在确定性比较并整理审计结果'
-  // Persisted Legacy RC2 jobs remain readable during the compatibility window.
-  if (stage === 'PRIMARY_AUDIT') return 'Legacy RC2 · 正在主审'
-  if (stage === 'SECONDARY_REVIEW') return 'Legacy RC2 · 正在独立二审'
-  if (stage === 'REVIEW_REPORT') return 'Legacy RC2 · 正在整理报告'
+  if (stage === 'AUDIT_PLAN') return '正在制定审计范围'
+  if (stage === 'ISSUE_LEGAL_CONTEXT') return '正在逐项检索法律依据'
+  if (stage === 'ISSUE_PRIMARY_AUDIT') return '正在进行逐项主审'
+  if (stage === 'ISSUE_SECONDARY_REVIEW') return '正在进行独立复核'
+  if (stage === 'ISSUE_REVIEW_REPORT') return '正在比较复核结果并整理报告'
+  if (stage === 'PRIMARY_AUDIT') return '历史任务 · 正在主审'
+  if (stage === 'SECONDARY_REVIEW') return '历史任务 · 正在独立复核'
+  if (stage === 'REVIEW_REPORT') return '历史任务 · 正在整理报告'
   return '审计完成'
 }
 
 function providerModeCopy(mode: ProviderExecutionMode) {
-  if (mode === 'AUTO_CONTINUE') return '完成本地结构化与确定性检查后，自动进入 Planner / DeepSeek / Kimi 的受限云端审计。'
-  if (mode === 'LOCAL_ONLY') return '只运行本地结构化与确定性检查；到 Audit Planner 的首次云端调用前暂停，除非之后明确批准。'
-  return '推荐：先完成本地结构化与确定性检查，在 Audit Planner 第一次发送合同证据到云端前停下等待确认。'
+  if (mode === 'AUTO_CONTINUE') return '完成本地处理后，自动继续受限云端主审与独立复核。'
+  if (mode === 'LOCAL_ONLY') return '只运行本地读取、结构化和确定性检查；首次云端调用前暂停。'
+  return '推荐：先完成本地处理，在首次发送合同证据到云端前等待你的明确确认。'
+}
+
+function friendlyPipelineFailure(pipeline: PipelineReport) {
+  const detail = pipeline.failure_detail ?? ''
+  const code = pipeline.failure_code ?? ''
+  const combined = `${code} ${detail}`.toLowerCase()
+  if (combined.includes('deepseek') || combined.includes('kimi') || combined.includes('provider')) {
+    if (combined.includes('network') || combined.includes('disconnect') || combined.includes('unavailable')) {
+      return '外部模型连接暂时不可用。已完成的本地处理和模型检查点会保留；稍后重试即可。'
+    }
+    if (combined.includes('rate') || combined.includes('429')) {
+      return '外部模型当前请求较多。系统已保留处理进度；稍后重试即可。'
+    }
+  }
+  if (combined.includes('atomicwriteerror')) {
+    return '本地状态保存时发生短暂文件冲突。已完成的处理结果会尽量保留；可直接重试审计。'
+  }
+  return detail || '本次处理未完成。已完成阶段会在重试时优先复用。'
 }
 
 function stateLabel(item: QueueItem) {
@@ -136,13 +169,13 @@ function stateLabel(item: QueueItem) {
     return item.pipeline ? pipelineStageLabel(item.pipeline.current_stage) : '正在启动后台审计'
   }
   if (item.state === 'waiting') {
-    if (item.pipeline?.status === 'PAUSED_BEFORE_PROVIDER') return '等待下一次云端调用确认'
+    if (item.pipeline?.status === 'PAUSED_BEFORE_PROVIDER') return '等待云端发送确认'
     if (item.pipeline?.status === 'WAITING_OPTIONAL_COMPONENT') return '等待可选组件'
     return '等待 API 配置'
   }
   if (item.state === 'cancelled') return '已取消'
-  if (item.state === 'complete') return '审计流水线完成'
-  return '处理失败'
+  if (item.state === 'complete') return '审计完成'
+  return '处理未完成'
 }
 
 function createQueueItem(file: File, providerMode: ProviderExecutionMode): QueueItem {
@@ -272,7 +305,7 @@ function IntakeApp() {
             state: 'error',
             progress: pipeline.progress_percent,
             pipeline,
-            error: pipeline.failure_detail ?? '后台审计失败。',
+            error: friendlyPipelineFailure(pipeline),
           }
         }
         return {
@@ -289,31 +322,56 @@ function IntakeApp() {
   const pollPipeline = async (id: string, jobId: string) => {
     if (pollingIds.current.has(id)) return
     pollingIds.current.add(id)
+    let transientFailures = 0
     try {
       while (mounted.current) {
-        const response = await fetch(`${API_BASE_URL}/api/documents/${jobId}/pipeline`)
-        if (!response.ok) throw new Error(`无法读取后台审计状态（HTTP ${response.status}）。`)
-        const pipeline = (await response.json()) as PipelineReport
-        if (!mounted.current) return
-        updatePipelineItem(id, pipeline)
-        if (
-          pipeline.status === 'COMPLETE' ||
-          pipeline.status === 'FAILED' ||
-          pipeline.status === 'CANCELLED' ||
-          pipeline.status === 'PAUSED_BEFORE_PROVIDER' ||
-          pipeline.status === 'WAITING_CONFIGURATION' ||
-          pipeline.status === 'WAITING_OPTIONAL_COMPONENT'
-        ) {
-          return
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/documents/${jobId}/pipeline`)
+          if (!response.ok) {
+            if (TRANSIENT_POLL_STATUSES.has(response.status) && transientFailures < MAX_TRANSIENT_POLL_FAILURES) {
+              transientFailures += 1
+              await new Promise((resolve) => window.setTimeout(resolve, Math.min(300 * 2 ** (transientFailures - 1), 3000)))
+              continue
+            }
+            throw new Error(`无法稳定读取后台审计状态（HTTP ${response.status}）。`)
+          }
+          const pipeline = (await response.json()) as PipelineReport
+          transientFailures = 0
+          if (!mounted.current) return
+          updatePipelineItem(id, pipeline)
+          if (
+            pipeline.status === 'COMPLETE' ||
+            pipeline.status === 'FAILED' ||
+            pipeline.status === 'CANCELLED' ||
+            pipeline.status === 'PAUSED_BEFORE_PROVIDER' ||
+            pipeline.status === 'WAITING_CONFIGURATION' ||
+            pipeline.status === 'WAITING_OPTIONAL_COMPONENT'
+          ) {
+            return
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1000))
+        } catch (error) {
+          if (!mounted.current) return
+          if (transientFailures < MAX_TRANSIENT_POLL_FAILURES) {
+            transientFailures += 1
+            await new Promise((resolve) => window.setTimeout(resolve, Math.min(300 * 2 ** (transientFailures - 1), 3000)))
+            continue
+          }
+          throw error
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 800))
       }
     } catch (error) {
       if (!mounted.current) return
       setItems((current) =>
         current.map((item) =>
           item.id === id
-            ? { ...item, state: 'error', error: error instanceof Error ? error.message : '无法读取后台审计状态。' }
+            ? {
+                ...item,
+                state: 'error',
+                error: error instanceof Error
+                  ? `${error.message} 已保留最后一次有效状态，可稍后重试。`
+                  : '暂时无法读取后台审计状态。已保留最后一次有效状态。',
+              }
             : item,
         ),
       )
@@ -369,7 +427,12 @@ function IntakeApp() {
     setItems((current) =>
       current.map((candidate) =>
         candidate.id === item.id
-          ? { ...candidate, state: 'processing', error: null, notice: sourceWarningNotice(item.result?.warnings ?? []) }
+          ? {
+              ...candidate,
+              state: 'processing',
+              error: null,
+              notice: '已保留可复用的 OCR、合同结构、规则检查和模型检查点；将从最早未完成阶段继续。',
+            }
           : candidate,
       ),
     )
@@ -399,7 +462,7 @@ function IntakeApp() {
       const pipeline = await approveProvider(item.result.job_id)
       setItems((current) => current.map((candidate) => (
         candidate.id === item.id
-          ? { ...candidate, state: 'processing', pipeline, error: null, notice: '已明确批准该合同继续执行受限 Planner / DeepSeek / Kimi 云端审计。', providerMode: 'REQUIRE_APPROVAL' }
+          ? { ...candidate, state: 'processing', pipeline, error: null, notice: '已批准该合同继续执行受限云端主审与独立复核。', providerMode: 'REQUIRE_APPROVAL' }
           : candidate
       )))
       void pollPipeline(item.id, item.result.job_id)
@@ -420,8 +483,8 @@ function IntakeApp() {
     try {
       const control = await pauseFutureProviders(item.result.job_id)
       const notice = control.active_provider
-        ? `当前 ${control.active_provider} 请求已经开始，无法撤回；后续 Planner / DeepSeek / Kimi 调用已设置为发送前暂停。`
-        : '已设置为发送前确认；尚未开始的 Planner / DeepSeek / Kimi 调用不会自动发送。'
+        ? `当前 ${control.active_provider} 请求已经开始，已发送内容无法撤回；后续云端调用会在发送前暂停。`
+        : '已切换为发送前确认；尚未开始的云端调用不会自动发送。'
       setItems((current) => current.map((candidate) => (
         candidate.id === item.id
           ? { ...candidate, providerMode: 'REQUIRE_APPROVAL', notice }
@@ -474,7 +537,7 @@ function IntakeApp() {
       const pipeline = await resumeCancelledPipeline(item.result.job_id)
       setItems((current) => current.map((candidate) => (
         candidate.id === item.id
-          ? { ...candidate, state: 'processing', pipeline, error: null, notice: '已按原云端策略显式重新开始审计。' }
+          ? { ...candidate, state: 'processing', pipeline, error: null, notice: '已按原云端策略显式重新开始审计，并优先复用已有处理结果。' }
           : candidate
       )))
       void pollPipeline(item.id, item.result.job_id)
@@ -700,7 +763,7 @@ function IntakeApp() {
         </div>
 
         <p className="intake-transmission-note">
-          合同先在本机完成读取、OCR（需要时）、结构化和确定性规则检查。DOCX 使用结构化源证据，不会伪造页码；源文件解析提示会先在此处显示，并可在工作台源文件视图继续查看。之后 Audit Planner、DeepSeek 逐 Issue 主审与 Kimi 独立复核都必须经过持久化云端策略；每次真正发送前都会重新检查批准与取消状态。已经开始的外部请求无法撤回已发送内容。
+          合同会先在本机完成读取、需要时的离线 OCR、结构化和确定性规则检查。只有在进入云端主审前才会按你选择的策略决定是否发送；“发送前确认”模式下，没有明确批准就不会发送合同证据。已经开始的外部请求无法撤回已发送内容。
         </p>
 
         {items.length > 0 && (
@@ -708,11 +771,11 @@ function IntakeApp() {
             <div className="intake-batch-summary">
               <div>
                 <strong>{completeCount}/{items.length}</strong>
-                <span> 流水线完成</span>
+                <span> 审计完成</span>
                 {queuedCount > 0 && <span> · {queuedCount} 个等待上传</span>}
                 {waitingCount > 0 && <span> · {waitingCount} 个等待确认/配置</span>}
                 {cancelledCount > 0 && <span> · {cancelledCount} 个已取消</span>}
-                {errorCount > 0 && <span className="intake-error-text"> · {errorCount} 个失败</span>}
+                {errorCount > 0 && <span className="intake-error-text"> · {errorCount} 个处理未完成</span>}
               </div>
               <span>{batchProgress}%</span>
             </div>
@@ -723,7 +786,7 @@ function IntakeApp() {
             {(completeCount > 0 || waitingCount > 0 || cancelledCount > 0 || errorCount > 0) && batchId && (
               <div className="batch-result-entry">
                 <a href={`/results?batch=${encodeURIComponent(batchId)}`}>查看批次结果</a>
-                <span>全部流水线正常完成时会自动进入结果页；需要人工复核的 Issue 会在结果页和工作台继续保留。</span>
+                <span>完整完成的合同会展示法律审计结论；系统、网络或配置问题会单独显示，不计作法律风险。</span>
               </div>
             )}
 
@@ -793,7 +856,7 @@ function IntakeApp() {
             </div>
 
             <div className="intake-footnote">
-              进度来自真实上传字节和后台持久化状态。默认“发送前确认”会先完成本地读取、结构化和规则检查，再在 Audit Planner 的首次云端调用前暂停；后续每一次 Planner / DeepSeek / Kimi 请求仍会重新检查取消与云端策略。
+              进度来自真实上传和后台持久化状态。若短暂遇到文件占用或服务读取波动，界面会自动重试并保留最后一次有效状态，不会因为一次轮询异常就把合同判成失败。
             </div>
           </div>
         )}
