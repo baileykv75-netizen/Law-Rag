@@ -52,6 +52,7 @@ type BatchResultSummary = {
   total_jobs: number
   complete_jobs: number
   waiting_jobs: number
+  external_service_waiting_jobs: number
   cancelled_jobs: number
   failed_jobs: number
   invalid_jobs: number
@@ -84,6 +85,7 @@ function stateText(job: BatchJobResult) {
   if (job.state === 'WAITING') {
     if (job.pipeline_status === 'PAUSED_BEFORE_PROVIDER') return '等待云端发送确认'
     if (job.pipeline_status === 'WAITING_OPTIONAL_COMPONENT') return '等待 OCR 组件'
+    if (job.pipeline_status === 'WAITING_EXTERNAL_SERVICE') return '等待外部服务恢复'
     return '等待 API 配置'
   }
   if (job.state === 'CANCELLED') return '已取消'
@@ -110,6 +112,9 @@ function friendlyFailure(job: BatchJobResult) {
   const code = job.failure_code ?? ''
   if (job.state === 'INVALID' || code === 'DOCUMENT_METADATA_INVALID') {
     return '旧任务的本地记录不完整。它不代表合同存在法律风险，也不计入有效合同数量。'
+  }
+  if (job.pipeline_status === 'WAITING_EXTERNAL_SERVICE') {
+    return '外部模型暂时不可用。已完成的本地处理和模型检查点已经保留；稍后点击“继续审计”即可从未完成阶段恢复。'
   }
   if (detail.includes('AtomicWriteError') || code.includes('AtomicWriteError')) {
     return '本地任务状态保存时发生短暂文件冲突。已完成的处理结果会尽量保留；可点击“重试审计”。'
@@ -360,13 +365,19 @@ function BatchResultsApp() {
             {(summary.processing_jobs > 0 || summary.waiting_jobs > 0 || summary.cancelled_jobs > 0 || summary.failed_jobs > 0) && (
               <article className="wide">
                 <strong>{summary.processing_jobs} / {summary.waiting_jobs} / {summary.cancelled_jobs} / {summary.failed_jobs}</strong>
-                <span>处理中 / 等待确认或配置 / 已取消 / 处理未完成</span>
+                <span>处理中 / 等待继续 / 已取消 / 处理未完成</span>
+              </article>
+            )}
+            {summary.external_service_waiting_jobs > 0 && (
+              <article className="wide">
+                <strong>{summary.external_service_waiting_jobs}</strong>
+                <span>外部模型暂时不可用 · 已保留检查点，可稍后继续</span>
               </article>
             )}
             {(summary.provider_failed_jobs > 0 || summary.system_error_jobs > 0 || summary.invalid_jobs > 0) && (
               <article className="wide">
                 <strong>{summary.provider_failed_jobs} / {summary.system_error_jobs} / {summary.invalid_jobs}</strong>
-                <span>外部服务异常 / 本地系统异常 / 隔离的旧异常记录</span>
+                <span>不可恢复的外部服务错误 / 本地系统异常 / 隔离的旧异常记录</span>
               </article>
             )}
             {summary.coverage_incomplete_jobs > 0 && (
@@ -389,7 +400,11 @@ function BatchResultsApp() {
                 || job.state === 'FAILED'
                 || (
                   job.state === 'WAITING'
-                  && (job.pipeline_status === 'WAITING_CONFIGURATION' || job.pipeline_status === 'WAITING_OPTIONAL_COMPONENT')
+                  && (
+                    job.pipeline_status === 'WAITING_CONFIGURATION'
+                    || job.pipeline_status === 'WAITING_OPTIONAL_COMPONENT'
+                    || job.pipeline_status === 'WAITING_EXTERNAL_SERVICE'
+                  )
                 )
               const canCancel = (job.state === 'PROCESSING' || job.state === 'WAITING') && job.pipeline_status !== 'CANCEL_REQUESTED'
               const hasLowPriorityRisk = job.finding_counts.medium > 0 || job.finding_counts.low > 0
@@ -436,10 +451,13 @@ function BatchResultsApp() {
                       <p className="batch-job-problem">{friendlyFailure(job)}</p>
                     )}
                     {job.state === 'FAILED' && (
-                      <p className="batch-results-note">重试会优先复用已完成的 OCR、合同结构、规则检查和已保存的模型 checkpoint，不会无条件从头开始。</p>
+                      <p className="batch-results-note">重试会优先复用已完成的 OCR、合同结构、规则检查和已保存的模型检查点，不会无条件从头开始。</p>
                     )}
                     {job.state === 'WAITING' && job.pipeline_status === 'WAITING_CONFIGURATION' && (
                       <p className="batch-job-problem">请先从首页“API 设置”补充对应密钥，再返回这里继续审计。</p>
+                    )}
+                    {job.state === 'WAITING' && job.pipeline_status === 'WAITING_EXTERNAL_SERVICE' && (
+                      <p className="batch-results-note">这不是法律风险，也不是合同审计结论。现有进度已保存，外部服务恢复后可直接继续。</p>
                     )}
                     {waitingForProvider && (
                       <p className="batch-job-problem">本地处理已完成并到达云端发送边界。只有点击“批准云端审计”后才会发送下一次受限请求。</p>
