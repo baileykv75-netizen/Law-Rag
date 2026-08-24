@@ -50,7 +50,18 @@ def _is_provider_failure(code: str | None, detail: str | None) -> bool:
 
 
 def _normalize_user_summary(summary: BatchResultSummary) -> BatchResultSummary:
-    """Keep system/orphan records visible but outside the contract denominator."""
+    """Keep technical/system states distinct from completed contract results.
+
+    Corrupt historical rows remain visible for cleanup but never inflate the
+    valid-contract denominator. A recoverable provider outage is normalized to
+    WAITING even when older batch code initially rendered any non-terminal
+    pipeline state as PROCESSING.
+    """
+
+    for item in summary.jobs:
+        if item.pipeline_status == "WAITING_EXTERNAL_SERVICE" and item.state != BatchJobState.INVALID:
+            item.state = BatchJobState.WAITING
+            item.needs_attention = True
 
     valid_jobs = [item for item in summary.jobs if item.state != BatchJobState.INVALID]
     invalid_jobs = [item for item in summary.jobs if item.state == BatchJobState.INVALID]
@@ -61,6 +72,9 @@ def _normalize_user_summary(summary: BatchResultSummary) -> BatchResultSummary:
     summary.total_jobs = len(valid_jobs)
     summary.complete_jobs = sum(item.state == BatchJobState.COMPLETE for item in valid_jobs)
     summary.waiting_jobs = sum(item.state == BatchJobState.WAITING for item in valid_jobs)
+    summary.external_service_waiting_jobs = sum(
+        item.pipeline_status == "WAITING_EXTERNAL_SERVICE" for item in valid_jobs
+    )
     summary.cancelled_jobs = sum(item.state == BatchJobState.CANCELLED for item in valid_jobs)
     summary.processing_jobs = sum(item.state == BatchJobState.PROCESSING for item in valid_jobs)
     summary.failed_jobs = len(failed_jobs)
