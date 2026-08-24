@@ -14,7 +14,7 @@ $MarkerFile = Join-Path $PSScriptRoot "installer\.law-rag-installed"
 $Exe = Join-Path $BundleDir "Law-Rag.exe"
 
 if ($env:OS -ne "Windows_NT") { throw "Stage 19.1 installer build is Windows-only." }
-if ($ReleaseLabel -notmatch '^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$') { throw "ReleaseLabel must look like 0.8.0-rc3." }
+if ($ReleaseLabel -notmatch '^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+(?:-tester[0-9]+)?$') { throw "ReleaseLabel must look like 0.8.0-rc3 or 0.8.0-rc3-tester1." }
 if ($AppVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "AppVersion must look like 0.8.0." }
 if (-not $ReleaseLabel.StartsWith("$AppVersion-", [StringComparison]::Ordinal)) {
     throw "ReleaseLabel '$ReleaseLabel' must belong to AppVersion '$AppVersion'."
@@ -90,7 +90,7 @@ $Evidence | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $EvidencePath
 Write-Host "[Law-Rag] Stage 19.1 validation installer: $Installer"
 Write-Host "[Law-Rag] Release identity: $ReleaseLabel / application $AppVersion"
 Write-Host "[Law-Rag] Evidence source SHA: $SourceSha"
-Write-Host "[Law-Rag] Inno Setup compiler family: 6.x (validated by ISPP PREPROCVER during compilation)"
+Write-Host "[Law-Rag] Inno Setup compiler family: 6.x (validated by ISPP_PREPROCVER during compilation)"
 Write-Host "[Law-Rag] Installer state: VALIDATION_ONLY_UNSIGNED"
 Write-Host "[Law-Rag] Runtime data is owned outside the application directory and is not an uninstall target."
 Write-Host "[Law-Rag] Evidence: $EvidencePath"

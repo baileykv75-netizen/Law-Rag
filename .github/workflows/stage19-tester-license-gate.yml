@@ -1,0 +1,253 @@
+name: Law-Rag Stage 19 Licensed Tester Build
+
+on:
+  pull_request:
+    branches:
+      - stage19-unsigned-tester-distribution
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-licensed-tester-build:
+    runs-on: windows-latest
+    timeout-minutes: 100
+
+    steps:
+      - name: Check out exact tester-license head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact PR head checkout
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          $expected = '${{ github.event.pull_request.head.sha }}'.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Expected exact PR head $expected, got $actual" }
+          Write-Host "[Law-Rag] exact tester-license source head: $actual"
+
+      - name: Set up CPython 3.12.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Set up Node 22.23.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Run tester-license and report-watermark unit tests
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip==26.2.1
+          python -m pip install -r backend/requirements.txt
+          Push-Location backend
+          try {
+            python -m pytest tests/test_tester_license.py tests/test_tester_report_watermark.py -q
+          } finally {
+            Pop-Location
+          }
+
+      - name: Prove no tester private-key file is committed
+        shell: pwsh
+        run: |
+          $tracked = @(git ls-files '*.pem' '*.key' '*.p12' '*.pfx')
+          if ($tracked.Count -ne 0) {
+            throw "Private-key-like files are tracked by Git: $($tracked -join ', ')"
+          }
+          Write-Host '[Law-Rag] tester license private-key material tracked in Git: false'
+
+      - name: Build production frontend with license gate
+        shell: pwsh
+        run: |
+          Push-Location frontend
+          try {
+            npm ci
+            npm run build
+          } finally {
+            Pop-Location
+          }
+
+      - name: Build exact licensed tester Windows onedir
+        shell: pwsh
+        run: ./release/build-windows.ps1
+
+      - name: Validate packaged offline runtime diagnostics
+        shell: pwsh
+        run: |
+          $Exe = (Resolve-Path './release/dist/Law-Rag/Law-Rag.exe').Path
+          & $Exe --diagnose-ocr-runtime --json
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged OCR runtime diagnostic failed.' }
+          & $Exe --diagnose-ocr-models --json
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged OCR model diagnostic failed.' }
+          & $Exe --diagnose-report-export-runtime
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged report-export runtime diagnostic failed.' }
+
+      - name: Build unsigned licensed tester installer
+        shell: pwsh
+        run: |
+          ./release/build-installer.ps1 `
+            -ReleaseLabel 0.8.0-rc3-tester1 `
+            -AppVersion 0.8.0
+
+          $Installer = (Resolve-Path './release/installer-dist/Law-Rag-0.8.0-rc3-tester1-windows-x64-setup.exe').Path
+          $Signature = Get-AuthenticodeSignature $Installer
+          if ([string]$Signature.Status -ne 'NotSigned') {
+            throw "Limited tester installer unexpectedly became Authenticode signed: $($Signature.Status)"
+          }
+          Write-Host '[Law-Rag] licensed tester installer Authenticode state: NotSigned'
+
+      - name: Install exact tester1 package
+        shell: pwsh
+        run: |
+          $AppDir = Join-Path $env:LOCALAPPDATA 'Programs\Law-Rag'
+          if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
+          $Installer = (Resolve-Path './release/installer-dist/Law-Rag-0.8.0-rc3-tester1-windows-x64-setup.exe').Path
+          $Process = Start-Process -FilePath $Installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-') -Wait -PassThru
+          if ($Process.ExitCode -ne 0) { throw "Tester installer exited with $($Process.ExitCode)" }
+          $InstalledExe = Join-Path $AppDir 'Law-Rag.exe'
+          if (-not (Test-Path $InstalledExe -PathType Leaf)) { throw "Installed Law-Rag.exe missing: $InstalledExe" }
+          $BuiltSha = (Get-FileHash -Algorithm SHA256 './release/dist/Law-Rag/Law-Rag.exe').Hash.ToLowerInvariant()
+          $InstalledSha = (Get-FileHash -Algorithm SHA256 $InstalledExe).Hash.ToLowerInvariant()
+          if ($BuiltSha -ne $InstalledSha) { throw 'Installed Law-Rag.exe does not match the built tester1 onedir executable.' }
+          Write-Host "[Law-Rag] installed tester1 EXE SHA-256: $InstalledSha"
+
+      - name: Prove installed EXE forces missing-license API lock
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $AppDir = Join-Path $env:LOCALAPPDATA 'Programs\Law-Rag'
+          $InstalledExe = Join-Path $AppDir 'Law-Rag.exe'
+          $env:LAW_RAG_RUNTIME_DIR = Join-Path $env:RUNNER_TEMP 'law-rag-tester1-runtime'
+          if (Test-Path $env:LAW_RAG_RUNTIME_DIR) { Remove-Item $env:LAW_RAG_RUNTIME_DIR -Recurse -Force }
+
+          # Deliberately try to disable the gate. release_entry.py must override
+          # this value for the packaged tester build.
+          $env:LAW_RAG_TESTER_LICENSE_REQUIRED = '0'
+          $Port = 8923
+          $Process = Start-Process -FilePath $InstalledExe -ArgumentList @('--no-browser','--no-tray','--port',"$Port") -PassThru
+          try {
+            $Ready = $false
+            for ($i = 0; $i -lt 90; $i++) {
+              Start-Sleep -Seconds 1
+              try {
+                $Health = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 2
+                if ($Health.StatusCode -eq 200) { $Ready = $true; break }
+              } catch {}
+              if ($Process.HasExited) { throw "Installed tester1 EXE exited early with code $($Process.ExitCode)" }
+            }
+            if (-not $Ready) { throw 'Installed tester1 local server did not become ready.' }
+
+            $StatusResponse = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/api/tester-license/status" -TimeoutSec 5
+            $Status = $StatusResponse.Content | ConvertFrom-Json
+            if (-not $Status.required) { throw 'Packaged tester1 allowed environment override to disable the license gate.' }
+            if ($Status.state -ne 'MISSING' -or $Status.active) { throw "Expected MISSING/inactive first-launch license state, got $($Status.state)." }
+
+            $Protected = Invoke-WebRequest -UseBasicParsing -SkipHttpErrorCheck -Uri "http://127.0.0.1:$Port/api/legal/summary" -TimeoutSec 5
+            if ($Protected.StatusCode -ne 423) { throw "Expected protected API HTTP 423 before activation, got $($Protected.StatusCode)." }
+
+            $Root = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/" -TimeoutSec 5
+            if ($Root.StatusCode -ne 200) { throw 'Activation SPA was not reachable before license activation.' }
+
+            Write-Host '[Law-Rag] packaged tester license required despite env override: PASS'
+            Write-Host '[Law-Rag] protected API before activation -> HTTP 423: PASS'
+            Write-Host '[Law-Rag] activation SPA reachable before activation: PASS'
+          } finally {
+            if (-not $Process.HasExited) { Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue }
+            Remove-Item Env:LAW_RAG_TESTER_LICENSE_REQUIRED -ErrorAction SilentlyContinue
+          }
+
+      - name: Validate uninstall lifecycle
+        shell: pwsh
+        run: |
+          $AppDir = Join-Path $env:LOCALAPPDATA 'Programs\Law-Rag'
+          $Uninstaller = Join-Path $AppDir 'unins000.exe'
+          if (-not (Test-Path $Uninstaller -PathType Leaf)) { throw 'Inno Setup uninstaller is missing.' }
+          $Process = Start-Process -FilePath $Uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($Process.ExitCode -ne 0) { throw "Tester1 uninstall exited with $($Process.ExitCode)" }
+          if (Test-Path (Join-Path $AppDir 'Law-Rag.exe')) { throw 'Tester1 Law-Rag.exe remained after uninstall.' }
+          Write-Host '[Law-Rag] tester1 silent install/uninstall lifecycle: PASS'
+
+      - name: Assemble tester1 handoff evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Dist = Join-Path $env:RUNNER_TEMP 'law-rag-tester1-handoff'
+          if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }
+          New-Item -ItemType Directory -Path $Dist -Force | Out-Null
+
+          $InstallerName = 'Law-Rag-0.8.0-rc3-tester1-windows-x64-setup.exe'
+          $InstallerSource = Resolve-Path "./release/installer-dist/$InstallerName"
+          Copy-Item $InstallerSource (Join-Path $Dist $InstallerName)
+          Copy-Item './docs/STAGE19_LICENSED_TESTER_DISTRIBUTION.md' (Join-Path $Dist 'TESTER-README.md')
+          Copy-Item './docs/STAGE19_TESTER1_FEEDBACK_TEMPLATE.md' (Join-Path $Dist 'TESTER-FEEDBACK.md')
+          Copy-Item './docs/STAGE19_TESTER_LICENSE.md' (Join-Path $Dist 'TESTER-LICENSE-DETAILS.md')
+
+          $Head = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          $InstallerSha = (Get-FileHash -Algorithm SHA256 (Join-Path $Dist $InstallerName)).Hash.ToLowerInvariant()
+          $ExeSha = (Get-FileHash -Algorithm SHA256 './release/dist/Law-Rag/Law-Rag.exe').Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText(
+            (Join-Path $Dist 'SHA256SUMS-TESTER1.txt'),
+            "$InstallerSha  $InstallerName`n",
+            [Text.UTF8Encoding]::new($false)
+          )
+
+          $Evidence = [ordered]@{
+            schema_version = '1.0.0'
+            stage = '19-tester-license'
+            release_label = '0.8.0-rc3-tester1'
+            source_sha = $Head
+            inherited_unsigned_tester_base_sha = 'e58b8d4771defa769642698bfbbb4fd1b3b7fc0e'
+            engineering_baseline_source_sha = '8c05ddd91712d5d9cdbdafe90e77cc9de03b8593'
+            distribution_scope = 'INVITED_TESTERS_ONLY'
+            tester_license = [ordered]@{
+              required = $true
+              algorithm = 'Ed25519'
+              public_key_b64 = 'JYVGx5sCRLFW8PGLWiVZMwxM3QZx9bshcep0rH6uTKQ'
+              release_bound = $true
+              expiry_bound = $true
+              tester_id_watermark_ui = $true
+              tester_id_watermark_docx = $true
+              tester_id_watermark_pdf = $true
+              private_key_in_repository = $false
+              machine_bound = $false
+              online_activation_required = $false
+            }
+            packaged_first_launch = [ordered]@{
+              environment_disable_attempt_rejected = $true
+              missing_license_state = 'MISSING'
+              protected_api_http_status = 423
+              activation_spa_reachable = $true
+            }
+            installer = [ordered]@{
+              filename = $InstallerName
+              sha256 = $InstallerSha
+              size_bytes = (Get-Item (Join-Path $Dist $InstallerName)).Length
+              authenticode_status = 'NotSigned'
+            }
+            executable = [ordered]@{
+              sha256 = $ExeSha
+            }
+            production_signing_executed = $false
+            provider_network_uat_executed = $false
+            private_expert_evidence_executed = $false
+            public_release_published = $false
+            final_acceptance_state = 'FINAL_ACCEPTANCE_PENDING'
+          }
+          $Evidence | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $Dist 'STAGE19-TESTER1-EVIDENCE.json') -Encoding UTF8
+          Write-Host ($Evidence | ConvertTo-Json -Depth 10)
+
+      - name: Upload licensed tester1 installer handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-rag-0.8.0-rc3-tester1-windows-x64
+          path: ${{ runner.temp }}/law-rag-tester1-handoff/**
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error

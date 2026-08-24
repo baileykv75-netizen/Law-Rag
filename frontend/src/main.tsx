@@ -6,6 +6,7 @@ import IntakeApp from './IntakeApp'
 import JobHistoryApp from './JobHistoryApp'
 import LocalNavigation from './LocalNavigation'
 import ProviderSetupGate from './ProviderSetupGate'
+import TesterLicenseGate from './TesterLicenseGate'
 import WorkspaceApp from './WorkspaceApp'
 import './styles.css'
 import './workspace.css'
@@ -20,6 +21,7 @@ import './provider-setup.css'
 import './batch-results.css'
 import './developer.css'
 import './job-history.css'
+import './tester-license.css'
 
 const pathname = window.location.pathname
 const isWorkspaceRoute = pathname === '/workspace' || pathname.startsWith('/workspace/')
@@ -29,21 +31,23 @@ const isDeveloperRoute = pathname === '/developer' || pathname.startsWith('/deve
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <LocalNavigation />
-    {isWorkspaceRoute ? (
-      <WorkspaceApp />
-    ) : isResultsRoute ? (
-      <ProviderSetupGate>
-        <BatchResultsApp />
-      </ProviderSetupGate>
-    ) : isHistoryRoute ? (
-      <JobHistoryApp />
-    ) : isDeveloperRoute ? (
-      <DeveloperApp />
-    ) : (
-      <ProviderSetupGate>
-        <IntakeApp />
-      </ProviderSetupGate>
-    )}
+    <TesterLicenseGate>
+      <LocalNavigation />
+      {isWorkspaceRoute ? (
+        <WorkspaceApp />
+      ) : isResultsRoute ? (
+        <ProviderSetupGate>
+          <BatchResultsApp />
+        </ProviderSetupGate>
+      ) : isHistoryRoute ? (
+        <JobHistoryApp />
+      ) : isDeveloperRoute ? (
+        <DeveloperApp />
+      ) : (
+        <ProviderSetupGate>
+          <IntakeApp />
+        </ProviderSetupGate>
+      )}
+    </TesterLicenseGate>
   </StrictMode>,
 )

@@ -85,7 +85,7 @@ function stateText(job: BatchJobResult) {
     if (job.failure_code === 'APPLICATION_RESTARTED_RETRY_REQUIRED') return '上次运行被中断'
     return '处理失败'
   }
-  if (job.state === 'INVALID') return '结果完整性异常'
+  if (job.state === 'INVALID') return '任务数据异常（非审计结论）'
   if (job.human_review_required) return '需要人工复核'
   if (job.architecture === 'ISSUE_V1' && job.final_review_state === 'COMPLETE') return '审计闭环完成'
   if (job.final_review_state === 'MINOR_DISAGREEMENT') return '轻微模型分歧'
@@ -93,6 +93,7 @@ function stateText(job: BatchJobResult) {
 }
 
 function architectureText(job: BatchJobResult) {
+  if (job.state === 'INVALID') return '本地任务记录异常 · 不代表合同法律风险'
   if (job.architecture === 'ISSUE_V1') return 'ISSUE_V1 · Stage 13'
   if (job.architecture === 'LEGACY_RC2') return 'LEGACY_RC2 · 历史任务'
   if (job.architecture === 'CONFLICT') return 'ARCHITECTURE CONFLICT'
@@ -246,13 +247,15 @@ function BatchResultsApp() {
     }
   }
 
+  const allJobsComplete = Boolean(summary?.jobs.length) && summary!.jobs.every((job) => job.state === 'COMPLETE')
+
   return (
     <main className="batch-results-shell">
       <header className="batch-results-header">
         <div>
           <p className="intake-eyebrow">LAW-RAG</p>
-          <h1>审计结果</h1>
-          <p>按待人工复核、可能漏审、实质分歧、严重度与证据不足优先排序。</p>
+          <h1>{allJobsComplete ? '审计结果' : '审计进度与结果'}</h1>
+          <p>处理中显示任务进度；只有完成的任务才显示法律审计结论与风险摘要。</p>
         </div>
         <div className="batch-results-header-actions">
           <a href="/">审计新合同 / API 设置</a>
@@ -267,10 +270,10 @@ function BatchResultsApp() {
       {summary && (
         <>
           <section className="batch-summary-grid" aria-label="批次审计摘要">
-            <article><strong>{summary.total_jobs}</strong><span>合同总数</span></article>
-            <article><strong>{summary.complete_jobs}</strong><span>流水线已完成</span></article>
+            <article><strong>{summary.total_jobs}</strong><span>批次任务</span></article>
+            <article><strong>{summary.complete_jobs}</strong><span>审计已完成</span></article>
             <article><strong>{summary.human_review_required_jobs}</strong><span>仍需人工复核</span></article>
-            <article><strong>{attentionJobs}</strong><span>优先关注</span></article>
+            <article><strong>{attentionJobs}</strong><span>需处理</span></article>
             {(summary.issue_v1_jobs > 0 || summary.legacy_rc2_jobs > 0) && (
               <article className="wide">
                 <strong>{summary.issue_v1_jobs} / {summary.legacy_rc2_jobs}</strong>
@@ -286,19 +289,25 @@ function BatchResultsApp() {
             {(summary.waiting_jobs > 0 || summary.cancelled_jobs > 0 || summary.failed_jobs > 0 || summary.processing_jobs > 0) && (
               <article className="wide">
                 <strong>{summary.processing_jobs} / {summary.waiting_jobs} / {summary.cancelled_jobs} / {summary.failed_jobs}</strong>
-                <span>处理中 / 等待确认或配置 / 已取消 / 失败或异常</span>
+                <span>处理中 / 等待确认或配置 / 已取消 / 失败或系统异常</span>
               </article>
             )}
           </section>
 
           <p className="batch-results-note">
-            这里显示的是审计工作队列，不是“合同正确率”或法律风险评分。Stage 13 新任务以 AuditPlan Issue、规划覆盖、双模型确定性 Comparison 和当前人工复核状态为权威摘要；历史 RC2 任务保持原语义。打开结果或工作台不会触发模型调用。
+            这里同时显示审计进度和已完成结果。处理失败、任务数据异常属于系统状态，不代表合同存在法律风险；只有完成任务中的 AuditPlan Issue、法律证据、双模型 Comparison 与人工复核状态才构成审计结果摘要。打开结果或工作台不会触发模型调用。
           </p>
 
           <section className="batch-results-list" aria-live="polite">
             {summary.jobs.map((job) => {
               const waitingForProvider = job.pipeline_status === 'PAUSED_BEFORE_PROVIDER'
-              const resumable = job.state !== 'COMPLETE' && job.state !== 'INVALID' && job.state !== 'CANCELLED' && !waitingForProvider
+              const resumable =
+                (job.state === 'PROCESSING' && !job.pipeline_status)
+                || job.state === 'FAILED'
+                || (
+                  job.state === 'WAITING'
+                  && (job.pipeline_status === 'WAITING_CONFIGURATION' || job.pipeline_status === 'WAITING_OPTIONAL_COMPONENT')
+                )
               const canCancel = (job.state === 'PROCESSING' || job.state === 'WAITING') && job.pipeline_status !== 'CANCEL_REQUESTED'
               const hasLowPriorityRisk = job.finding_counts.medium > 0 || job.finding_counts.low > 0
               return (
@@ -372,7 +381,13 @@ function BatchResultsApp() {
                     )}
                     {resumable && (
                       <button type="button" onClick={() => void resumeJob(job)} disabled={actionJobId === job.job_id}>
-                        {actionJobId === job.job_id ? '正在启动…' : job.pipeline_status ? '继续 / 重试审计' : '启动后台审计'}
+                        {actionJobId === job.job_id
+                          ? '正在启动…'
+                          : !job.pipeline_status
+                            ? '启动后台审计'
+                            : job.state === 'FAILED'
+                              ? '重试审计'
+                              : '继续审计'}
                       </button>
                     )}
                     {job.state === 'CANCELLED' && (
