@@ -35,6 +35,14 @@ type UploadResponse = {
   warnings: string[]
 }
 
+type OcrProgress = {
+  state: string
+  ocr_pages_total: number
+  ocr_pages_processed: number
+  current_page: number | null
+  detail: string
+}
+
 type QueueItem = {
   id: string
   file: File
@@ -44,6 +52,7 @@ type QueueItem = {
   notice: string | null
   result: UploadResponse | null
   pipeline: PipelineReport | null
+  ocrProgress: OcrProgress | null
   providerMode: ProviderExecutionMode
 }
 
@@ -166,6 +175,12 @@ function stateLabel(item: QueueItem) {
     if (item.pipeline?.status === 'QUEUED' || item.pipeline?.status === 'WAITING_WORKER') {
       return '等待后台处理名额'
     }
+    if (item.pipeline?.current_stage === 'OCR' && item.ocrProgress?.ocr_pages_total) {
+      const { ocr_pages_processed: processed, ocr_pages_total: total, current_page: currentPage } = item.ocrProgress
+      if (currentPage !== null && processed < total) return `正在识别第 ${processed + 1}/${total} 个扫描页`
+      if (processed < total) return `OCR 已处理 ${processed}/${total} 页`
+      return 'OCR 正在整理识别结果'
+    }
     return item.pipeline ? pipelineStageLabel(item.pipeline.current_stage) : '正在启动后台审计'
   }
   if (item.state === 'waiting') {
@@ -189,6 +204,7 @@ function createQueueItem(file: File, providerMode: ProviderExecutionMode): Queue
     notice: null,
     result: null,
     pipeline: null,
+    ocrProgress: null,
     providerMode,
   }
 }
@@ -251,6 +267,10 @@ function IntakeApp() {
 
   const itemProgress = (item: QueueItem) => {
     if (item.state === 'complete') return 100
+    if (item.pipeline?.current_stage === 'OCR' && item.ocrProgress?.ocr_pages_total) {
+      const ratio = Math.min(1, item.ocrProgress.ocr_pages_processed / item.ocrProgress.ocr_pages_total)
+      return Math.max(item.pipeline.progress_percent, 10 + ratio * 15)
+    }
     if (item.pipeline) return item.pipeline.progress_percent
     if (item.state === 'inspecting') return 9
     if (item.state === 'uploading') return Math.min(8, item.progress * 0.08)
@@ -319,6 +339,20 @@ function IntakeApp() {
     )
   }
 
+  const refreshOcrProgress = async (id: string, jobId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/${jobId}/ocr-progress`)
+      if (!response.ok) return
+      const progress = (await response.json()) as OcrProgress
+      if (!mounted.current) return
+      setItems((current) => current.map((item) => (
+        item.id === id ? { ...item, ocrProgress: progress } : item
+      )))
+    } catch {
+      // OCR progress is supplemental. The authoritative pipeline poll continues.
+    }
+  }
+
   const pollPipeline = async (id: string, jobId: string) => {
     if (pollingIds.current.has(id)) return
     pollingIds.current.add(id)
@@ -339,6 +373,7 @@ function IntakeApp() {
           transientFailures = 0
           if (!mounted.current) return
           updatePipelineItem(id, pipeline)
+          if (pipeline.current_stage === 'OCR') await refreshOcrProgress(id, jobId)
           if (
             pipeline.status === 'COMPLETE' ||
             pipeline.status === 'FAILED' ||
@@ -637,6 +672,7 @@ function IntakeApp() {
                     progress: 10,
                     result,
                     pipeline: null,
+                    ocrProgress: null,
                     error: null,
                     notice: sourceWarningNotice(result.warnings ?? []),
                   }
@@ -686,7 +722,7 @@ function IntakeApp() {
     setItems((current) =>
       current.map((item) =>
         item.id === id && validateFile(item.file) === null
-          ? { ...item, state: 'queued', progress: 0, error: null, notice: null, result: null, pipeline: null }
+          ? { ...item, state: 'queued', progress: 0, error: null, notice: null, result: null, pipeline: null, ocrProgress: null }
           : item,
       ),
     )
@@ -817,10 +853,13 @@ function IntakeApp() {
                       )}
                       {item.error && <small className="intake-error-text">{item.error}</small>}
                       {item.notice && <small>{item.notice}</small>}
+                      {item.pipeline?.current_stage === 'OCR' && item.ocrProgress && !item.error && (
+                        <small>{item.ocrProgress.detail}</small>
+                      )}
                       {item.result && !item.error && item.state !== 'complete' && (
                         <small>
                           {sourceSummary(item.result)}
-                          {item.pipeline ? ` · ${item.pipeline.progress_percent}%` : ''}
+                          {` · ${Math.round(rowProgress)}%`}
                         </small>
                       )}
                     </div>
@@ -856,7 +895,7 @@ function IntakeApp() {
             </div>
 
             <div className="intake-footnote">
-              进度来自真实上传和后台持久化状态。若短暂遇到文件占用或服务读取波动，界面会自动重试并保留最后一次有效状态，不会因为一次轮询异常就把合同判成失败。
+              进度来自真实上传、OCR 页级进度和后台持久化状态。若短暂遇到文件占用或服务读取波动，界面会自动重试并保留最后一次有效状态，不会因为一次轮询异常就把合同判成失败。
             </div>
           </div>
         )}
