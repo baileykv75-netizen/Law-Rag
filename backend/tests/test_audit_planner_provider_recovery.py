@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
-import pytest
+import httpx
 
 from app.audit_plan_models import (
     AuditPlannerInput,
@@ -16,7 +16,6 @@ from app.audit_plan_models import (
 )
 from app.audit_planner_provider import (
     RECOVERY_MAX_TOKENS,
-    AuditPlannerProviderError,
     DeepSeekAuditPlannerProvider,
 )
 
@@ -53,23 +52,26 @@ def _valid_content() -> str:
                 client_issue_id="P-001",
                 topic="单方调价",
                 priority=ReviewPriority.HIGH_ATTENTION,
-                why_review="单方调价可能显著改变交易价格与风险分配。",
+                why_review="单方调价需要结合交易背景继续审查。",
                 contract_object_ids=["clause-001"],
-                questions=["调价触发条件和幅度是否明确？"],
-                retrieval_queries=["服务合同 单方调价 价格变更"],
+                questions=["调价触发条件是否明确？"],
+                retrieval_queries=["服务合同 单方调价"],
             )
         ],
     ).model_dump_json()
 
 
 class _FakeResponse:
-    def __init__(self, body: dict) -> None:
+    def __init__(self, body: dict, *, status_code: int = 200) -> None:
         self._body = body
-        self.status_code = 200
+        self.status_code = status_code
         self.text = json.dumps(body, ensure_ascii=False)
 
     def raise_for_status(self) -> None:
-        return None
+        if self.status_code >= 400:
+            request = httpx.Request("POST", "https://example.invalid/chat/completions")
+            response = httpx.Response(self.status_code, request=request)
+            raise httpx.HTTPStatusError("error", request=request, response=response)
 
     def json(self) -> dict:
         return self._body
@@ -95,7 +97,7 @@ def test_planner_recovers_from_length_with_compact_non_thinking_retry(monkeypatc
                         "message": {"content": '{"contract_type":"SERVICE"'},
                     }
                 ],
-                "usage": {"prompt_tokens": 100, "completion_tokens": 5000, "total_tokens": 5100},
+                "usage": {"prompt_tokens": 100, "completion_tokens": 4000, "total_tokens": 4100},
             }
         ),
         _FakeResponse(
@@ -131,27 +133,18 @@ def test_planner_recovers_from_length_with_compact_non_thinking_retry(monkeypatc
     assert result.finish_reason == "stop"
     assert len(payloads) == 2
     assert payloads[0]["thinking"] == {"type": "enabled"}
-    assert payloads[0]["reasoning_effort"] == "high"
+    assert payloads[0]["reasoning_effort"] == "medium"
     assert "thinking" not in payloads[1]
     assert "reasoning_effort" not in payloads[1]
     assert payloads[1]["max_tokens"] == RECOVERY_MAX_TOKENS
-    assert "RECOVERY MODE" in payloads[1]["messages"][0]["content"]
+    assert "COMPACT RECOVERY MODE" in payloads[1]["messages"][0]["content"]
 
 
-def test_planner_fails_only_after_compact_retry_is_also_truncated(monkeypatch) -> None:
+def test_planner_uses_bounded_fallback_after_all_three_outputs_are_truncated(monkeypatch) -> None:
     responses = [
-        _FakeResponse(
-            {
-                "id": "first",
-                "choices": [{"finish_reason": "length", "message": {"content": "{"}}],
-            }
-        ),
-        _FakeResponse(
-            {
-                "id": "second",
-                "choices": [{"finish_reason": "length", "message": {"content": "{"}}],
-            }
-        ),
+        _FakeResponse({"id": "first", "choices": [{"finish_reason": "length", "message": {"content": "{"}}]}),
+        _FakeResponse({"id": "second", "choices": [{"finish_reason": "length", "message": {"content": "{"}}]}),
+        _FakeResponse({"id": "third", "choices": [{"finish_reason": "length", "message": {"content": "{"}}]}),
     ]
     calls = 0
 
@@ -172,7 +165,48 @@ def test_planner_fails_only_after_compact_retry_is_also_truncated(monkeypatch) -
 
     monkeypatch.setattr("app.audit_planner_provider.httpx.Client", _FakeClient)
 
-    with pytest.raises(AuditPlannerProviderError, match="自动紧凑重试"):
-        _provider().generate(_planner_input())
+    result = _provider().generate(_planner_input())
+    draft = ModelAuditPlanDraft.model_validate_json(result.content)
 
-    assert calls == 2
+    assert calls == 3
+    assert result.finish_reason == "bounded_fallback"
+    assert draft.contract_type == ContractType.UNKNOWN
+    assert draft.contract_type_confidence == ContractTypeConfidence.LOW
+    assert draft.issues == []
+    assert "降级" in draft.contract_type_reasoning
+
+
+def test_planner_retries_transient_disconnect_before_succeeding(monkeypatch) -> None:
+    calls = 0
+
+    class _FakeClient:
+        def __init__(self, *, timeout) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def post(self, url, *, headers, json):
+            nonlocal calls
+            calls += 1
+            if calls < 4:
+                request = httpx.Request("POST", url)
+                raise httpx.RemoteProtocolError("server disconnected", request=request)
+            return _FakeResponse(
+                {
+                    "id": "eventual-success",
+                    "model": "deepseek-test",
+                    "choices": [{"finish_reason": "stop", "message": {"content": _valid_content()}}],
+                }
+            )
+
+    monkeypatch.setattr("app.audit_planner_provider.httpx.Client", _FakeClient)
+    monkeypatch.setattr("app.audit_planner_provider.time.sleep", lambda _: None)
+
+    result = _provider().generate(_planner_input())
+
+    assert calls == 4
+    assert result.request_id == "eventual-success"

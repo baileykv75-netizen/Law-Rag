@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 SCHEMA_VERSION = "1.0.0"
 AUDIENCE = "law-rag-limited-test"
-DEFAULT_RELEASE_LABEL = "0.8.0-rc3-tester1"
+DEFAULT_RELEASE_LABEL = "0.8.0-rc3-tester2"
 TOKEN_PREFIX = "LR1"
 _TESTER_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 _RELEASE_RE = re.compile(r"^\d+\.\d+\.\d+-rc\d+-tester\d+$")
@@ -59,7 +59,7 @@ def issue_license(
     if not _TESTER_ID_RE.fullmatch(tester_id):
         raise ValueError("tester-id must use only letters, digits, dot, underscore or hyphen (1-64 chars)")
     if not _RELEASE_RE.fullmatch(release_label):
-        raise ValueError("release-label must look like 0.8.0-rc3-tester1")
+        raise ValueError("release-label must look like 0.8.0-rc3-tester2")
     if expires_at <= not_before:
         raise ValueError("expires-at must be later than not-before")
 

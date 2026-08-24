@@ -84,7 +84,7 @@ from .pipeline_models import (
     PipelineStartRequest,
     PipelineStatus,
 )
-from .safe_persistence import atomic_write_text
+from .safe_persistence import atomic_write_text, read_text_with_retry
 from .storage import (
     find_source_path,
     job_audit_plan_path,
@@ -179,7 +179,7 @@ def _load_report_if_present(job_id: UUID) -> PipelineReport | None:
     if not path.exists():
         return None
     try:
-        return PipelineReport.model_validate_json(path.read_text(encoding="utf-8"))
+        return PipelineReport.model_validate_json(read_text_with_retry(path, encoding="utf-8"))
     except (OSError, ValidationError) as exc:
         raise PipelineError(f"Persisted pipeline state is invalid for job {job_id}.") from exc
 
@@ -347,19 +347,12 @@ def _checkpoint_cancel(report: PipelineReport) -> bool:
 
 
 def _load_document(job_id: UUID) -> DocumentInspection:
-    """Load common document metadata without forcing every source into pages.
-
-    PDF/image jobs keep their historical PageEvidence[] persistence. DOCX jobs
-    persist a SourceEvidenceArtifact instead, so the pipeline validates that
-    typed artifact and supplies an empty pages list to the common inspection
-    model. Source-format differences stop here; later pipeline stages remain
-    format-neutral.
-    """
+    """Load common document metadata without forcing every source into pages."""
 
     try:
-        document_payload = json.loads(job_document_path(job_id).read_text(encoding="utf-8"))
+        document_payload = json.loads(read_text_with_retry(job_document_path(job_id), encoding="utf-8"))
         document_kind = DocumentKind(document_payload["document_kind"])
-        evidence_text = job_evidence_path(job_id).read_text(encoding="utf-8")
+        evidence_text = read_text_with_retry(job_evidence_path(job_id), encoding="utf-8")
 
         if document_kind == DocumentKind.DOCX:
             evidence = SourceEvidenceArtifact.model_validate_json(evidence_text)
@@ -387,7 +380,7 @@ def _existing_ocr(job_id: UUID) -> OcrRunResult | None:
     if not path.exists():
         return None
     try:
-        return OcrRunResult.model_validate_json(path.read_text(encoding="utf-8"))
+        return OcrRunResult.model_validate_json(read_text_with_retry(path, encoding="utf-8"))
     except (OSError, ValidationError):
         return None
 
@@ -464,15 +457,6 @@ def _provider_slot_call(
     running_detail: str,
     action: Callable[[], _T],
 ) -> _T:
-    """Limit actual outbound work while preserving Stage 13A persisted controls.
-
-    Stage 13B/E/F records the provider boundary immediately before calling the
-    provider object. The pipeline-owned provider adapters then acquire the global
-    outbound slot and re-check persisted provider/cancel intent before performing
-    the real HTTP-producing delegate call. If the user pauses/cancels while the
-    adapter is waiting for a slot, no new external request is sent.
-    """
-
     _acquire_resource(report, stage, _EXTERNAL_PROVIDER_SEMAPHORE, wait_detail)
     try:
         assert_provider_allowed(report.job_id)
@@ -513,8 +497,8 @@ class _PipelinePrimaryProvider(IssuePrimaryAuditProvider):
         return _provider_slot_call(
             self.report,
             PipelineStage.ISSUE_PRIMARY_AUDIT,
-            wait_detail="当前 Issue 已准备，等待 DeepSeek 调用名额。",
-            running_detail=f"正在调用 DeepSeek 审查 Issue：{context.topic}",
+            wait_detail="当前审查问题已准备，等待 DeepSeek 调用名额。",
+            running_detail=f"正在调用 DeepSeek 审查：{context.topic}",
             action=lambda: self.delegate.generate(context),
         )
 
@@ -533,8 +517,8 @@ class _PipelineSecondaryProvider(IssueSecondaryReviewProvider):
         return _provider_slot_call(
             self.report,
             PipelineStage.ISSUE_SECONDARY_REVIEW,
-            wait_detail="当前 Issue 二审上下文已准备，等待 Kimi 调用名额。",
-            running_detail=f"正在调用 Kimi 独立复核 Issue：{context.topic}",
+            wait_detail="当前复核问题已准备，等待 Kimi 调用名额。",
+            running_detail=f"正在调用 Kimi 独立复核：{context.topic}",
             action=lambda: self.delegate.generate(context, primary),
         )
 
@@ -561,20 +545,17 @@ def _run_audit_plan_stage(report: PipelineReport) -> None:
         except Exception:
             pass
 
-    try:
-        delegate = planner_provider_from_name("deepseek")
-    except AuditPlannerProviderError:
-        raise
+    delegate = planner_provider_from_name("deepseek")
     if delegate.provider_name == "deepseek" and not getattr(delegate, "api_key", ""):
         raise _StageWaitingConfiguration(
             PipelineStage.AUDIT_PLAN,
             "DEEPSEEK_NOT_CONFIGURED",
-            "DeepSeek API key is not configured.",
+            "DeepSeek API key 未配置。",
         )
 
-    _mark_running(report, PipelineStage.AUDIT_PLAN, "正在本机构建完整 Audit Planner 输入。")
+    _mark_running(report, PipelineStage.AUDIT_PLAN, "正在本机构建审计规划输入。")
     run_audit_planner(job_id, provider=_PipelinePlannerProvider(delegate, report))
-    _mark_done(report, PipelineStage.AUDIT_PLAN, detail="完整审计计划与条款覆盖记录已生成。")
+    _mark_done(report, PipelineStage.AUDIT_PLAN, detail="审计计划与条款覆盖记录已生成。")
 
 
 def _run_issue_legal_context_stage(report: PipelineReport) -> None:
@@ -586,7 +567,7 @@ def _run_issue_legal_context_stage(report: PipelineReport) -> None:
                 _mark_done(
                     report,
                     PipelineStage.ISSUE_LEGAL_CONTEXT,
-                    detail="复用与当前 AuditPlan、法律语料和检索配置一致的逐项法律上下文。",
+                    detail="复用与当前审计计划、法律语料和检索配置一致的法律上下文。",
                     reused=True,
                 )
                 return
@@ -597,10 +578,10 @@ def _run_issue_legal_context_stage(report: PipelineReport) -> None:
         report,
         PipelineStage.ISSUE_LEGAL_CONTEXT,
         _LOCAL_STAGE_SEMAPHORE,
-        "等待本地 Legal RAG 处理名额。",
+        "等待本地法律检索处理名额。",
     )
     try:
-        _mark_running(report, PipelineStage.ISSUE_LEGAL_CONTEXT, "正在按 AuditPlan Issue 逐项检索本地法律证据。")
+        _mark_running(report, PipelineStage.ISSUE_LEGAL_CONTEXT, "正在按审查问题逐项检索本地法律证据。")
         build_issue_legal_context(
             job_id,
             as_of=report.as_of,
@@ -613,10 +594,7 @@ def _run_issue_legal_context_stage(report: PipelineReport) -> None:
 
 def _run_issue_primary_stage(report: PipelineReport) -> None:
     job_id = report.job_id
-    try:
-        delegate = issue_primary_provider_from_name("deepseek")
-    except IssuePrimaryAuditProviderError:
-        raise
+    delegate = issue_primary_provider_from_name("deepseek")
 
     if job_issue_primary_audit_path(job_id).exists():
         try:
@@ -630,7 +608,7 @@ def _run_issue_primary_stage(report: PipelineReport) -> None:
                 _mark_done(
                     report,
                     PipelineStage.ISSUE_PRIMARY_AUDIT,
-                    detail="复用与当前 Issue Legal RAG 一致的 DeepSeek 逐项主审结果。",
+                    detail="复用与当前法律证据一致的 DeepSeek 逐项主审结果。",
                     reused=True,
                 )
                 return
@@ -645,20 +623,17 @@ def _run_issue_primary_stage(report: PipelineReport) -> None:
             health.detail,
         )
 
-    _mark_running(report, PipelineStage.ISSUE_PRIMARY_AUDIT, "正在重建逐项证据上下文并复用已有 checkpoint。")
+    _mark_running(report, PipelineStage.ISSUE_PRIMARY_AUDIT, "正在重建逐项证据上下文并复用已有检查点。")
     run_issue_primary_audit(
         job_id,
         provider_override=_PipelinePrimaryProvider(delegate, report),
     )
-    _mark_done(report, PipelineStage.ISSUE_PRIMARY_AUDIT, detail="DeepSeek 已完成全部 AuditPlan Issue 的主审。")
+    _mark_done(report, PipelineStage.ISSUE_PRIMARY_AUDIT, detail="DeepSeek 已完成全部审查问题的主审。")
 
 
 def _run_issue_secondary_stage(report: PipelineReport) -> None:
     job_id = report.job_id
-    try:
-        delegate = issue_secondary_provider_from_name("kimi")
-    except IssueSecondaryReviewProviderError:
-        raise
+    delegate = issue_secondary_provider_from_name("kimi")
 
     if job_issue_secondary_review_path(job_id).exists():
         try:
@@ -686,12 +661,12 @@ def _run_issue_secondary_stage(report: PipelineReport) -> None:
             health.detail,
         )
 
-    _mark_running(report, PipelineStage.ISSUE_SECONDARY_REVIEW, "正在重建 Kimi 逐项复核上下文并复用已有 checkpoint。")
+    _mark_running(report, PipelineStage.ISSUE_SECONDARY_REVIEW, "正在重建 Kimi 逐项复核上下文并复用已有检查点。")
     run_issue_secondary_review(
         job_id,
         provider_override=_PipelineSecondaryProvider(delegate, report),
     )
-    _mark_done(report, PipelineStage.ISSUE_SECONDARY_REVIEW, detail="Kimi 已完成全部 AuditPlan Issue 的独立复核。")
+    _mark_done(report, PipelineStage.ISSUE_SECONDARY_REVIEW, detail="Kimi 已完成全部审查问题的独立复核。")
 
 
 def _run_issue_review_stage(report: PipelineReport) -> None:
@@ -703,7 +678,7 @@ def _run_issue_review_stage(report: PipelineReport) -> None:
                 _mark_done(
                     report,
                     PipelineStage.ISSUE_REVIEW_REPORT,
-                    detail="复用当前 13E/13F 结果对应的确定性 Issue Review Report。",
+                    detail="复用当前主审与独立复核对应的比较结果。",
                     reused=True,
                 )
                 return
@@ -717,11 +692,45 @@ def _run_issue_review_stage(report: PipelineReport) -> None:
         "等待本地比较处理名额。",
     )
     try:
-        _mark_running(report, PipelineStage.ISSUE_REVIEW_REPORT, "正在逐 Issue 确定性比较 DeepSeek 与 Kimi 结果。")
+        _mark_running(report, PipelineStage.ISSUE_REVIEW_REPORT, "正在逐项比较主审与独立复核结果。")
         build_issue_review_report(job_id)
-        _mark_done(report, PipelineStage.ISSUE_REVIEW_REPORT, detail="逐项比较与最终 Issue Review Report 已生成。")
+        _mark_done(report, PipelineStage.ISSUE_REVIEW_REPORT, detail="逐项比较与最终审计结果已生成。")
     finally:
         _LOCAL_STAGE_SEMAPHORE.release()
+
+
+def _recoverable_provider_error(exc: Exception) -> Exception | None:
+    """Find a recoverable provider error even after stage code wrapped it.
+
+    Stage 13E/13F persist an INTERRUPTED checkpoint and then raise a stage-level
+    error with the original provider error as ``__cause__``. Walking the chain
+    preserves that checkpoint behavior while still classifying transient network,
+    rate-limit and service failures as resumable instead of legal/audit failures.
+    """
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if bool(getattr(current, "recoverable", False)):
+            return current if isinstance(current, Exception) else exc
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def _mark_recoverable_provider_wait(job_id: UUID, exc: Exception) -> bool:
+    provider_error = _recoverable_provider_error(exc)
+    if provider_error is None:
+        return False
+    report = load_pipeline_report(job_id)
+    _mark_waiting(
+        report,
+        report.current_stage,
+        status=PipelineStatus.WAITING_EXTERNAL_SERVICE,
+        code=str(getattr(provider_error, "code", type(provider_error).__name__)),
+        detail=str(provider_error),
+    )
+    return True
 
 
 def _run_pipeline(job_id: UUID) -> None:
@@ -729,7 +738,7 @@ def _run_pipeline(job_id: UUID) -> None:
         report = load_pipeline_report(job_id)
         if _is_legacy_pipeline(report):
             raise PipelineError(
-                "This is an unfinished legacy RC2 pipeline. Stage 13G.3 will not silently resume it with the new issue architecture; legacy migration is handled in Stage 13G.4."
+                "This is an unfinished legacy RC2 pipeline. It will not be silently resumed with the current issue architecture."
             )
 
         ingest = _stage(report, PipelineStage.INGEST)
@@ -806,6 +815,15 @@ def _run_pipeline(job_id: UUID) -> None:
             code="DEEPSEEK_NOT_CONFIGURED",
             detail=str(exc),
         )
+    except (AuditPlannerProviderError, IssuePrimaryAuditProviderError, IssueSecondaryReviewProviderError) as exc:
+        if not _mark_recoverable_provider_wait(job_id, exc):
+            report = load_pipeline_report(job_id)
+            _mark_failed(
+                report,
+                report.current_stage,
+                str(getattr(exc, "code", type(exc).__name__)),
+                str(exc),
+            )
     except _StageFailure as exc:
         report = load_pipeline_report(job_id)
         _mark_failed(report, report.current_stage, exc.code, exc.detail)
@@ -815,26 +833,25 @@ def _run_pipeline(job_id: UUID) -> None:
         StructureIncompleteError,
         StructureProcessingError,
         AuditRuleProcessingError,
-        AuditPlannerProviderError,
         AuditPlannerError,
         IssueLegalContextError,
-        IssuePrimaryAuditProviderError,
         IssuePrimaryAuditError,
-        IssueSecondaryReviewProviderError,
         IssueSecondaryReviewError,
         IssueReviewReportError,
         PipelineError,
     ) as exc:
-        report = load_pipeline_report(job_id)
-        _mark_failed(report, report.current_stage, type(exc).__name__, str(exc))
+        if not _mark_recoverable_provider_wait(job_id, exc):
+            report = load_pipeline_report(job_id)
+            _mark_failed(report, report.current_stage, type(exc).__name__, str(exc))
     except Exception as exc:
-        report = load_pipeline_report(job_id)
-        _mark_failed(
-            report,
-            report.current_stage,
-            "UNEXPECTED_PIPELINE_ERROR",
-            f"Unexpected pipeline failure: {type(exc).__name__}.",
-        )
+        if not _mark_recoverable_provider_wait(job_id, exc):
+            report = load_pipeline_report(job_id)
+            _mark_failed(
+                report,
+                report.current_stage,
+                "UNEXPECTED_PIPELINE_ERROR",
+                f"Unexpected pipeline failure: {type(exc).__name__}.",
+            )
 
 
 def _active_future(job_id: UUID) -> Future[None] | None:
@@ -865,7 +882,7 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
             return existing
         if _is_legacy_pipeline(existing):
             raise PipelineError(
-                "This job has an unfinished legacy RC2 pipeline. Stage 13G.3 keeps it readable but will not migrate it in place; Stage 13G.4 provides the compatibility path."
+                "This job has an unfinished legacy pipeline. Use the explicit compatibility path instead of silently migrating it."
             )
         if existing.status == PipelineStatus.CANCELLED:
             raise PipelineError("This pipeline was explicitly cancelled. Use the resume action to restart it.")
@@ -999,9 +1016,7 @@ def resume_cancelled_pipeline(job_id: UUID) -> PipelineReport:
     if _active_future(job_id) is not None:
         raise PipelineError("Cancellation is still being applied; retry after the current stage reaches a safe stop.")
     if _is_legacy_pipeline(existing):
-        raise PipelineError(
-            "Cancelled legacy RC2 pipelines stay preserved in Stage 13G.3; explicit legacy migration is handled in Stage 13G.4."
-        )
+        raise PipelineError("Cancelled legacy pipelines require the explicit compatibility path.")
 
     control = clear_pipeline_cancel(job_id)
     for item in existing.stages:
