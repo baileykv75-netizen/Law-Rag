@@ -18,7 +18,7 @@ from .storage import runtime_dir
 
 TESTER_LICENSE_SCHEMA_VERSION = "1.0.0"
 TESTER_LICENSE_AUDIENCE = "law-rag-limited-test"
-TESTER_RELEASE_LABEL = "0.8.0-rc3-tester1"
+TESTER_RELEASE_LABEL = "0.8.0-rc3-tester2"
 TESTER_LICENSE_PUBLIC_KEY_B64 = "JYVGx5sCRLFW8PGLWiVZMwxM3QZx9bshcep0rH6uTKQ"
 TESTER_LICENSE_TOKEN_PREFIX = "LR1"
 _TESTER_LICENSE_REQUIRED_ENV = "LAW_RAG_TESTER_LICENSE_REQUIRED"
@@ -121,61 +121,67 @@ def verify_tester_license_token(
 
     try:
         payload = json.loads(payload_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise TesterLicenseError(TesterLicenseState.INVALID, "许可证载荷不是有效 JSON。") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        required_fields = {
+            "schema_version",
+            "audience",
+            "license_id",
+            "tester_id",
+            "release_label",
+            "not_before_utc",
+            "expires_at_utc",
+        }
+        if set(payload) != required_fields:
+            raise ValueError("payload fields do not match the licensed schema")
+        if payload["schema_version"] != TESTER_LICENSE_SCHEMA_VERSION:
+            raise ValueError("unsupported tester license schema")
+        if payload["audience"] != TESTER_LICENSE_AUDIENCE:
+            raise ValueError("wrong tester license audience")
+        if not isinstance(payload["license_id"], str) or not payload["license_id"].strip():
+            raise ValueError("license_id must be non-empty")
+        tester_id = payload["tester_id"]
+        if not isinstance(tester_id, str) or not tester_id.strip() or len(tester_id) > 64:
+            raise ValueError("tester_id must be a non-empty string up to 64 chars")
+        release_label = payload["release_label"]
+        if not isinstance(release_label, str) or not release_label.strip():
+            raise ValueError("release_label must be non-empty")
+        not_before = _parse_utc(payload["not_before_utc"], "not_before_utc")
+        expires_at = _parse_utc(payload["expires_at_utc"], "expires_at_utc")
+        if expires_at <= not_before:
+            raise ValueError("expires_at_utc must be after not_before_utc")
+    except TesterLicenseError:
+        raise
+    except Exception as exc:
+        raise TesterLicenseError(TesterLicenseState.INVALID, "许可证内容结构无效。") from exc
 
-    required_fields = {
-        "schema_version",
-        "audience",
-        "license_id",
-        "tester_id",
-        "release_label",
-        "not_before_utc",
-        "expires_at_utc",
-    }
-    if not isinstance(payload, dict) or set(payload) != required_fields:
-        raise TesterLicenseError(TesterLicenseState.INVALID, "许可证字段集合无效。")
-    if payload["schema_version"] != TESTER_LICENSE_SCHEMA_VERSION or payload["audience"] != TESTER_LICENSE_AUDIENCE:
-        raise TesterLicenseError(TesterLicenseState.INVALID, "许可证用途或版本无效。")
-
-    tester_id = payload["tester_id"]
-    license_id = payload["license_id"]
-    release_label = payload["release_label"]
-    if not isinstance(tester_id, str) or not (1 <= len(tester_id) <= 64) or not all(
-        character.isalnum() or character in "._-" for character in tester_id
-    ):
-        raise TesterLicenseError(TesterLicenseState.INVALID, "Tester ID 无效。")
-    if not isinstance(license_id, str) or not (8 <= len(license_id) <= 128):
-        raise TesterLicenseError(TesterLicenseState.INVALID, "License ID 无效。")
     if release_label != expected_release_label:
         raise TesterLicenseError(
             TesterLicenseState.WRONG_RELEASE,
-            f"该许可证仅适用于 {release_label}，当前测试包为 {expected_release_label}。",
+            f"许可证适用于 {release_label}，当前测试包需要 {expected_release_label}。",
         )
-
-    try:
-        not_before = _parse_utc(payload["not_before_utc"], "not_before_utc")
-        expires_at = _parse_utc(payload["expires_at_utc"], "expires_at_utc")
-    except ValueError as exc:
-        raise TesterLicenseError(TesterLicenseState.INVALID, str(exc)) from exc
-    if expires_at <= not_before:
-        raise TesterLicenseError(TesterLicenseState.INVALID, "许可证有效期无效。")
     if current < not_before:
         raise TesterLicenseError(TesterLicenseState.NOT_YET_VALID, "许可证尚未到生效时间。")
     if current >= expires_at:
-        raise TesterLicenseError(TesterLicenseState.EXPIRED, "许可证已过期，请向测试组织者获取新的许可证。")
+        raise TesterLicenseError(TesterLicenseState.EXPIRED, "许可证已过期。")
 
     return TesterLicenseStatus(
         required=True,
         state=TesterLicenseState.ACTIVE,
         active=True,
-        tester_id=tester_id,
-        license_id=license_id,
+        tester_id=tester_id.strip(),
+        license_id=payload["license_id"],
         release_label=release_label,
         not_before_utc=not_before,
         expires_at_utc=expires_at,
         detail="测试许可证有效。",
     )
+
+
+def activate_tester_license(token: str, *, now: datetime | None = None) -> TesterLicenseStatus:
+    status = verify_tester_license_token(token, now=now)
+    atomic_write_text(tester_license_path(), token.strip() + "\n")
+    return status
 
 
 def current_tester_license_status(*, now: datetime | None = None) -> TesterLicenseStatus:
@@ -185,18 +191,15 @@ def current_tester_license_status(*, now: datetime | None = None) -> TesterLicen
             required=False,
             state=TesterLicenseState.NOT_REQUIRED,
             active=True,
-            release_label=TESTER_RELEASE_LABEL,
-            detail="当前运行模式不要求测试许可证。",
+            detail="当前构建未启用测试许可证门禁。",
         )
-
     path = tester_license_path()
     if not path.is_file():
         return TesterLicenseStatus(
             required=True,
             state=TesterLicenseState.MISSING,
             active=False,
-            release_label=TESTER_RELEASE_LABEL,
-            detail="首次使用需要输入测试许可证。",
+            detail="尚未激活测试许可证。",
         )
     try:
         token = path.read_text(encoding="utf-8").strip()
@@ -208,46 +211,16 @@ def current_tester_license_status(*, now: datetime | None = None) -> TesterLicen
             required=True,
             state=TesterLicenseState.INVALID,
             active=False,
-            release_label=TESTER_RELEASE_LABEL,
-            detail="已保存的测试许可证无法读取。",
+            detail="本机测试许可证无法读取。",
         )
 
 
-def activate_tester_license(token: str, *, now: datetime | None = None) -> TesterLicenseStatus:
-    status = verify_tester_license_token(token, now=now)
-    directory = tester_license_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    if directory.is_symlink():
-        raise TesterLicenseError(TesterLicenseState.INVALID, "测试许可证目录不能是符号链接。")
-    path = tester_license_path()
-    if path.is_symlink():
-        raise TesterLicenseError(TesterLicenseState.INVALID, "测试许可证文件不能是符号链接。")
-    atomic_write_text(path, token.strip() + "\n")
-    return status
-
-
-def active_tester_watermark() -> str | None:
-    if not tester_license_required():
-        return None
-    status = current_tester_license_status()
-    if not status.active or not status.tester_id:
-        return None
-    return f"Law-Rag {TESTER_RELEASE_LABEL} · Tester {status.tester_id} · Limited Test Build"
-
-
 class TesterLicenseMiddleware:
-    """Fail closed on release API calls until the signed tester license is active.
-
-    Static SPA files stay reachable so the first-launch activation screen can be
-    rendered. Only the two license endpoints and health are reachable before
-    activation; every other /api request is locked at the ASGI boundary.
-    """
-
-    _ALLOWED_API_PATHS = {
+    _ALLOWED_PREFIXES = (
         "/api/health",
         "/api/tester-license/status",
         "/api/tester-license/activate",
-    }
+    )
 
     def __init__(self, app) -> None:
         self.app = app
@@ -257,16 +230,18 @@ class TesterLicenseMiddleware:
             await self.app(scope, receive, send)
             return
         path = str(scope.get("path") or "")
-        if path.startswith("/api/") and path not in self._ALLOWED_API_PATHS:
-            status = current_tester_license_status()
-            if not status.active:
-                response = JSONResponse(
-                    status_code=423,
-                    content={
-                        "detail": "Law-Rag limited tester license is required before this API can be used.",
-                        "tester_license": status.model_dump(mode="json"),
-                    },
-                )
-                await response(scope, receive, send)
-                return
-        await self.app(scope, receive, send)
+        if not path.startswith("/api/") or any(path == allowed for allowed in self._ALLOWED_PREFIXES):
+            await self.app(scope, receive, send)
+            return
+        status = current_tester_license_status()
+        if status.active:
+            await self.app(scope, receive, send)
+            return
+        response = JSONResponse(
+            status_code=423,
+            content={
+                "detail": "Law-Rag 限量测试许可证未激活或无效。",
+                "tester_license": status.model_dump(mode="json"),
+            },
+        )
+        await response(scope, receive, send)
