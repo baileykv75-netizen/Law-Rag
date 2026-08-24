@@ -11,6 +11,7 @@ from .job_architecture_models import (
     LegacyPipelineMigrationRequest,
 )
 from .legacy_pipeline_migration import LegacyPipelineMigrationError, migrate_legacy_pipeline
+from .ocr import OcrProcessingError, load_ocr_progress
 from .pipeline import (
     PipelineError,
     PipelineNotFoundError,
@@ -75,6 +76,20 @@ def get_document_architecture(job_id: UUID) -> JobArchitectureSummary:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except JobArchitectureError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@router.get("/api/documents/{job_id}/ocr-progress")
+def get_document_ocr_progress(job_id: UUID) -> dict:
+    """Return page-level local OCR progress without starting or resuming OCR."""
+
+    try:
+        return load_ocr_progress(job_id)
+    except OcrProcessingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OCR 进度暂时无法稳定读取，请稍后重试。",
+            headers={"Retry-After": "1"},
+        ) from exc
 
 
 @router.post(
