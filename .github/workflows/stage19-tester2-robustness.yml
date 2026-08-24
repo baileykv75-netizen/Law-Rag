@@ -37,6 +37,7 @@ jobs:
             tests/test_audit_planner_provider_recovery.py \
             tests/test_safe_persistence_windows_retry.py \
             tests/test_tester2_recoverability_and_ocr_progress.py \
+            tests/test_tester2_ten_job_batch_stress.py \
             tests/test_tester_license.py \
             tests/test_tester_report_watermark.py \
             -q
@@ -52,7 +53,7 @@ jobs:
 
   windows-persistence-stress:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,6 +72,11 @@ jobs:
         working-directory: backend
         run: |
           python -m pytest tests/test_safe_persistence_windows_retry.py -q
+      - name: Run real ten-job batch polling stress on Windows
+        shell: pwsh
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_tester2_ten_job_batch_stress.py -q
       - name: Run Planner and recoverability tests on Windows
         shell: pwsh
         working-directory: backend
@@ -102,6 +108,8 @@ jobs:
           grep -q '_recoverable_provider_error' backend/app/pipeline.py
           grep -q 'external_service_waiting_jobs' backend/app/batch_results_models.py
           grep -q 'ocr-progress.json' backend/app/ocr.py
+          grep -q 'JOB_COUNT = 10' backend/tests/test_tester2_ten_job_batch_stress.py
+          grep -q 'TESTER_RELEASE_LABEL = "0.8.0-rc3-tester2"' backend/app/tester_license.py
           grep -q 'MAX_TRANSIENT_POLL_FAILURES' frontend/src/BatchResultsApp.tsx
           grep -q 'WAITING_EXTERNAL_SERVICE' frontend/src/IntakeApp.tsx
           echo '[Law-Rag] tester2 robustness source contracts: PASS'
