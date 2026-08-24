@@ -1,6 +1,8 @@
 import { ChangeEvent, ReactNode, useEffect, useState } from 'react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+const SESSION_CACHE_KEY = 'law-rag-tester-license-status-v1'
+const STATUS_TIMEOUT_MS = 4000
 
 type LicenseState =
   | 'NOT_REQUIRED'
@@ -34,30 +36,81 @@ function formatExpiry(value: string | null) {
   return date.toLocaleString()
 }
 
+function readCachedActiveStatus(): LicenseStatus | null {
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_CACHE_KEY)
+    if (!raw) return null
+    const candidate = JSON.parse(raw) as LicenseStatus
+    if (!candidate.active) return null
+    if (candidate.expires_at_utc) {
+      const expiresAt = new Date(candidate.expires_at_utc).getTime()
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        window.sessionStorage.removeItem(SESSION_CACHE_KEY)
+        return null
+      }
+    }
+    return candidate
+  } catch {
+    window.sessionStorage.removeItem(SESSION_CACHE_KEY)
+    return null
+  }
+}
+
+function cacheStatus(status: LicenseStatus) {
+  try {
+    if (status.active) {
+      window.sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(status))
+    } else {
+      window.sessionStorage.removeItem(SESSION_CACHE_KEY)
+    }
+  } catch {
+    // Session storage is only a UX optimization. Backend enforcement remains authoritative.
+  }
+}
+
 export default function TesterLicenseGate({ children }: Props) {
-  const [status, setStatus] = useState<LicenseStatus | null>(null)
+  const [status, setStatus] = useState<LicenseStatus | null>(() => readCachedActiveStatus())
   const [token, setToken] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => readCachedActiveStatus() === null)
   const [activating, setActivating] = useState(false)
   const [message, setMessage] = useState('')
 
-  const loadStatus = async () => {
-    setLoading(true)
+  const loadStatus = async ({ blocking = false }: { blocking?: boolean } = {}) => {
+    if (blocking) setLoading(true)
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS)
     try {
-      const response = await fetch(`${API_BASE_URL}/api/tester-license/status`, { cache: 'no-store' })
+      const response = await fetch(`${API_BASE_URL}/api/tester-license/status`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
       const body = await response.json().catch(() => null)
       if (!response.ok || !body) throw new Error(`许可证状态读取失败（HTTP ${response.status}）`)
-      setStatus(body as LicenseStatus)
+      const nextStatus = body as LicenseStatus
+      setStatus(nextStatus)
+      cacheStatus(nextStatus)
       setMessage('')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '无法读取测试许可证状态。')
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setMessage('本机 Law-Rag 服务响应超时。请确认程序仍在运行，然后重试。')
+      } else {
+        setMessage(error instanceof Error ? error.message : '无法读取测试许可证状态。')
+      }
     } finally {
-      setLoading(false)
+      window.clearTimeout(timeout)
+      if (blocking) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadStatus()
+    const cached = readCachedActiveStatus()
+    if (cached) {
+      // Do not block ordinary in-app page changes. The backend middleware still
+      // enforces the current signed license on every protected API request.
+      void loadStatus({ blocking: false })
+      return
+    }
+    void loadStatus({ blocking: true })
   }, [])
 
   const loadLicenseFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -88,7 +141,9 @@ export default function TesterLicenseGate({ children }: Props) {
         const detail = body && typeof body.detail === 'string' ? body.detail : `激活失败（HTTP ${response.status}）`
         throw new Error(detail)
       }
-      setStatus(body as LicenseStatus)
+      const nextStatus = body as LicenseStatus
+      setStatus(nextStatus)
+      cacheStatus(nextStatus)
       setToken('')
       setMessage('测试许可证已激活。')
     } catch (error) {
@@ -104,7 +159,7 @@ export default function TesterLicenseGate({ children }: Props) {
         <section className="tester-license-card">
           <div className="tester-license-kicker">LIMITED TEST BUILD</div>
           <h1>Law-Rag</h1>
-          <p>正在检查本机测试许可证…</p>
+          <p>首次启动正在检查本机测试许可证…</p>
         </section>
       </main>
     )
@@ -139,6 +194,12 @@ export default function TesterLicenseGate({ children }: Props) {
           {status?.expires_at_utc ? <span>当前许可证到期：{formatExpiry(status.expires_at_utc)}</span> : null}
         </div>
 
+        {!status && !loading ? (
+          <button type="button" className="tester-license-activate" onClick={() => void loadStatus({ blocking: true })}>
+            重新检查本机服务
+          </button>
+        ) : null}
+
         <label className="tester-license-file">
           <span>从许可证文件读取</span>
           <input type="file" accept=".txt,.license" onChange={(event) => void loadLicenseFile(event)} />
@@ -162,7 +223,7 @@ export default function TesterLicenseGate({ children }: Props) {
 
         {message ? <p className="tester-license-message">{message}</p> : null}
         <p className="tester-license-footnote">
-          许可证与 Tester ID、测试版本和到期时间绑定。测试版界面与导出报告会显示 Tester ID；请勿转发自己的许可证。
+          首次验证成功后，本次浏览器会话中的页面切换不再被许可证检查页阻塞；后台仍会静默复核，受保护 API 继续由后端强制校验。许可证与 Tester ID、测试版本和到期时间绑定。
         </p>
       </section>
     </main>
