@@ -182,7 +182,10 @@ function BatchResultsApp() {
         if (payload.processing_jobs > 0) scheduleRetry(1000)
       } catch (caught) {
         if (cancelled) return
-        if (transientFailures < MAX_TRANSIENT_POLL_FAILURES && summary !== null) {
+        // Network-level fetch failures follow the same bounded recovery policy as
+        // transient HTTP responses. Do not let one dropped localhost poll replace
+        // a previously valid task state with a false user-visible failure.
+        if (transientFailures < MAX_TRANSIENT_POLL_FAILURES) {
           transientFailures += 1
           scheduleRetry(Math.min(300 * 2 ** (transientFailures - 1), 3000))
           return
