@@ -298,7 +298,13 @@ function BatchResultsApp() {
           <section className="batch-results-list" aria-live="polite">
             {summary.jobs.map((job) => {
               const waitingForProvider = job.pipeline_status === 'PAUSED_BEFORE_PROVIDER'
-              const resumable = job.state !== 'COMPLETE' && job.state !== 'INVALID' && job.state !== 'CANCELLED' && !waitingForProvider
+              const resumable =
+                (job.state === 'PROCESSING' && !job.pipeline_status)
+                || job.state === 'FAILED'
+                || (
+                  job.state === 'WAITING'
+                  && (job.pipeline_status === 'WAITING_CONFIGURATION' || job.pipeline_status === 'WAITING_OPTIONAL_COMPONENT')
+                )
               const canCancel = (job.state === 'PROCESSING' || job.state === 'WAITING') && job.pipeline_status !== 'CANCEL_REQUESTED'
               const hasLowPriorityRisk = job.finding_counts.medium > 0 || job.finding_counts.low > 0
               return (
@@ -372,7 +378,13 @@ function BatchResultsApp() {
                     )}
                     {resumable && (
                       <button type="button" onClick={() => void resumeJob(job)} disabled={actionJobId === job.job_id}>
-                        {actionJobId === job.job_id ? '正在启动…' : job.pipeline_status ? '继续 / 重试审计' : '启动后台审计'}
+                        {actionJobId === job.job_id
+                          ? '正在启动…'
+                          : !job.pipeline_status
+                            ? '启动后台审计'
+                            : job.state === 'FAILED'
+                              ? '重试审计'
+                              : '继续审计'}
                       </button>
                     )}
                     {job.state === 'CANCELLED' && (
