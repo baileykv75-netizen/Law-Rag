@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
@@ -41,6 +42,29 @@ def _raise_pipeline_http(exc: Exception) -> None:
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+def _load_pipeline_report_for_poll(job_id: UUID, *, attempts: int = 5) -> PipelineReport:
+    """Tolerate a short Windows persistence/read transition during UI polling.
+
+    Polling is read-only and must never turn one transient filesystem/validation window
+    into a user-visible failed audit. Genuine persistent corruption still fails after a
+    short bounded retry window and remains fail-closed.
+    """
+
+    last_error: PipelineError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return load_pipeline_report(job_id)
+        except PipelineNotFoundError:
+            raise
+        except PipelineError as exc:
+            last_error = exc
+            if attempt >= attempts:
+                break
+            time.sleep(min(0.03 * (2 ** (attempt - 1)), 0.3))
+    assert last_error is not None
+    raise last_error
+
+
 @router.get("/api/documents/{job_id}/architecture", response_model=JobArchitectureSummary)
 def get_document_architecture(job_id: UUID) -> JobArchitectureSummary:
     """Resolve the authoritative audit artifact family without mutating the job."""
@@ -77,11 +101,15 @@ def get_document_pipeline(job_id: UUID) -> PipelineReport:
     """Read persisted pipeline state only; this endpoint never resumes or calls providers."""
 
     try:
-        return load_pipeline_report(job_id)
+        return _load_pipeline_report_for_poll(job_id)
     except PipelineNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PipelineError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="本地任务状态暂时无法稳定读取，请稍后重试。",
+            headers={"Retry-After": "1"},
+        ) from exc
 
 
 @router.get("/api/documents/{job_id}/pipeline/control", response_model=PipelineControl)
@@ -89,7 +117,7 @@ def get_document_pipeline_control(job_id: UUID) -> PipelineControl:
     """Read provider/cancel intent only. Missing legacy control is synthesized and not persisted."""
 
     try:
-        load_pipeline_report(job_id)
+        _load_pipeline_report_for_poll(job_id)
         return get_pipeline_control(job_id)
     except (PipelineNotFoundError, PipelineControlError, PipelineError) as exc:
         _raise_pipeline_http(exc)
