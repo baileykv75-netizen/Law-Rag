@@ -152,6 +152,9 @@ function friendlyPipelineFailure(pipeline: PipelineReport) {
   const detail = pipeline.failure_detail ?? ''
   const code = pipeline.failure_code ?? ''
   const combined = `${code} ${detail}`.toLowerCase()
+  if (pipeline.status === 'WAITING_EXTERNAL_SERVICE') {
+    return '外部模型暂时不可用。已完成的本地处理和模型检查点已经保留；外部服务恢复后可直接继续。'
+  }
   if (combined.includes('deepseek') || combined.includes('kimi') || combined.includes('provider')) {
     if (combined.includes('network') || combined.includes('disconnect') || combined.includes('unavailable')) {
       return '外部模型连接暂时不可用。已完成的本地处理和模型检查点会保留；稍后重试即可。'
@@ -186,6 +189,7 @@ function stateLabel(item: QueueItem) {
   if (item.state === 'waiting') {
     if (item.pipeline?.status === 'PAUSED_BEFORE_PROVIDER') return '等待云端发送确认'
     if (item.pipeline?.status === 'WAITING_OPTIONAL_COMPONENT') return '等待可选组件'
+    if (item.pipeline?.status === 'WAITING_EXTERNAL_SERVICE') return '等待外部服务恢复'
     return '等待 API 配置'
   }
   if (item.state === 'cancelled') return '已取消'
@@ -309,6 +313,7 @@ function IntakeApp() {
         if (
           pipeline.status === 'WAITING_CONFIGURATION' ||
           pipeline.status === 'WAITING_OPTIONAL_COMPONENT' ||
+          pipeline.status === 'WAITING_EXTERNAL_SERVICE' ||
           pipeline.status === 'PAUSED_BEFORE_PROVIDER'
         ) {
           return {
@@ -316,7 +321,14 @@ function IntakeApp() {
             state: 'waiting',
             progress: pipeline.progress_percent,
             pipeline,
-            error: pipeline.status === 'PAUSED_BEFORE_PROVIDER' ? null : pipeline.failure_detail,
+            error:
+              pipeline.status === 'PAUSED_BEFORE_PROVIDER' || pipeline.status === 'WAITING_EXTERNAL_SERVICE'
+                ? null
+                : pipeline.failure_detail,
+            notice:
+              pipeline.status === 'WAITING_EXTERNAL_SERVICE'
+                ? friendlyPipelineFailure(pipeline)
+                : item.notice,
           }
         }
         if (pipeline.status === 'FAILED') {
@@ -380,7 +392,8 @@ function IntakeApp() {
             pipeline.status === 'CANCELLED' ||
             pipeline.status === 'PAUSED_BEFORE_PROVIDER' ||
             pipeline.status === 'WAITING_CONFIGURATION' ||
-            pipeline.status === 'WAITING_OPTIONAL_COMPONENT'
+            pipeline.status === 'WAITING_OPTIONAL_COMPONENT' ||
+            pipeline.status === 'WAITING_EXTERNAL_SERVICE'
           ) {
             return
           }
@@ -809,7 +822,7 @@ function IntakeApp() {
                 <strong>{completeCount}/{items.length}</strong>
                 <span> 审计完成</span>
                 {queuedCount > 0 && <span> · {queuedCount} 个等待上传</span>}
-                {waitingCount > 0 && <span> · {waitingCount} 个等待确认/配置</span>}
+                {waitingCount > 0 && <span> · {waitingCount} 个等待继续</span>}
                 {cancelledCount > 0 && <span> · {cancelledCount} 个已取消</span>}
                 {errorCount > 0 && <span className="intake-error-text"> · {errorCount} 个处理未完成</span>}
               </div>
@@ -834,6 +847,7 @@ function IntakeApp() {
                   item.result &&
                   (item.pipeline?.status === 'WAITING_CONFIGURATION' ||
                     item.pipeline?.status === 'WAITING_OPTIONAL_COMPONENT' ||
+                    item.pipeline?.status === 'WAITING_EXTERNAL_SERVICE' ||
                     item.state === 'error'),
                 )
                 const busy = ['uploading', 'inspecting', 'processing'].includes(item.state)
@@ -874,7 +888,9 @@ function IntakeApp() {
                         <button type="button" className="quiet" onClick={() => void pauseCloud(item)} disabled={actionId === item.id}>发送前暂停</button>
                       )}
                       {(item.state === 'waiting' || item.state === 'error') && retryable && !pausedForProvider && (
-                        <button type="button" onClick={() => void retryPipeline(item)} disabled={actionId === item.id}>重试审计</button>
+                        <button type="button" onClick={() => void retryPipeline(item)} disabled={actionId === item.id}>
+                          {item.pipeline?.status === 'WAITING_EXTERNAL_SERVICE' ? '服务恢复后继续' : '重试审计'}
+                        </button>
                       )}
                       {item.state === 'cancelled' && item.result && (
                         <button type="button" onClick={() => void resumeCancelled(item)} disabled={actionId === item.id}>重新开始</button>
@@ -895,7 +911,7 @@ function IntakeApp() {
             </div>
 
             <div className="intake-footnote">
-              进度来自真实上传、OCR 页级进度和后台持久化状态。若短暂遇到文件占用或服务读取波动，界面会自动重试并保留最后一次有效状态，不会因为一次轮询异常就把合同判成失败。
+              进度来自真实上传、OCR 页级进度和后台持久化状态。若短暂遇到文件占用、状态读取波动或外部模型暂时不可用，系统会保留最后一次有效状态和已完成检查点，不会把这些技术问题当成法律风险。
             </div>
           </div>
         )}
