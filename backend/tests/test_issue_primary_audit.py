@@ -210,7 +210,7 @@ def test_model_cannot_invent_contract_or_legal_evidence_ids(tmp_path: Path, monk
         validate_issue_model_output(draft.model_dump_json(), context)
 
 
-def test_no_local_legal_hit_cannot_be_converted_to_no_material_risk(tmp_path: Path, monkeypatch) -> None:
+def test_no_material_risk_without_required_evidence_is_downgraded_to_review(tmp_path: Path, monkeypatch) -> None:
     job_id, _, _ = _prepare(tmp_path, monkeypatch, include_no_hit=True)
     context = next(item for item in build_issue_primary_contexts(job_id) if item.issue_id == "issue-no-hit")
     assert context.legal_support_state.value == "NO_MATCH_IN_LOCAL_CORPUS"
@@ -227,8 +227,10 @@ def test_no_local_legal_hit_cannot_be_converted_to_no_material_risk(tmp_path: Pa
         contract_evidence_ids=target.evidence_ids[:1],
         legal_evidence_ids=[],
     )
-    with pytest.raises(IssuePrimaryAuditValidationError, match="NO_MATERIAL_RISK_FOUND"):
-        validate_issue_model_output(draft.model_dump_json(), context)
+    result = validate_issue_model_output(draft.model_dump_json(), context)
+    assert result.state == IssuePrimaryAuditState.REVIEW_REQUIRED
+    assert result.legal_conclusion is False
+    assert "NO_MATERIAL_RISK_MISSING_REQUIRED_EVIDENCE" in result.review_reasons
 
 
 def test_contract_only_supported_finding_is_allowed_without_false_legal_claim(tmp_path: Path, monkeypatch) -> None:

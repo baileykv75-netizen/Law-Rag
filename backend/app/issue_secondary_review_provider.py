@@ -92,6 +92,7 @@ def build_issue_secondary_messages(
         "Never invent IDs, statutes, articles, contract facts, or evidence. "
         "POSSIBLE_OMISSION requires supplied contract Evidence; if presented as a legal concern, cite supplied Legal Evidence too. "
         "If local legal coverage is partial, absent, or version-uncertain, preserve that uncertainty rather than treating it as proof of safety. "
+        "coverage_assessment must be exactly one of COVERED, COVERED_BUT_QUESTIONABLE, POSSIBLE_OMISSION, or INSUFFICIENT_EVIDENCE. "
         + compact
         + "The issue_id must match exactly. Output exactly one JSON object with this shape: "
         + json.dumps(example, ensure_ascii=False, separators=(",", ":"))

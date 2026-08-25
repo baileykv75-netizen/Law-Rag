@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 import pytest
@@ -204,6 +205,31 @@ def test_stage13f_rejects_invented_contract_evidence() -> None:
     )
     with pytest.raises(IssueSecondaryReviewValidationError, match="unsupplied contract Evidence"):
         validate_issue_secondary_output(draft.model_dump_json(), context, primary)
+
+
+def test_stage13f_normalizes_partial_coverage_alias() -> None:
+    job_id = uuid4()
+    context = _context(job_id, "issue-1")
+    primary = _primary_result(context)
+    content = json.dumps(
+        {
+            "issue_id": context.issue_id,
+            "assessment": "SUPPORTED",
+            "coverage_assessment": "PARTIALLY_COVERED",
+            "severity": "MEDIUM",
+            "reasoning_summary": "fixture",
+            "suggestion": "fixture",
+            "contract_evidence_ids": primary.contract_evidence_ids,
+            "legal_evidence_ids": [],
+            "review_reasons": [],
+            "omission_title": None,
+            "omission_reasoning": None,
+        }
+    )
+
+    result = validate_issue_secondary_output(content, context, primary)
+
+    assert result.coverage_assessment == SecondaryCoverageAssessment.COVERED_BUT_QUESTIONABLE
 
 
 def test_stage13f_checkpoint_resume_does_not_repeat_completed_issue(tmp_path, monkeypatch) -> None:

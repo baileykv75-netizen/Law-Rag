@@ -118,13 +118,22 @@ def _budget_result(context, primary: IssuePrimaryAuditResult) -> IssueSecondaryR
     )
 
 
+def _normalize_secondary_model_raw(raw):
+    if not isinstance(raw, dict):
+        return raw
+    normalized = dict(raw)
+    if normalized.get("coverage_assessment") == "PARTIALLY_COVERED":
+        normalized["coverage_assessment"] = SecondaryCoverageAssessment.COVERED_BUT_QUESTIONABLE.value
+    return normalized
+
+
 def validate_issue_secondary_output(content: str, context, primary: IssuePrimaryAuditResult) -> IssueSecondaryReviewResult:
     try:
         raw = json.loads(content)
     except json.JSONDecodeError as exc:
         raise IssueSecondaryReviewValidationError(f"Kimi issue review did not return valid JSON: {exc}") from exc
     try:
-        draft = ModelIssueSecondaryDraft.model_validate(raw)
+        draft = ModelIssueSecondaryDraft.model_validate(_normalize_secondary_model_raw(raw))
     except ValidationError as exc:
         raise IssueSecondaryReviewValidationError(f"Kimi issue review JSON does not match Stage 13F schema: {exc}") from exc
     if draft.issue_id != context.issue_id:

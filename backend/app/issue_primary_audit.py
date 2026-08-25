@@ -354,22 +354,32 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
         raise IssuePrimaryAuditValidationError(f"Model cited unsupplied Legal Evidence IDs: {sorted(unknown_legal)}")
     if draft.state == IssuePrimaryAuditState.SUPPORTED_FINDING and not draft.contract_evidence_ids:
         raise IssuePrimaryAuditValidationError("SUPPORTED_FINDING must cite supplied contract Evidence.")
+    review_reasons = list(draft.review_reasons)
+    no_material_missing_required_evidence = (
+        draft.state == IssuePrimaryAuditState.NO_MATERIAL_RISK_FOUND
+        and (not draft.contract_evidence_ids or not draft.legal_evidence_ids or not draft.legal_conclusion)
+    )
     if draft.legal_conclusion:
         if draft.state not in {IssuePrimaryAuditState.SUPPORTED_FINDING, IssuePrimaryAuditState.NO_MATERIAL_RISK_FOUND}:
             raise IssuePrimaryAuditValidationError("Only supported/no-material-risk results may claim a legal conclusion.")
-        if not draft.legal_evidence_ids:
+        if not draft.legal_evidence_ids and not no_material_missing_required_evidence:
             raise IssuePrimaryAuditValidationError("A legal conclusion must cite supplied Legal Evidence.")
-        if context.legal_support_state in {IssueLegalSupportState.NO_MATCH_IN_LOCAL_CORPUS, IssueLegalSupportState.VERSION_REVIEW_REQUIRED}:
+        if (
+            context.legal_support_state
+            in {IssueLegalSupportState.NO_MATCH_IN_LOCAL_CORPUS, IssueLegalSupportState.VERSION_REVIEW_REQUIRED}
+            and not no_material_missing_required_evidence
+        ):
             raise IssuePrimaryAuditValidationError("A legal conclusion is not allowed with missing or version-uncertain Legal Evidence.")
     sufficiency = _evidence_sufficiency(context, draft.contract_evidence_ids)
-    review_reasons = list(draft.review_reasons)
     final_state = draft.state
     final_legal_conclusion = draft.legal_conclusion
     if draft.state == IssuePrimaryAuditState.NO_MATERIAL_RISK_FOUND:
-        if not draft.contract_evidence_ids or not draft.legal_evidence_ids or not draft.legal_conclusion:
-            raise IssuePrimaryAuditValidationError("NO_MATERIAL_RISK_FOUND requires contract Evidence, Legal Evidence and legal_conclusion=true.")
         target_uncertain = any(item.source_uncertain for item in context.target_items)
-        if context.legal_support_state != IssueLegalSupportState.EVIDENCE_FOUND or target_uncertain:
+        if no_material_missing_required_evidence:
+            final_state = IssuePrimaryAuditState.REVIEW_REQUIRED
+            final_legal_conclusion = False
+            review_reasons.append("NO_MATERIAL_RISK_MISSING_REQUIRED_EVIDENCE")
+        elif context.legal_support_state != IssueLegalSupportState.EVIDENCE_FOUND or target_uncertain:
             final_state = IssuePrimaryAuditState.REVIEW_REQUIRED
             final_legal_conclusion = False
             review_reasons.append("NO_MATERIAL_RISK_NOT_ALLOWED_WITH_INCOMPLETE_EVIDENCE")
