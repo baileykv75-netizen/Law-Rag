@@ -351,8 +351,14 @@ def _evidence_for(object_ids: list[str], object_map: dict[str, PlannerContractIt
     return _unique(eid for object_id in object_ids for eid in object_map[object_id].evidence_ids)
 
 
+def _fact_evidence_for(fact_ids: list[str], fact_map: dict[str, PlannerGlobalFact]) -> list[str]:
+    return _unique(eid for fact_id in fact_ids for eid in fact_map[fact_id].evidence_ids)
+
+
 def merge_audit_plan(planner_input: AuditPlannerInput, draft: ModelAuditPlanDraft, provider_result) -> AuditPlan:
     object_map = {item.canonical_object_id: item for item in planner_input.contract_items}
+    fact_map = {fact.fact_id: fact for fact in planner_input.global_facts}
+    fact_reference_warnings: list[str] = []
     issues: dict[str, AuditPlanIssue] = {}
 
     def upsert(
@@ -377,11 +383,20 @@ def merge_audit_plan(planner_input: AuditPlannerInput, draft: ModelAuditPlanDraf
         rule_values = list(rule_result_ids)
         legacy_values = list(legacy_hint_topics)
 
-        object_ids = _unique(object_values)
-        unknown = [value for value in object_ids if value not in object_map]
+        requested_ids = _unique(object_values)
+        unknown = [value for value in requested_ids if value not in object_map and value not in fact_map]
         if unknown:
             raise AuditPlannerValidationError(
                 "Planner referenced unknown canonical object ID(s): " + ", ".join(sorted(unknown))
+            )
+        object_ids = [value for value in requested_ids if value in object_map]
+        fact_ids = [value for value in requested_ids if value in fact_map]
+        fact_evidence_ids = _fact_evidence_for(fact_ids, fact_map)
+        if fact_ids:
+            fact_reference_warnings.append(
+                f'Planner issue "{topic_clean}" referenced global fact ID(s) in contract_object_ids; '
+                "Law-Rag used their evidence IDs and omitted them from canonical object coverage: "
+                + ", ".join(sorted(fact_ids))
             )
         cleaned_questions = _clean_nonempty(question_values, label="review question") if question_values else []
         cleaned_queries = (
@@ -399,7 +414,7 @@ def merge_audit_plan(planner_input: AuditPlannerInput, draft: ModelAuditPlanDraf
                 sources=[source],
                 why_review=_unique(why_values),
                 contract_object_ids=object_ids,
-                contract_evidence_ids=_evidence_for(object_ids, object_map),
+                contract_evidence_ids=_unique([*_evidence_for(object_ids, object_map), *fact_evidence_ids]),
                 questions=cleaned_questions,
                 retrieval_queries=cleaned_queries,
                 rule_result_ids=_unique(rule_values),
@@ -410,7 +425,9 @@ def merge_audit_plan(planner_input: AuditPlannerInput, draft: ModelAuditPlanDraf
         existing.sources = list(dict.fromkeys([*existing.sources, source]))
         existing.why_review = _unique([*existing.why_review, *why_values])
         existing.contract_object_ids = _unique([*existing.contract_object_ids, *object_ids])
-        existing.contract_evidence_ids = _evidence_for(existing.contract_object_ids, object_map)
+        existing.contract_evidence_ids = _unique(
+            [*_evidence_for(existing.contract_object_ids, object_map), *existing.contract_evidence_ids, *fact_evidence_ids]
+        )
         existing.questions = _unique([*existing.questions, *cleaned_questions])
         existing.retrieval_queries = _unique([*existing.retrieval_queries, *cleaned_queries])
         existing.rule_result_ids = _unique([*existing.rule_result_ids, *rule_values])
@@ -473,6 +490,7 @@ def merge_audit_plan(planner_input: AuditPlannerInput, draft: ModelAuditPlanDraf
     warnings.append(
         "Stage 13C creates review scope only. Final legal conclusions remain disabled until later issue-based retrieval/audit stages."
     )
+    warnings.extend(_unique(fact_reference_warnings))
 
     priority_rank = {ReviewPriority.HIGH_ATTENTION: 0, ReviewPriority.IMPORTANT: 1, ReviewPriority.NORMAL: 2}
     return AuditPlan(
