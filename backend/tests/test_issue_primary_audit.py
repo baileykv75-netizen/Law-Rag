@@ -38,7 +38,7 @@ from app.issue_primary_audit_models import (
     IssuePrimaryAuditStatus,
     ModelIssuePrimaryAuditDraft,
 )
-from app.issue_primary_audit_provider import IssuePrimaryAuditProvider
+from app.issue_primary_audit_provider import IssuePrimaryAuditProvider, IssuePrimaryAuditProviderError
 from app.legal.importer import import_manifest
 from app.legal.retrieval import build_retrieval_index
 from app.main import app
@@ -324,6 +324,41 @@ class ResumeSameProvider(IssuePrimaryAuditProvider):
         )
 
 
+class TruncateFirstProvider(ResumeSameProvider):
+    provider_name = "test-truncated"
+    model_name = "test-truncated-v1"
+
+    def generate(self, context) -> ProviderAuditResult:
+        self.calls += 1
+        if self.calls == 1:
+            raise IssuePrimaryAuditProviderError(
+                "fixture truncated",
+                code="DEEPSEEK_PRIMARY_OUTPUT_TRUNCATED",
+                recoverable=True,
+            )
+        target = context.target_items[0]
+        legal = context.legal_evidence[0] if context.legal_evidence else None
+        draft = ModelIssuePrimaryAuditDraft(
+            state=IssuePrimaryAuditState.SUPPORTED_FINDING if legal else IssuePrimaryAuditState.INSUFFICIENT_EVIDENCE,
+            legal_conclusion=bool(legal),
+            risk_category=context.topic,
+            severity="MEDIUM" if legal else "INFO",
+            title="post-truncation fixture",
+            reasoning_summary="post-truncation fixture",
+            suggestion="post-truncation fixture",
+            canonical_object_ids=[target.canonical_object_id],
+            contract_evidence_ids=target.evidence_ids[:1],
+            legal_evidence_ids=[legal.legal_evidence_id] if legal else [],
+        )
+        content = draft.model_dump_json()
+        return ProviderAuditResult(
+            provider=self.provider_name,
+            model=self.model_name,
+            content=content,
+            raw_response_hash=f"post-truncation-hash-{self.calls}",
+        )
+
+
 def test_cancellation_between_issues_checkpoints_completed_work_without_false_complete(tmp_path: Path, monkeypatch) -> None:
     job_id, _, _ = _prepare(tmp_path, monkeypatch)
     provider = CancelAfterFirstProvider(job_id)
@@ -357,6 +392,24 @@ def test_resume_reuses_completed_issue_and_calls_provider_only_for_remaining_iss
     assert resumed_provider.calls == 1
     assert artifact.provider_calls[0].raw_response_hash == "hash-1"
     assert artifact.provider_calls[1].raw_response_hash == "resume-hash-1"
+
+
+def test_truncated_primary_provider_output_records_review_required_and_continues(tmp_path: Path, monkeypatch) -> None:
+    job_id, _, _ = _prepare(tmp_path, monkeypatch)
+    provider = TruncateFirstProvider()
+
+    artifact = run_issue_primary_audit(job_id, provider_override=provider)
+
+    assert artifact.status == IssuePrimaryAuditStatus.COMPLETE
+    assert artifact.completed_issue_count == 2
+    assert provider.calls == 2
+    assert len(artifact.provider_calls) == 1
+    truncated = artifact.results[0]
+    assert truncated.state == IssuePrimaryAuditState.REVIEW_REQUIRED
+    assert truncated.legal_conclusion is False
+    assert truncated.legal_evidence_ids == []
+    assert "PRIMARY_PROVIDER_OUTPUT_TRUNCATED" in truncated.review_reasons
+    assert artifact.provider_calls[0].raw_response_hash == "post-truncation-hash-2"
 
 
 def test_stage13d_and_stage13e_routes_are_reachable_from_main_app(tmp_path: Path, monkeypatch) -> None:

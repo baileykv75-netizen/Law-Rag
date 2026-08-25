@@ -454,6 +454,32 @@ def _context_budget_result(context: IssuePrimaryAuditContext) -> IssuePrimaryAud
     )
 
 
+def _provider_truncated_result(context: IssuePrimaryAuditContext) -> IssuePrimaryAuditResult:
+    target_ids = [item.canonical_object_id for item in context.target_items]
+    contract_evidence_ids = _unique(eid for item in context.target_items for eid in item.evidence_ids)
+    return IssuePrimaryAuditResult(
+        issue_id=context.issue_id,
+        topic=context.topic,
+        state=IssuePrimaryAuditState.REVIEW_REQUIRED,
+        evidence_sufficiency=_evidence_sufficiency(context, contract_evidence_ids),
+        legal_support_state=context.legal_support_state,
+        legal_conclusion=False,
+        risk_category=context.topic[:120] or "主审输出截断",
+        severity="INFO",
+        title="主审输出截断需复核",
+        reasoning_summary=(
+            "DeepSeek 单项主审在普通与紧凑恢复模式下均触发输出长度截断。"
+            "Law-Rag 未使用不完整模型输出形成风险或法律结论。"
+        ),
+        suggestion="人工复核该 Issue；也可调整模型或缩小单项审查上下文后重新审查。",
+        canonical_object_ids=target_ids,
+        contract_evidence_ids=contract_evidence_ids,
+        legal_evidence_ids=[],
+        review_reasons=["PRIMARY_PROVIDER_OUTPUT_TRUNCATED"],
+        context_fingerprint=context.context_fingerprint,
+    )
+
+
 def _sum_usage(calls: list[IssuePrimaryProviderCall]) -> ProviderUsage:
     def total(field: str) -> int | None:
         values = [getattr(call.usage, field) for call in calls if getattr(call.usage, field) is not None]
@@ -553,7 +579,18 @@ def run_issue_primary_audit(job_id: UUID, *, provider_name: str = "deepseek", pr
         except (PipelineCancellationRequested, ProviderBoundaryPaused):
             _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.INTERRUPTED, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=[*warnings, "Stage 13E was interrupted by persisted provider/cancel control; completed issue results were checkpointed."]))
             raise
-        except (IssuePrimaryAuditProviderError, IssuePrimaryAuditValidationError) as exc:
+        except IssuePrimaryAuditProviderError as exc:
+            if getattr(exc, "code", "") == "DEEPSEEK_PRIMARY_OUTPUT_TRUNCATED":
+                results.append(_provider_truncated_result(context))
+                warnings.append(
+                    f"Issue {context.issue_id} DeepSeek output was truncated in normal and compact modes; "
+                    "a deterministic REVIEW_REQUIRED placeholder was recorded without a legal conclusion."
+                )
+                _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.IN_PROGRESS, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=warnings))
+                continue
+            _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.INTERRUPTED, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=[*warnings, f"Issue {context.issue_id} interrupted Stage 13E: {exc}"]))
+            raise IssuePrimaryAuditError(str(exc)) from exc
+        except IssuePrimaryAuditValidationError as exc:
             _persist_artifact(_artifact_payload(job_id=job_id, status=IssuePrimaryAuditStatus.INTERRUPTED, context_template=contexts[0], provider=provider.provider_name, model=provider.model_name, total_issue_count=len(contexts), results=results, calls=calls, warnings=[*warnings, f"Issue {context.issue_id} interrupted Stage 13E: {exc}"]))
             raise IssuePrimaryAuditError(str(exc)) from exc
         results.append(result)
