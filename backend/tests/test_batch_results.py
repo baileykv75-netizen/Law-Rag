@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.ai_audit_models import AiAuditFinding, EvidenceSufficiency, FindingSeverity, FindingState
 from app.batch_results import create_batch, register_batch_job, summarize_batch, summarize_latest_batch
 from app.batch_results_models import BatchJobState
+from app.evidence_models import SourceDocumentIdentity, SourceEvidenceArtifact
 from app.main import app
 from app.models import DocumentInspection, DocumentKind, DocumentRoute, PageEvidence, PageRoute, SourceMethod
 from app.pipeline_models import PipelineReport, PipelineStage, PipelineStageRecord, PipelineStageState, PipelineStatus
@@ -50,6 +51,39 @@ def _write_document(root: Path, job_id, filename: str) -> None:
     payload.pop("pages")
     (job_dir / "document.json").write_text(__import__("json").dumps(payload), encoding="utf-8")
     (job_dir / "evidence.json").write_text(__import__("json").dumps([page.model_dump(mode="json")]), encoding="utf-8")
+
+
+def _write_docx_document(root: Path, job_id, filename: str) -> None:
+    job_dir = root / "jobs" / str(job_id)
+    job_dir.mkdir(parents=True, exist_ok=True)
+    document = DocumentInspection(
+        job_id=job_id,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        document_kind=DocumentKind.DOCX,
+        page_count=0,
+        route=DocumentRoute.NATIVE_TEXT,
+        native_text_pages=0,
+        ocr_required_pages=0,
+        pages=[],
+        evidence_count=1,
+    )
+    artifact = SourceEvidenceArtifact(
+        job_id=job_id,
+        source_document=SourceDocumentIdentity(
+            job_id=job_id,
+            filename=filename,
+            media_type=document.media_type,
+            document_kind=DocumentKind.DOCX,
+            source_sha256="a" * 64,
+            size_bytes=128,
+        ),
+        evidence=[],
+    )
+    payload = document.model_dump(mode="json")
+    payload.pop("pages")
+    (job_dir / "document.json").write_text(__import__("json").dumps(payload), encoding="utf-8")
+    (job_dir / "evidence.json").write_text(artifact.model_dump_json(), encoding="utf-8")
 
 
 def _write_pipeline(root: Path, job_id, status: PipelineStatus, progress: int, *, failure_code=None) -> None:
@@ -155,6 +189,21 @@ def test_empty_new_batch_does_not_hide_last_useful_batch(tmp_path: Path, monkeyp
     assert recent is not None
     assert recent.batch_id == useful.batch_id
     assert recent.total_jobs == 1
+
+
+def test_batch_summary_accepts_docx_source_evidence_artifact(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+    batch = create_batch()
+    job_id = uuid4()
+    _write_docx_document(tmp_path, job_id, "软件开发合同.docx")
+    register_batch_job(batch.batch_id, job_id)
+
+    summary = summarize_batch(batch.batch_id)
+
+    assert summary.total_jobs == 1
+    assert summary.failed_jobs == 0
+    assert summary.jobs[0].state == BatchJobState.PROCESSING
+    assert summary.jobs[0].filename == "软件开发合同.docx"
 
 
 def test_batch_result_prioritizes_human_review_and_high_risk(tmp_path: Path, monkeypatch) -> None:

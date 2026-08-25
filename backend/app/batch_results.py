@@ -19,6 +19,7 @@ from .issue_workspace import load_issue_workspace_summary
 from .job_architecture import JobArchitectureError, resolve_job_architecture
 from .job_architecture_models import JobAuditArchitecture
 from .models import DocumentInspection
+from .evidence_models import SourceEvidenceArtifact
 from .pipeline import PipelineError, load_pipeline_report
 from .review_report import ReviewReportError, load_review_report
 from .safe_persistence import atomic_write_text, read_text_with_retry
@@ -112,7 +113,12 @@ def _document(job_id: UUID) -> DocumentInspection:
     evidence_path = job_dir / "evidence.json"
     try:
         payload = json.loads(read_text_with_retry(document_path, encoding="utf-8"))
-        pages = json.loads(read_text_with_retry(evidence_path, encoding="utf-8"))
+        evidence_payload = json.loads(read_text_with_retry(evidence_path, encoding="utf-8"))
+        if isinstance(evidence_payload, list):
+            pages = evidence_payload
+        else:
+            SourceEvidenceArtifact.model_validate(evidence_payload)
+            pages = []
         return DocumentInspection.model_validate({**payload, "pages": pages})
     except Exception as exc:
         raise BatchResultError(f"Document metadata is invalid for job {job_id}.") from exc
