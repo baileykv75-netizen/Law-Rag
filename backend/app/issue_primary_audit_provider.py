@@ -221,6 +221,8 @@ class DeepSeekIssuePrimaryProvider(IssuePrimaryAuditProvider):
             except httpx.HTTPStatusError as exc:
                 last_error = exc
                 last_status = exc.response.status_code
+                if last_status == 402:
+                    break
                 if (last_status == 429 or last_status >= 500) and attempt < self.max_attempts:
                     time.sleep(_retry_delay(self.retry_backoff_seconds, attempt))
                     continue
@@ -237,6 +239,12 @@ class DeepSeekIssuePrimaryProvider(IssuePrimaryAuditProvider):
                     continue
                 break
 
+        if last_status == 402:
+            raise IssuePrimaryAuditProviderError(
+                "DeepSeek 账号额度或账单状态暂时不可用。现有审计进度已保留；请处理额度后重试。",
+                code="DEEPSEEK_QUOTA_OR_BILLING_REQUIRED",
+                recoverable=True,
+            ) from last_error
         if last_status == 429:
             raise IssuePrimaryAuditProviderError(
                 "DeepSeek 当前请求过多。系统已自动退避重试，现有审计进度已保留；请稍后重试。",

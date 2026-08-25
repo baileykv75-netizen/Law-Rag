@@ -261,6 +261,8 @@ class DeepSeekAuditPlannerProvider(AuditPlannerProvider):
             except httpx.HTTPStatusError as exc:
                 last_error = exc
                 last_status = exc.response.status_code
+                if last_status == 402:
+                    break
                 if last_status == 429 or last_status >= 500:
                     if attempt < NETWORK_MAX_ATTEMPTS:
                         time.sleep(_network_delay(attempt))
@@ -283,7 +285,10 @@ class DeepSeekAuditPlannerProvider(AuditPlannerProvider):
                     continue
                 break
 
-        if last_status == 429:
+        if last_status == 402:
+            message = "DeepSeek 账号额度或账单状态暂时不可用。系统已保留本地处理进度；请处理额度后重试审计。"
+            code = "DEEPSEEK_QUOTA_OR_BILLING_REQUIRED"
+        elif last_status == 429:
             message = "DeepSeek 当前请求过多。系统已自动退避重试，处理进度已保留；请稍后重试审计。"
             code = "DEEPSEEK_RATE_LIMITED"
         elif last_status is not None and last_status >= 500:

@@ -15,6 +15,7 @@ from app.audit_plan_models import (
     ReviewPriority,
 )
 from app.audit_planner_provider import (
+    AuditPlannerProviderError,
     RECOVERY_MAX_TOKENS,
     DeepSeekAuditPlannerProvider,
 )
@@ -210,3 +211,28 @@ def test_planner_retries_transient_disconnect_before_succeeding(monkeypatch) -> 
 
     assert calls == 4
     assert result.request_id == "eventual-success"
+
+
+def test_planner_treats_deepseek_402_as_recoverable_quota_wait(monkeypatch) -> None:
+    class _FakeClient:
+        def __init__(self, *, timeout) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def post(self, url, *, headers, json):
+            return _FakeResponse({"error": {"message": "quota exhausted"}}, status_code=402)
+
+    monkeypatch.setattr("app.audit_planner_provider.httpx.Client", _FakeClient)
+
+    try:
+        _provider().generate(_planner_input())
+    except AuditPlannerProviderError as exc:
+        assert exc.recoverable is True
+        assert exc.code == "DEEPSEEK_QUOTA_OR_BILLING_REQUIRED"
+    else:  # pragma: no cover
+        raise AssertionError("expected recoverable planner provider error")
