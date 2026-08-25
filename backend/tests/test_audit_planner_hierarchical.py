@@ -21,7 +21,7 @@ from app.audit_planner import DIRECT_PLANNER_TEXT_CHAR_LIMIT, AuditPlannerValida
 from app.audit_planner_hierarchical import HierarchicalAuditPlannerError
 from app.audit_planner_provider import AuditPlannerProvider
 from app.audit_rules import run_audit_rules
-from app.contract_models import CanonicalContract, Clause, ExtractionConfidence, ExtractionProvenance, SourceSpan
+from app.contract_models import CanonicalContract, Clause, ExtractionConfidence, ExtractionProvenance, SourceSpan, TitleCandidate
 from app.models import SourceMethod
 from app.pipeline_control import PipelineCancellationRequested, request_pipeline_cancel, set_provider_mode
 from app.pipeline_control_models import ProviderExecutionMode
@@ -32,10 +32,11 @@ class RecordingHierarchicalPlanner(AuditPlannerProvider):
     provider_name = "recording"
     model_name = "recording-hierarchical-v1"
 
-    def __init__(self, *, cancel_after_first: bool = False, invent_id: bool = False) -> None:
+    def __init__(self, *, cancel_after_first: bool = False, invent_id: bool = False, global_fact_id: bool = False) -> None:
         self.inputs = []
         self.cancel_after_first = cancel_after_first
         self.invent_id = invent_id
+        self.global_fact_id = global_fact_id
 
     def generate(self, planner_input) -> PlannerProviderResult:
         self.inputs.append(planner_input)
@@ -48,6 +49,9 @@ class RecordingHierarchicalPlanner(AuditPlannerProvider):
             topic = "跨块履约协调" if global_mode else f"局部审查-{first.canonical_object_id}"
             if global_mode and last is not None and not self.invent_id:
                 object_ids = list(dict.fromkeys([first.canonical_object_id, last.canonical_object_id]))
+            if global_mode and self.global_fact_id:
+                object_ids = ["title-001"]
+                topic = "全局标题事实审查"
             issues.append(
                 ModelAuditPlanIssueDraft(
                     client_issue_id=f"I-{len(self.inputs):03d}",
@@ -77,7 +81,14 @@ class RecordingHierarchicalPlanner(AuditPlannerProvider):
         return result
 
 
-def _prepare_contract(tmp_path: Path, monkeypatch, *, clause_count: int, body_chars: int) -> CanonicalContract:
+def _prepare_contract(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    clause_count: int,
+    body_chars: int,
+    include_title: bool = False,
+) -> CanonicalContract:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     provenance = ExtractionProvenance(extractor_id="hierarchical-fixture", confidence=ExtractionConfidence.HIGH)
     clauses = []
@@ -107,11 +118,32 @@ def _prepare_contract(tmp_path: Path, monkeypatch, *, clause_count: int, body_ch
                 provenance=provenance,
             )
         )
+    title_candidates = []
+    if include_title:
+        title_quote = "大型服务框架合同"
+        title_candidates.append(
+            TitleCandidate(
+                candidate_id="title-001",
+                text=title_quote,
+                source_spans=[
+                    SourceSpan(
+                        page_number=1,
+                        evidence_ids=["evidence-title-1"],
+                        source_method=SourceMethod.NATIVE_PDF_TEXT,
+                        quote=title_quote,
+                        char_start=0,
+                        char_end=len(title_quote),
+                    )
+                ],
+                provenance=provenance,
+            )
+        )
     contract = CanonicalContract(
         job_id=uuid4(),
         filename="long-contract.pdf",
         source_fingerprint="long-contract-source",
-        evidence_unit_count=clause_count,
+        evidence_unit_count=clause_count + (1 if include_title else 0),
+        title_candidates=title_candidates,
         clauses=clauses,
     )
     job_contract_path(contract.job_id).write_text(contract.model_dump_json(indent=2), encoding="utf-8")
@@ -166,6 +198,21 @@ def test_long_contract_uses_hierarchical_planning_without_omitting_any_object(tm
     assert all(item.object_type.endswith("_INDEX_SUMMARY") for item in global_input.contract_items)
     assert {item.canonical_object_id for item in global_input.contract_items} == set(expected)
     assert any(fact.fact_type == "LOCAL_PLANNER_ISSUE" for fact in global_input.global_facts)
+
+
+def test_hierarchical_global_pass_coerces_global_fact_id(tmp_path: Path, monkeypatch) -> None:
+    contract = _prepare_contract(tmp_path, monkeypatch, clause_count=32, body_chars=2600, include_title=True)
+    set_provider_mode(contract.job_id, ProviderExecutionMode.AUTO_CONTINUE)
+    provider = RecordingHierarchicalPlanner(global_fact_id=True)
+
+    plan = run_audit_planner(contract.job_id, provider=provider)
+
+    assert plan.planning_mode == AuditPlanPlanningMode.HIERARCHICAL
+    issue = {item.topic: item for item in plan.issues}["全局标题事实审查"]
+    assert issue.contract_object_ids == []
+    assert issue.contract_evidence_ids == ["evidence-title-1"]
+    assert any("global fact ID" in warning and "title-001" in warning for warning in plan.warnings)
+    assert job_audit_plan_path(contract.job_id).exists()
 
 
 def test_short_contract_records_direct_coverage_with_one_pass(tmp_path: Path, monkeypatch) -> None:
