@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import random
+import threading
 import time
 from abc import ABC, abstractmethod
 
@@ -27,6 +28,7 @@ DEFAULT_KIMI_MAX_COMPLETION_TOKENS = 8000
 KIMI_RECOVERY_MAX_COMPLETION_TOKENS = 9000
 DEFAULT_KIMI_TIMEOUT_SECONDS = KIMI_DEFAULT_REQUEST_TIMEOUT_SECONDS
 MIN_TRANSIENT_ATTEMPTS = 4
+_KIMI_REQUEST_LOCK = threading.Lock()
 
 
 class IssueSecondaryReviewProviderError(RuntimeError):
@@ -166,8 +168,9 @@ class KimiIssueSecondaryReviewProvider(IssueSecondaryReviewProvider):
         last_status: int | None = None
         for attempt in range(1, self.max_attempts + 1):
             try:
-                with httpx.Client(timeout=timeout) as client:
-                    response = client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
+                with _KIMI_REQUEST_LOCK:
+                    with httpx.Client(timeout=timeout) as client:
+                        response = client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
                 last_status = response.status_code
                 if response.status_code in {401, 403}:
                     raise IssueSecondaryReviewProviderError(

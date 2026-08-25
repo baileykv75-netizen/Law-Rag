@@ -21,7 +21,7 @@ from .job_architecture_models import JobAuditArchitecture
 from .models import DocumentInspection
 from .pipeline import PipelineError, load_pipeline_report
 from .review_report import ReviewReportError, load_review_report
-from .safe_persistence import atomic_write_text
+from .safe_persistence import atomic_write_text, read_text_with_retry
 from .storage import runtime_dir
 from .workspace_models import WorkspaceOverallState
 
@@ -74,7 +74,7 @@ def load_batch(batch_id: UUID) -> BatchManifest:
     if not path.exists():
         raise BatchNotFoundError(f"Batch {batch_id} does not exist.")
     try:
-        return BatchManifest.model_validate_json(path.read_text(encoding="utf-8"))
+        return BatchManifest.model_validate_json(read_text_with_retry(path, encoding="utf-8"))
     except (OSError, ValidationError) as exc:
         raise BatchResultError(f"Persisted batch manifest is invalid for {batch_id}.") from exc
 
@@ -84,7 +84,7 @@ def latest_batch() -> BatchManifest | None:
     if not path.exists():
         return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(read_text_with_retry(path, encoding="utf-8"))
         manifest = load_batch(UUID(str(payload["batch_id"])))
         return manifest if manifest.job_ids else None
     except (OSError, ValueError, TypeError, KeyError, BatchResultError):
@@ -111,8 +111,8 @@ def _document(job_id: UUID) -> DocumentInspection:
     document_path = job_dir / "document.json"
     evidence_path = job_dir / "evidence.json"
     try:
-        payload = json.loads(document_path.read_text(encoding="utf-8"))
-        pages = json.loads(evidence_path.read_text(encoding="utf-8"))
+        payload = json.loads(read_text_with_retry(document_path, encoding="utf-8"))
+        pages = json.loads(read_text_with_retry(evidence_path, encoding="utf-8"))
         return DocumentInspection.model_validate({**payload, "pages": pages})
     except Exception as exc:
         raise BatchResultError(f"Document metadata is invalid for job {job_id}.") from exc

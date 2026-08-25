@@ -14,7 +14,7 @@ from .job_architecture_models import (
     LegacyPipelineMigrationRecord,
 )
 from .pipeline_models import PipelineReport, PipelineStage, PipelineStatus
-from .safe_persistence import atomic_write_text
+from .safe_persistence import atomic_write_text, read_text_with_retry
 from .storage import runtime_dir
 
 
@@ -88,7 +88,7 @@ def _load_pipeline_if_present(job_id: UUID) -> PipelineReport | None:
     if not path.exists():
         return None
     try:
-        report = PipelineReport.model_validate_json(path.read_bytes())
+        report = PipelineReport.model_validate_json(read_text_with_retry(path, encoding="utf-8"))
     except (OSError, ValidationError) as exc:
         raise JobArchitectureError(f"Persisted pipeline.json is invalid for job {job_id}.") from exc
     if report.job_id != job_id:
