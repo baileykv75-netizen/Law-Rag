@@ -341,10 +341,23 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
     except ValidationError as exc:
         raise IssuePrimaryAuditValidationError(f"Primary issue JSON does not match the Stage 13E schema: {exc}") from exc
     allowed_objects = {item.canonical_object_id for item in [*context.target_items, *context.related_items]}
-    allowed_contract = {eid for item in [*context.target_items, *context.related_items] for eid in item.evidence_ids}
+    fact_map = {fact.fact_id: fact for fact in context.global_facts}
+    requested_objects = _unique(draft.canonical_object_ids)
+    fact_object_ids = [object_id for object_id in requested_objects if object_id in fact_map]
+    canonical_object_ids = [object_id for object_id in requested_objects if object_id in allowed_objects]
+    fact_evidence_ids = _unique(
+        evidence_id
+        for fact_id in fact_object_ids
+        for evidence_id in fact_map[fact_id].evidence_ids
+    )
+    contract_evidence_ids = _unique([*draft.contract_evidence_ids, *fact_evidence_ids])
+    allowed_contract = {
+        *{eid for item in [*context.target_items, *context.related_items] for eid in item.evidence_ids},
+        *{eid for fact in context.global_facts for eid in fact.evidence_ids},
+    }
     allowed_legal = {item.legal_evidence_id for item in context.legal_evidence}
-    unknown_objects = set(draft.canonical_object_ids) - allowed_objects
-    unknown_contract = set(draft.contract_evidence_ids) - allowed_contract
+    unknown_objects = set(requested_objects) - allowed_objects - set(fact_map)
+    unknown_contract = set(contract_evidence_ids) - allowed_contract
     unknown_legal = set(draft.legal_evidence_ids) - allowed_legal
     if unknown_objects:
         raise IssuePrimaryAuditValidationError(f"Model cited unsupplied canonical object IDs: {sorted(unknown_objects)}")
@@ -352,12 +365,14 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
         raise IssuePrimaryAuditValidationError(f"Model cited unsupplied contract Evidence IDs: {sorted(unknown_contract)}")
     if unknown_legal:
         raise IssuePrimaryAuditValidationError(f"Model cited unsupplied Legal Evidence IDs: {sorted(unknown_legal)}")
-    if draft.state == IssuePrimaryAuditState.SUPPORTED_FINDING and not draft.contract_evidence_ids:
+    if draft.state == IssuePrimaryAuditState.SUPPORTED_FINDING and not contract_evidence_ids:
         raise IssuePrimaryAuditValidationError("SUPPORTED_FINDING must cite supplied contract Evidence.")
     review_reasons = list(draft.review_reasons)
+    if fact_object_ids:
+        review_reasons.append("CANONICAL_OBJECT_FACT_ID_COERCED_TO_EVIDENCE")
     no_material_missing_required_evidence = (
         draft.state == IssuePrimaryAuditState.NO_MATERIAL_RISK_FOUND
-        and (not draft.contract_evidence_ids or not draft.legal_evidence_ids or not draft.legal_conclusion)
+        and (not contract_evidence_ids or not draft.legal_evidence_ids or not draft.legal_conclusion)
     )
     if draft.legal_conclusion:
         if draft.state not in {IssuePrimaryAuditState.SUPPORTED_FINDING, IssuePrimaryAuditState.NO_MATERIAL_RISK_FOUND}:
@@ -370,7 +385,7 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
             and not no_material_missing_required_evidence
         ):
             raise IssuePrimaryAuditValidationError("A legal conclusion is not allowed with missing or version-uncertain Legal Evidence.")
-    sufficiency = _evidence_sufficiency(context, draft.contract_evidence_ids)
+    sufficiency = _evidence_sufficiency(context, contract_evidence_ids)
     final_state = draft.state
     final_legal_conclusion = draft.legal_conclusion
     if draft.state == IssuePrimaryAuditState.NO_MATERIAL_RISK_FOUND:
@@ -402,8 +417,8 @@ def validate_issue_model_output(content: str, context: IssuePrimaryAuditContext)
         title=draft.title,
         reasoning_summary=draft.reasoning_summary,
         suggestion=draft.suggestion,
-        canonical_object_ids=_unique(draft.canonical_object_ids),
-        contract_evidence_ids=_unique(draft.contract_evidence_ids),
+        canonical_object_ids=_unique(canonical_object_ids),
+        contract_evidence_ids=_unique(contract_evidence_ids),
         legal_evidence_ids=_unique(draft.legal_evidence_ids),
         review_reasons=_unique(review_reasons),
         context_fingerprint=context.context_fingerprint,

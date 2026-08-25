@@ -34,6 +34,7 @@ from app.issue_primary_audit import (
     validate_issue_model_output,
 )
 from app.issue_primary_audit_models import (
+    IssuePrimaryGlobalFact,
     IssuePrimaryAuditState,
     IssuePrimaryAuditStatus,
     ModelIssuePrimaryAuditDraft,
@@ -208,6 +209,43 @@ def test_model_cannot_invent_contract_or_legal_evidence_ids(tmp_path: Path, monk
     )
     with pytest.raises(IssuePrimaryAuditValidationError, match="unsupplied canonical object"):
         validate_issue_model_output(draft.model_dump_json(), context)
+
+
+def test_primary_model_fact_id_in_canonical_objects_is_coerced_to_evidence(tmp_path: Path, monkeypatch) -> None:
+    job_id, _, _ = _prepare(tmp_path, monkeypatch)
+    context = next(item for item in build_issue_primary_contexts(job_id) if item.issue_id == "issue-penalty")
+    context = context.model_copy(
+        update={
+            "global_facts": [
+                IssuePrimaryGlobalFact(
+                    fact_id="title-001",
+                    fact_type="TITLE",
+                    label="contract_title",
+                    value="设备采购框架协议",
+                    evidence_ids=["contract-evidence-001"],
+                )
+            ]
+        }
+    )
+    legal_id = context.legal_evidence[0].legal_evidence_id
+    draft = ModelIssuePrimaryAuditDraft(
+        state=IssuePrimaryAuditState.SUPPORTED_FINDING,
+        legal_conclusion=True,
+        risk_category="合同标题相关风险",
+        severity="LOW",
+        title="标题事实被降级为证据",
+        reasoning_summary="fixture",
+        suggestion="fixture",
+        canonical_object_ids=["title-001"],
+        contract_evidence_ids=[],
+        legal_evidence_ids=[legal_id],
+    )
+
+    result = validate_issue_model_output(draft.model_dump_json(), context)
+
+    assert result.canonical_object_ids == []
+    assert result.contract_evidence_ids == ["contract-evidence-001"]
+    assert "CANONICAL_OBJECT_FACT_ID_COERCED_TO_EVIDENCE" in result.review_reasons
 
 
 def test_no_material_risk_without_required_evidence_is_downgraded_to_review(tmp_path: Path, monkeypatch) -> None:
