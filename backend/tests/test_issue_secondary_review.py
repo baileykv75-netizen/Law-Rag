@@ -18,6 +18,7 @@ from app.issue_legal_context_models import IssueLegalSupportState
 from app.issue_primary_audit_models import (
     IssueContextRelation,
     IssueEvidenceSufficiency,
+    IssuePrimaryGlobalFact,
     IssuePrimaryAuditArtifact,
     IssuePrimaryAuditContext,
     IssuePrimaryAuditResult,
@@ -205,6 +206,39 @@ def test_stage13f_rejects_invented_contract_evidence() -> None:
     )
     with pytest.raises(IssueSecondaryReviewValidationError, match="unsupplied contract Evidence"):
         validate_issue_secondary_output(draft.model_dump_json(), context, primary)
+
+
+def test_stage13f_allows_supplied_global_fact_contract_evidence() -> None:
+    job_id = uuid4()
+    context = _context(job_id, "issue-1").model_copy(
+        update={
+            "global_facts": [
+                IssuePrimaryGlobalFact(
+                    fact_id="title-001",
+                    fact_type="TITLE",
+                    label="contract_title",
+                    value="fixture title",
+                    evidence_ids=["global-title-evidence"],
+                )
+            ]
+        }
+    )
+    primary = _primary_result(context)
+    draft = ModelIssueSecondaryDraft(
+        issue_id=context.issue_id,
+        assessment=SecondaryIssueAssessment.SUPPORTED,
+        coverage_assessment=SecondaryCoverageAssessment.COVERED,
+        severity=FindingSeverity.MEDIUM,
+        reasoning_summary="fixture",
+        suggestion="fixture",
+        contract_evidence_ids=["global-title-evidence"],
+        legal_evidence_ids=[],
+    )
+
+    result = validate_issue_secondary_output(draft.model_dump_json(), context, primary)
+
+    assert result.contract_evidence_ids == ["global-title-evidence"]
+    assert "GLOBAL_FACT_CONTRACT_EVIDENCE_ACCEPTED" in result.review_reasons
 
 
 def test_stage13f_normalizes_partial_coverage_alias() -> None:

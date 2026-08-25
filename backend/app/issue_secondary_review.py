@@ -138,7 +138,9 @@ def validate_issue_secondary_output(content: str, context, primary: IssuePrimary
         raise IssueSecondaryReviewValidationError(f"Kimi issue review JSON does not match Stage 13F schema: {exc}") from exc
     if draft.issue_id != context.issue_id:
         raise IssueSecondaryReviewValidationError("Kimi returned an issue_id different from the supplied AuditPlan issue.")
-    allowed_contract = {eid for item in [*context.target_items, *context.related_items] for eid in item.evidence_ids}
+    object_contract_evidence = {eid for item in [*context.target_items, *context.related_items] for eid in item.evidence_ids}
+    global_fact_evidence = {eid for fact in context.global_facts for eid in fact.evidence_ids}
+    allowed_contract = {*object_contract_evidence, *global_fact_evidence}
     allowed_legal = {item.legal_evidence_id for item in context.legal_evidence}
     unknown_contract = set(draft.contract_evidence_ids) - allowed_contract
     unknown_legal = set(draft.legal_evidence_ids) - allowed_legal
@@ -175,6 +177,8 @@ def validate_issue_secondary_output(content: str, context, primary: IssuePrimary
     else:
         review_reasons = _unique(draft.review_reasons)
         coverage = draft.coverage_assessment
+    if set(draft.contract_evidence_ids).intersection(global_fact_evidence - object_contract_evidence):
+        review_reasons = _unique([*review_reasons, "GLOBAL_FACT_CONTRACT_EVIDENCE_ACCEPTED"])
 
     return IssueSecondaryReviewResult(
         issue_id=context.issue_id,

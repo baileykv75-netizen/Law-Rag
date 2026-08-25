@@ -91,6 +91,7 @@ def build_issue_secondary_messages(
         "(2) decide whether the supplied issue questions/evidence were adequately addressed and whether a possible omission remains. "
         "Agreement with DeepSeek is not proof. A primary NO_MATERIAL_RISK_FOUND result deserves active challenge. "
         "Do not use remembered law as authoritative support. Cite only supplied contract Evidence IDs and Legal Evidence IDs. "
+        "Contract Evidence IDs may come from target_items, related_items, or global_facts.evidence_ids in the supplied issue_context. "
         "Never invent IDs, statutes, articles, contract facts, or evidence. "
         "POSSIBLE_OMISSION requires supplied contract Evidence; if presented as a legal concern, cite supplied Legal Evidence too. "
         "If local legal coverage is partial, absent, or version-uncertain, preserve that uncertainty rather than treating it as proof of safety. "
