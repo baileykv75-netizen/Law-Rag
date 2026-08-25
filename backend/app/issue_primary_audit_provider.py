@@ -224,6 +224,8 @@ class DeepSeekIssuePrimaryProvider(IssuePrimaryAuditProvider):
                 if (last_status == 429 or last_status >= 500) and attempt < self.max_attempts:
                     time.sleep(_retry_delay(self.retry_backoff_seconds, attempt))
                     continue
+                if last_status == 429 or last_status >= 500:
+                    break
                 raise IssuePrimaryAuditProviderError(
                     f"DeepSeek 单项审查请求被拒绝（HTTP {last_status}）。",
                     code="DEEPSEEK_REQUEST_REJECTED",

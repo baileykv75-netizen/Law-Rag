@@ -265,6 +265,7 @@ class DeepSeekAuditPlannerProvider(AuditPlannerProvider):
                     if attempt < NETWORK_MAX_ATTEMPTS:
                         time.sleep(_network_delay(attempt))
                         continue
+                    break
                 raise AuditPlannerProviderError(
                     f"DeepSeek 请求被拒绝（HTTP {last_status}）。请检查 API 设置或服务端参数。",
                     code="DEEPSEEK_REQUEST_REJECTED",
