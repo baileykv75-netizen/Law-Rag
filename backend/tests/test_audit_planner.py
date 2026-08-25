@@ -26,7 +26,7 @@ from app.audit_planner import (
 )
 from app.audit_planner_provider import AuditPlannerProvider
 from app.audit_rules import run_audit_rules
-from app.contract_models import CanonicalContract, Clause, ExtractionConfidence, ExtractionProvenance, SourceSpan
+from app.contract_models import CanonicalContract, Clause, ExtractionConfidence, ExtractionProvenance, SourceSpan, TitleCandidate
 from app.models import SourceMethod
 from app.pipeline_control import PipelineCancellationRequested, ProviderBoundaryPaused, request_pipeline_cancel, set_provider_mode
 from app.pipeline_control_models import ProviderExecutionMode
@@ -52,7 +52,7 @@ class StaticPlanner(AuditPlannerProvider):
         )
 
 
-def _contract(*, body: str | None = None) -> CanonicalContract:
+def _contract(*, body: str | None = None, include_title: bool = False) -> CanonicalContract:
     job_id = uuid4()
     provenance = ExtractionProvenance(extractor_id="planner-fixture", confidence=ExtractionConfidence.HIGH)
     text = body or "乙方逾期履行的，应按合同金额的50%支付违约金。双方另行协商数据接口和成果归属。"
@@ -65,11 +65,32 @@ def _contract(*, body: str | None = None) -> CanonicalContract:
         char_start=0,
         char_end=len(quote),
     )
+    title_candidates = []
+    if include_title:
+        title_quote = "软件开发外包合同"
+        title_candidates.append(
+            TitleCandidate(
+                candidate_id="title-001",
+                text=title_quote,
+                source_spans=[
+                    SourceSpan(
+                        page_number=1,
+                        evidence_ids=["evidence-title-1"],
+                        source_method=SourceMethod.NATIVE_PDF_TEXT,
+                        quote=title_quote,
+                        char_start=0,
+                        char_end=len(title_quote),
+                    )
+                ],
+                provenance=provenance,
+            )
+        )
     return CanonicalContract(
         job_id=job_id,
         filename="planner-fixture.pdf",
         source_fingerprint="planner-source-fingerprint",
-        evidence_unit_count=1,
+        evidence_unit_count=2 if include_title else 1,
+        title_candidates=title_candidates,
         clauses=[
             Clause(
                 clause_id="clause-008",
@@ -86,9 +107,9 @@ def _contract(*, body: str | None = None) -> CanonicalContract:
     )
 
 
-def _prepare(tmp_path: Path, monkeypatch, *, body: str | None = None) -> CanonicalContract:
+def _prepare(tmp_path: Path, monkeypatch, *, body: str | None = None, include_title: bool = False) -> CanonicalContract:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
-    contract = _contract(body=body)
+    contract = _contract(body=body, include_title=include_title)
     job_contract_path(contract.job_id).write_text(contract.model_dump_json(indent=2), encoding="utf-8")
     run_audit_rules(contract.job_id)
     return contract
@@ -149,6 +170,28 @@ def test_unknown_and_mixed_contract_types_keep_general_baseline(tmp_path: Path, 
     assert any("GENERAL baseline" in warning for warning in plan.warnings)
 
 
+def test_planner_coerces_global_fact_object_id_into_evidence(tmp_path: Path, monkeypatch) -> None:
+    contract = _prepare(tmp_path, monkeypatch, include_title=True)
+    set_provider_mode(contract.job_id, ProviderExecutionMode.AUTO_CONTINUE)
+    issue = ModelAuditPlanIssueDraft(
+        client_issue_id="FACT-ID",
+        topic="合同标题与交易类型",
+        priority=ReviewPriority.IMPORTANT,
+        why_review="模型错误引用了标题事实 ID，但该事实仍可作为审查证据。",
+        contract_object_ids=["title-001"],
+        questions=["合同标题反映的交易类型与正文权利义务是否一致？"],
+        retrieval_queries=["合同 标题 交易类型 审查"],
+    )
+
+    plan = run_audit_planner(contract.job_id, provider=StaticPlanner(_draft(issues=[issue])))
+
+    planned = {item.topic: item for item in plan.issues}["合同标题与交易类型"]
+    assert planned.contract_object_ids == []
+    assert planned.contract_evidence_ids == ["evidence-title-1"]
+    assert any("global fact ID" in warning and "title-001" in warning for warning in plan.warnings)
+    assert job_audit_plan_path(contract.job_id).exists()
+
+
 def test_planner_rejects_unknown_canonical_object_id(tmp_path: Path, monkeypatch) -> None:
     contract = _prepare(tmp_path, monkeypatch)
     set_provider_mode(contract.job_id, ProviderExecutionMode.AUTO_CONTINUE)
@@ -157,7 +200,7 @@ def test_planner_rejects_unknown_canonical_object_id(tmp_path: Path, monkeypatch
         topic="动态问题",
         priority=ReviewPriority.IMPORTANT,
         why_review="fixture",
-        contract_object_ids=["clause-invented"],
+        contract_object_ids=["made-up-001"],
         questions=["是否需要审查？"],
         retrieval_queries=["合同 动态问题"],
     )
