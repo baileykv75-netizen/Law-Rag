@@ -176,7 +176,7 @@ Current DeepSeek default, re-verified against official API docs on 2026-08-15:
 
 ```text
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-pro
+DEEPSEEK_MODEL=deepseek-v4-flash
 response_format={"type":"json_object"}
 thinking={"type":"enabled"}
 reasoning_effort=high
@@ -189,7 +189,7 @@ Local configuration:
 ```bat
 set DEEPSEEK_API_KEY=<your-local-key>
 set DEEPSEEK_BASE_URL=https://api.deepseek.com
-set DEEPSEEK_MODEL=deepseek-v4-pro
+set DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
 Provider health does not make a model call:

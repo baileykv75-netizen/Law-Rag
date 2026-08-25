@@ -17,7 +17,7 @@ PROVIDER_RUNTIME_SCHEMA_VERSION = "1.0.0"
 PROVIDER_RUNTIME_ENGINE_VERSION = "stage18.4-1.0.0"
 
 DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-pro"
+DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash"
 KIMI_DEFAULT_BASE_URL = "https://api.moonshot.cn/v1"
 KIMI_DEFAULT_MODEL = "kimi-k3"
 

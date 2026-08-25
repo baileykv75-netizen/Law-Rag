@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.ai_audit_providers as legacy_primary
+import app.audit_planner_provider as audit_planner
 import app.issue_primary_audit_provider as issue_primary
 import app.issue_secondary_review_provider as issue_secondary
 import app.provider_settings as provider_settings
@@ -153,7 +154,7 @@ def test_persisted_runtime_file_contains_no_secret_fields(tmp_path: Path, monkey
     assert "authorization" not in lowered
     assert "credential" not in lowered
     assert "secret" not in lowered
-    assert "deepseek-v4-pro" in text
+    assert "deepseek-v4-flash" in text
     assert "kimi-k3" in text
 
     # A second read validates the persisted fingerprint and full two-provider shape.
@@ -417,26 +418,41 @@ def test_all_real_adapters_resolve_the_same_saved_runtime_settings(tmp_path: Pat
     monkeypatch.setattr(issue_secondary, "resolve_provider_secret", resolved)
     monkeypatch.setattr(legacy_primary, "resolve_provider_secret", resolved)
     monkeypatch.setattr(legacy_secondary, "resolve_provider_secret", resolved)
+    monkeypatch.setattr(audit_planner, "resolve_provider_secret", resolved)
 
     issue_deepseek = issue_primary.DeepSeekIssuePrimaryProvider()
+    planner_deepseek = audit_planner.DeepSeekAuditPlannerProvider()
     legacy_deepseek = legacy_primary.DeepSeekProvider()
     issue_kimi = issue_secondary.KimiIssueSecondaryReviewProvider()
     legacy_kimi = legacy_secondary.KimiSecondaryReviewProvider()
 
-    for provider in (issue_deepseek, legacy_deepseek):
+    for provider in (issue_deepseek, planner_deepseek, legacy_deepseek):
         assert provider.model_name == "deepseek-runtime-alt"
         assert provider.base_url == DEEPSEEK_DEFAULT_BASE_URL
-        assert provider.request_timeout_seconds == 66
         assert provider.connect_timeout_seconds == 8
-        assert provider.max_attempts == 3
-        assert provider.retry_backoff_seconds == 2
+        if provider is issue_deepseek:
+            assert provider.request_timeout_seconds == 120
+        else:
+            assert provider.request_timeout_seconds == 66
+        if provider is issue_deepseek:
+            assert provider.max_attempts == 4
+            assert provider.retry_backoff_seconds == 2
+        elif provider is legacy_deepseek:
+            assert provider.max_attempts == 3
+            assert provider.retry_backoff_seconds == 2
 
     for provider in (issue_kimi, legacy_kimi):
         assert provider.model_name == "kimi-runtime-alt"
         assert provider.base_url == KIMI_DEFAULT_BASE_URL
-        assert provider.request_timeout_seconds == 88
+        if provider is issue_kimi:
+            assert provider.request_timeout_seconds == 150
+        else:
+            assert provider.request_timeout_seconds == 88
         assert provider.connect_timeout_seconds == 9
-        assert provider.max_attempts == 1
+        if provider is issue_kimi:
+            assert provider.max_attempts == 4
+        else:
+            assert provider.max_attempts == 1
         assert provider.retry_backoff_seconds == 0
 
     # Evidence-output safety ceilings remain application-owned, not user-configurable.

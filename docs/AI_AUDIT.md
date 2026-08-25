@@ -63,7 +63,7 @@ Local environment variables:
 ```text
 DEEPSEEK_API_KEY=...
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-pro
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
 The API key is never written into `ai-audit.json`.
@@ -71,7 +71,7 @@ The API key is never written into `ai-audit.json`.
 The DeepSeek API contract was re-verified against official documentation on **2026-08-15**. Current implementation uses:
 
 ```text
-model: deepseek-v4-pro
+model: deepseek-v4-flash
 response_format: {"type":"json_object"}
 thinking: {"type":"enabled"}
 reasoning_effort: high

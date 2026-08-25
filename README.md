@@ -323,7 +323,7 @@ setup-ocr-cpu.bat
 ```bat
 set DEEPSEEK_API_KEY=<your-local-key>
 set DEEPSEEK_BASE_URL=https://api.deepseek.com
-set DEEPSEEK_MODEL=deepseek-v4-pro
+set DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
 ### Configure Kimi

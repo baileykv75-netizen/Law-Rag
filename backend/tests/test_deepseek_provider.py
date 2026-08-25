@@ -46,7 +46,7 @@ def test_deepseek_v4_provider_uses_json_output_and_thinking_without_persisting_r
                 request=request,
                 json={
                     "id": "deepseek-test-id",
-                    "model": "deepseek-v4-pro",
+                    "model": "deepseek-v4-flash",
                     "choices": [
                         {
                             "index": 0,
@@ -68,7 +68,7 @@ def test_deepseek_v4_provider_uses_json_output_and_thinking_without_persisting_r
 
     assert captured["url"] == "https://api.deepseek.com/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer test-secret"
-    assert captured["json"]["model"] == "deepseek-v4-pro"
+    assert captured["json"]["model"] == "deepseek-v4-flash"
     assert captured["json"]["response_format"] == {"type": "json_object"}
     assert captured["json"]["thinking"] == {"type": "enabled"}
     assert captured["json"]["reasoning_effort"] == "high"

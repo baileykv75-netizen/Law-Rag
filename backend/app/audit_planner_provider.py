@@ -20,14 +20,15 @@ from .audit_plan_models import (
     ReviewPriority,
 )
 from .ai_audit_models import ProviderUsage
+from .provider_runtime_settings import (
+    ProviderRuntimeSettingsError,
+    resolve_provider_runtime,
+)
 from .secret_store import SecretStoreError, resolve_provider_secret
 
-DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
 DEFAULT_MAX_TOKENS = 4000
 RECOVERY_MAX_TOKENS = 3000
 MINIMAL_MAX_TOKENS = 2200
-DEFAULT_TIMEOUT_SECONDS = 120.0
 NETWORK_MAX_ATTEMPTS = 5
 
 
@@ -190,14 +191,22 @@ class DeepSeekAuditPlannerProvider(AuditPlannerProvider):
     def __init__(self) -> None:
         try:
             resolved = resolve_provider_secret("deepseek")
+            runtime = resolve_provider_runtime("deepseek")
         except SecretStoreError as exc:
             raise AuditPlannerProviderError(
                 "无法读取 DeepSeek 凭据存储。请重新检查 API 设置。",
                 code="DEEPSEEK_CREDENTIAL_STORE_ERROR",
             ) from exc
+        except ProviderRuntimeSettingsError as exc:
+            raise AuditPlannerProviderError(
+                "DeepSeek 运行参数无效。请恢复默认 API 设置后重试。",
+                code="DEEPSEEK_RUNTIME_SETTINGS_INVALID",
+            ) from exc
         self.api_key = resolved.value or ""
-        self.base_url = os.getenv("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE_URL).rstrip("/")
-        self.model_name = os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL).strip() or DEFAULT_DEEPSEEK_MODEL
+        self.base_url = runtime.base_url
+        self.model_name = runtime.model
+        self.request_timeout_seconds = runtime.request_timeout_seconds
+        self.connect_timeout_seconds = runtime.connect_timeout_seconds
 
     def _payload(self, planner_input: AuditPlannerInput, *, mode: str) -> dict:
         compact = mode in {"compact", "minimal"}
@@ -307,7 +316,7 @@ class DeepSeekAuditPlannerProvider(AuditPlannerProvider):
             )
 
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        timeout = httpx.Timeout(DEFAULT_TIMEOUT_SECONDS, connect=15.0)
+        timeout = httpx.Timeout(self.request_timeout_seconds, connect=self.connect_timeout_seconds)
         last_result: PlannerProviderResult | None = None
         last_reason = "unknown"
 

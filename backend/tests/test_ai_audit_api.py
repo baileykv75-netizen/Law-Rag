@@ -124,7 +124,7 @@ def test_deepseek_health_is_configuration_only(monkeypatch) -> None:
     body = response.json()
     assert body["provider"] == "deepseek"
     assert body["configured"] is False
-    assert body["model"] == "deepseek-v4-pro"
+    assert body["model"] == "deepseek-v4-flash"
 
 
 def test_unknown_primary_provider_is_explicit_error() -> None:

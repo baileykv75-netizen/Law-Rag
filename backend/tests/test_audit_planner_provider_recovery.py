@@ -83,6 +83,8 @@ def _provider() -> DeepSeekAuditPlannerProvider:
     provider.api_key = "test-key"
     provider.base_url = "https://example.invalid"
     provider.model_name = "deepseek-test"
+    provider.request_timeout_seconds = 120.0
+    provider.connect_timeout_seconds = 15.0
     return provider
 
 
