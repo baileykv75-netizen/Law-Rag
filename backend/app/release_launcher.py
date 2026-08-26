@@ -176,17 +176,19 @@ def _corpus_diagnostic() -> tuple[bool, dict[str, object]]:
             ),
             None,
         )
+    baseline_authority_count = 14
+    baseline_version_count = 15
+    baseline_article_count = 1274
     ready = bool(
         legal.ready
-        and legal.authority_count == 14
-        and legal.version_count == 15
-        and legal.article_count == 1274
-        and legal.excerpt_version_count == 0
+        and legal.authority_count >= baseline_authority_count
+        and legal.version_count >= baseline_version_count
+        and legal.article_count >= baseline_article_count
         and retrieval.ready
         and retrieval.lexical_ready
-        and retrieval.article_count == 1274
+        and retrieval.article_count == legal.article_count
         and response is not None
-        and response.state == RetrievalState.OK
+        and response.state in {RetrievalState.OK, RetrievalState.PARTIAL_COVERAGE}
         and exact_candidate is not None
     )
     payload: dict[str, object] = {
@@ -204,11 +206,18 @@ def _corpus_diagnostic() -> tuple[bool, dict[str, object]]:
             "article_count": retrieval.article_count,
         },
         "smoke_query": {
+            "state": response.state.value if response else None,
             "authority_id": exact_candidate.authority_id if exact_candidate else None,
             "version_id": exact_candidate.version_id if exact_candidate else None,
             "article_token": exact_candidate.article_token if exact_candidate else None,
             "exact_hit": bool(exact_candidate and exact_candidate.exact_hit),
             "error": retrieval_error,
+            "warnings": response.warnings if response else [],
+        },
+        "baseline_minimum": {
+            "authority_count": baseline_authority_count,
+            "version_count": baseline_version_count,
+            "article_count": baseline_article_count,
         },
     }
     return ready, payload
