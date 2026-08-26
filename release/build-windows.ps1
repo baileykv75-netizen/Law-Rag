@@ -29,17 +29,17 @@ function Invoke-Checked {
 }
 
 $PythonVersion = (& python -c "import sys; print('.'.join(map(str, sys.version_info[:3])))").Trim()
-if ($PythonVersion -ne "3.12.10") {
-    throw "Windows release build requires CPython 3.12.10 exactly; found $PythonVersion"
+if ($PythonVersion -ne "3.12.13") {
+    throw "Windows release build requires CPython 3.12.13 exactly; found $PythonVersion"
 }
 
 $NodeVersion = (& node --version).Trim()
-if ($NodeVersion -ne "v22.23.2") {
-    throw "Windows release build requires Node.js v22.23.2 exactly; found $NodeVersion"
+if ($NodeVersion -ne "v26.1.0") {
+    throw "Windows release build requires Node.js v26.1.0 exactly; found $NodeVersion"
 }
 $NpmVersion = (& npm --version).Trim()
-if ($NpmVersion -ne "10.9.8") {
-    throw "Windows release build requires npm 10.9.8 exactly; found $NpmVersion"
+if ($NpmVersion -ne "11.13.0") {
+    throw "Windows release build requires npm 11.13.0 exactly; found $NpmVersion"
 }
 
 $SourceSha = (& git -C $RepoRoot rev-parse HEAD).Trim()
