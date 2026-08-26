@@ -109,6 +109,21 @@ def _port_available(host: str, port: int) -> bool:
     return True
 
 
+def _select_launch_port(host: str, requested_port: int | None, *, span: int = 100) -> tuple[int, bool]:
+    """Choose a loopback port, falling forward for the default desktop launch."""
+
+    start = requested_port if requested_port is not None else 8000
+    if requested_port is not None:
+        if _port_available(host, start):
+            return start, False
+        raise RuntimeError(f"http://{host}:{start} is already in use. Law-Rag was not started twice.")
+
+    for port in range(start, min(65535, start + span - 1) + 1):
+        if _port_available(host, port):
+            return port, port != start
+    raise RuntimeError(f"No available loopback port was found in {host}:{start}-{start + span - 1}.")
+
+
 def _print_health(report) -> None:
     print("Law-Rag Runtime Health")
     print(f"base_app_ready: {'YES' if report.base_app_ready else 'NO'}")
@@ -265,7 +280,7 @@ def _parser() -> argparse.ArgumentParser:
         help="Disable the Windows tray icon and use the plain local-server lifecycle (automation/debug only).",
     )
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=None)
     return parser
 
 
@@ -387,7 +402,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("[ERROR] The release launcher only permits loopback binding.")
         return 2
     host = "127.0.0.1"
-    if not 1 <= args.port <= 65535:
+    if args.port is not None and not 1 <= args.port <= 65535:
         print("[ERROR] Port must be between 1 and 65535.")
         return 2
 
@@ -424,8 +439,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("[ERROR] Base runtime is not ready. No server was started and no recovery action was run automatically.")
         return 2
 
-    if not _port_available(host, args.port):
-        print(f"[ERROR] http://{host}:{args.port} is already in use. Law-Rag was not started twice.")
+    try:
+        launch_port, port_changed = _select_launch_port(host, args.port)
+    except RuntimeError as exc:
+        print(f"[ERROR] {exc}")
         return 2
 
     from .pipeline_recovery import reconcile_interrupted_pipelines
@@ -434,7 +451,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if recovered:
         print(f"[Law-Rag] Marked {recovered} interrupted Job(s) as retry-required after restart.")
 
-    url = f"http://{host}:{args.port}/"
+    url = f"http://{host}:{launch_port}/"
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
@@ -443,11 +460,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     import uvicorn
 
     print(f"[Law-Rag] Local workstation: {url}")
+    if port_changed:
+        print("[Law-Rag] Default port 8000 was busy, so Law-Rag selected the next available local port.")
     print("[Law-Rag] Contract/runtime data remains local except explicit DeepSeek/Kimi calls initiated by the user.")
     if os.name == "nt" and not args.no_tray:
         print("[Law-Rag] System tray: use 'Open Law-Rag' to reopen the workstation or 'Quit Law-Rag' for graceful shutdown.")
 
-    config = uvicorn.Config(app, host=host, port=args.port, log_level="info", access_log=False)
+    config = uvicorn.Config(app, host=host, port=launch_port, log_level="info", access_log=False)
     server = uvicorn.Server(config)
     try:
         run_server_with_desktop_lifecycle(

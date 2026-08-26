@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import socket
 from pathlib import Path
 
 from app.release_assets_cli import DEFAULT_CORPUS_RELEASE, build_public_release_assets
-from app.release_launcher import configure_release_environment, main
+from app.release_launcher import _select_launch_port, configure_release_environment, main
 
 
 _RELEASE_KEYS = (
@@ -131,3 +132,29 @@ def test_release_launcher_rejects_non_loopback_host_without_starting_server(tmp_
 
     assert code == 2
     assert "only permits loopback" in capsys.readouterr().out
+
+
+def test_default_desktop_launch_falls_forward_when_port_8000_is_busy(monkeypatch) -> None:
+    def fake_available(host: str, port: int) -> bool:
+        return host == "127.0.0.1" and port == 8001
+
+    monkeypatch.setattr("app.release_launcher._port_available", fake_available)
+
+    port, changed = _select_launch_port("127.0.0.1", None, span=3)
+
+    assert port == 8001
+    assert changed is True
+
+
+def test_explicit_port_still_fails_when_busy() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen(1)
+        port = busy.getsockname()[1]
+
+        try:
+            _select_launch_port("127.0.0.1", port)
+        except RuntimeError as exc:
+            assert "already in use" in str(exc)
+        else:
+            raise AssertionError("explicit busy port should fail closed")
