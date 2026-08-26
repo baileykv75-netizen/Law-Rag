@@ -13,7 +13,9 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _fake_packaged_assets(root: Path) -> tuple[Path, Path]:
+def _fake_packaged_assets(
+    root: Path, *, asset_profile: str = "stage15.5-three-domain-baseline"
+) -> tuple[Path, Path]:
     legal_dir = root / "public-assets" / "legal"
     metadata_dir = root / "release"
     legal_dir.mkdir(parents=True)
@@ -24,7 +26,7 @@ def _fake_packaged_assets(root: Path) -> tuple[Path, Path]:
     retrieval.write_bytes(b"verified-three-domain-retrieval-db")
     metadata = {
         "schema_version": "2.0.0",
-        "asset_profile": "stage15.5-three-domain-baseline",
+        "asset_profile": asset_profile,
         "corpus_release": {
             "path": "legal_data/releases/three-domain-core/1.0.0/release.json",
             "corpus_id": "three-domain-core",
@@ -58,6 +60,15 @@ def test_packaged_baseline_is_verified_and_installed_as_one_runtime_directory(tm
     assert installed["installation_source"] == "PACKAGED_BASELINE"
     assert installed["corpus_release"]["release_digest"] == metadata["corpus_release"]["release_digest"]
     assert not (runtime / ".legal-baseline-install.tmp").exists()
+
+
+def test_competition_construction_baseline_profile_is_supported(tmp_path: Path) -> None:
+    asset_root = tmp_path / "assets"
+    _fake_packaged_assets(asset_root, asset_profile="stage15.5-competition-construction-baseline")
+
+    metadata = verify_packaged_baseline(asset_root)
+
+    assert metadata["asset_profile"] == "stage15.5-competition-construction-baseline"
 
 
 def test_application_upgrade_never_overwrites_complete_runtime_corpus(tmp_path: Path) -> None:

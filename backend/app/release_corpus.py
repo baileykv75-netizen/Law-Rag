@@ -14,6 +14,10 @@ class ReleaseCorpusError(RuntimeError):
 METADATA_RELATIVE_PATH = Path("release") / "public-assets-metadata.json"
 BASELINE_LEGAL_RELATIVE_PATH = Path("public-assets") / "legal" / "legal.db"
 BASELINE_RETRIEVAL_RELATIVE_PATH = Path("public-assets") / "legal" / "retrieval.db"
+SUPPORTED_ASSET_PROFILES = {
+    "stage15.5-three-domain-baseline",
+    "stage15.5-competition-construction-baseline",
+}
 
 
 def _sha256(path: Path) -> str:
@@ -32,8 +36,8 @@ def _load_metadata(asset_root: Path) -> dict:
         raise ReleaseCorpusError(f"Packaged corpus metadata is unavailable or invalid: {path}") from exc
     if payload.get("schema_version") != "2.0.0":
         raise ReleaseCorpusError("Unsupported packaged corpus metadata schema.")
-    if payload.get("asset_profile") != "stage15.5-three-domain-baseline":
-        raise ReleaseCorpusError("Packaged legal assets are not the Stage 15.5 baseline profile.")
+    if payload.get("asset_profile") not in SUPPORTED_ASSET_PROFILES:
+        raise ReleaseCorpusError("Packaged legal assets are not a supported Stage 15.5 baseline profile.")
     release = payload.get("corpus_release") or {}
     legal = payload.get("legal") or {}
     retrieval = payload.get("retrieval") or {}
