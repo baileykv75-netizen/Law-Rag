@@ -31,10 +31,11 @@ from .legal.models import (
     LegalStoreSummary,
 )
 from .legal.pack_browser import (
-    LegalPackDownloadResponse,
+    LegalPackDownloadTask,
     LegalPackTreeNode,
-    install_legal_pack,
+    get_legal_pack_download_task,
     list_legal_pack_tree,
+    start_legal_pack_download,
 )
 from .legal.retrieval import (
     RetrievalIndexError,
@@ -208,17 +209,22 @@ def legal_packs() -> list[LegalPackTreeNode]:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
-@app.post("/api/legal/packs/{pack_id}/download", response_model=LegalPackDownloadResponse)
-def legal_pack_download(pack_id: str) -> LegalPackDownloadResponse:
+@app.post("/api/legal/packs/{pack_id}/download", response_model=LegalPackDownloadTask)
+def legal_pack_download(pack_id: str) -> LegalPackDownloadTask:
     try:
-        response = install_legal_pack(pack_id)
+        return start_legal_pack_download(pack_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (LegalStoreError, RuntimeError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
-    if response.state == "UNAVAILABLE":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=response.model_dump(mode="json"))
-    return response
+
+
+@app.get("/api/legal/packs/tasks/{task_id}", response_model=LegalPackDownloadTask)
+def legal_pack_download_task(task_id: UUID) -> LegalPackDownloadTask:
+    try:
+        return get_legal_pack_download_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @app.get("/api/legal/evidence/{legal_evidence_id}", response_model=LegalEvidenceRecord)

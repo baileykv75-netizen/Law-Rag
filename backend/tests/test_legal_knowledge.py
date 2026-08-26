@@ -359,20 +359,42 @@ def test_legal_api_summary_evidence_and_as_of_resolution(tmp_path: Path, monkeyp
 
 def test_legal_pack_tree_and_download_endpoint(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setenv("LAW_RAG_LEGAL_ONLINE_DOWNLOADS", "0")
 
     packs = client.get("/api/legal/packs")
     assert packs.status_code == 200, packs.text
     body = packs.json()
     assert any(item["pack_id"] == "cn-contract-general-core" for item in body)
     assert any(item["pack_id"] == "cn-construction-core" for item in body)
+    assert any(item["pack_id"] == "cn-franchise-core" for item in body)
+    construction = next(item for item in body if item["pack_id"] == "cn-construction-core")
+    assert construction["state"] == "AVAILABLE"
+    assert construction["law_refs"]
+    assert construction["adapter_note"] is None
+    assert construction["authority_count"] == 4
 
     install = client.post("/api/legal/packs/cn-contract-general-core/download")
     assert install.status_code == 200, install.text
-    installed = install.json()
-    assert installed["state"] == "INSTALLED"
-    assert installed["summary"]["article_count"] == 15
-    assert installed["rebuilt_index"] is True
+    task = install.json()
+    assert task["state"] == "COMPLETE"
+    assert task["result"]["state"] == "INSTALLED"
+    assert task["result"]["summary"]["article_count"] == 15
+    assert task["result"]["rebuilt_index"] is True
 
-    unavailable = client.post("/api/legal/packs/cn-construction-core/download")
-    assert unavailable.status_code == 409, unavailable.text
-    assert unavailable.json()["detail"]["state"] == "UNAVAILABLE"
+    task_detail = client.get(f"/api/legal/packs/tasks/{task['task_id']}")
+    assert task_detail.status_code == 200, task_detail.text
+    assert task_detail.json()["state"] == "COMPLETE"
+
+    construction_install = client.post("/api/legal/packs/cn-construction-core/download")
+    assert construction_install.status_code == 200, construction_install.text
+    construction_body = construction_install.json()
+    assert construction_body["state"] == "COMPLETE"
+    assert construction_body["result"]["state"] == "INSTALLED"
+    assert "暂未成功自动下载" not in construction_body["message"]
+    assert construction_body["result"]["summary"]["article_count"] == 248
+
+    unavailable = client.post("/api/legal/packs/cn-medical-health-core/download")
+    assert unavailable.status_code == 200, unavailable.text
+    unavailable_body = unavailable.json()
+    assert unavailable_body["state"] == "FAILED"
+    assert unavailable_body["result"]["state"] == "UNAVAILABLE"

@@ -59,15 +59,20 @@ function stageState(summary: IssueWorkspaceSummary, stage: string): ArtifactStat
 }
 
 function fallbackPresentation(summary: IssueWorkspaceSummary): IssueWorkspacePresentationSummary {
+  const unfinished = summary.overall_state === 'INCOMPLETE' || summary.overall_state === 'INVALID'
   const pending = summary.review.secondary_pending_confirmation_count > 0
   const hasHigh = summary.issues.some((item) => item.primary_severity === 'HIGH' || item.primary_severity === 'CRITICAL')
-  const overall = pending ? '待确认' : hasHigh ? '高风险' : '低风险'
+  const overall = unfinished || pending ? '待确认' : hasHigh ? '高风险' : '低风险'
   return {
     overall_risk: overall,
-    signing_recommendation: pending ? '存在未完成复审事项，建议确认后再推进签署。' : '未发现优先级较高的风险，建议结合交易背景复核。',
+    signing_recommendation: unfinished
+      ? '审查尚未完成，不能作为低风险或签署结论；请等待风险分析和报告生成完成。'
+      : pending ? '存在未完成复审事项，建议确认后再推进签署。' : '未发现优先级较高的风险，建议结合交易背景复核。',
     top_risks: [],
     suggested_actions: [],
-    evidence_confidence: pending ? '待确认：部分争议复审可稍后补跑。' : '较充分：关键问题已完成证据审查。',
+    evidence_confidence: unfinished
+      ? '待确认：审计链尚未完整生成，现有发现只能作为阶段性线索。'
+      : pending ? '待确认：部分争议复审可稍后补跑。' : '较充分：关键问题已完成证据审查。',
     secondary_review_status_counts: {
       REVIEWED: summary.review.secondary_reviewed_count,
       SKIPPED_CLEAR: summary.review.secondary_skipped_clear_count,

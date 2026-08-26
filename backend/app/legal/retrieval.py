@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 from array import array
 from datetime import date
 from pathlib import Path
@@ -67,6 +68,34 @@ def _connect_index(index_path: Path) -> sqlite3.Connection:
     return connection
 
 
+def _replace_index_with_retry(working_path: Path, index_path: Path) -> None:
+    last_error: OSError | None = None
+    for attempt in range(8):
+        try:
+            os.replace(working_path, index_path)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            time.sleep(0.05 * (attempt + 1))
+    try:
+        with sqlite3.connect(working_path) as source, sqlite3.connect(index_path) as target:
+            target.execute("PRAGMA busy_timeout = 5000")
+            source.backup(target)
+        for attempt in range(5):
+            try:
+                working_path.unlink(missing_ok=True)
+                break
+            except PermissionError:
+                time.sleep(0.05 * (attempt + 1))
+        return
+    except sqlite3.Error as exc:
+        raise RetrievalIndexError(
+            f"Retrieval index was rebuilt but Windows kept the target file locked: {last_error}; backup fallback failed: {exc}"
+        ) from exc
+    if last_error is not None:
+        raise last_error
+
+
 def _legal_source_fingerprint(legal_db_path: Path) -> str:
     with connect_legal(legal_db_path) as connection:
         rows = connection.execute(
@@ -110,7 +139,7 @@ def build_retrieval_index(
         ).fetchall()
 
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    working_path = index_path.with_name(f".{index_path.name}.rebuild.tmp")
+    working_path = index_path.with_name(f".{index_path.name}.{os.getpid()}.{time.time_ns()}.rebuild.tmp")
     working_path.unlink(missing_ok=True)
     connection = _connect_index(working_path)
     try:
@@ -202,7 +231,7 @@ def build_retrieval_index(
     finally:
         connection.close()
 
-    os.replace(working_path, index_path)
+    _replace_index_with_retry(working_path, index_path)
     return get_retrieval_index_summary(index_path, legal_db_path)
 
 

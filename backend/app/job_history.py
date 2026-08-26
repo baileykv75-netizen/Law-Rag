@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from .job_architecture import JobArchitectureError, resolve_job_architecture
-from .job_history_models import JobHistoryIntegrity, JobHistoryItem, JobHistoryPage
+from .job_history_models import JobDeleteState, JobHistoryIntegrity, JobHistoryItem, JobHistoryPage
 from .pipeline_models import PipelineReport, PipelineStatus
 from .storage import runtime_dir
 
@@ -156,6 +156,23 @@ def _history_item(root: Path, job_id: UUID) -> JobHistoryItem:
         updated_at = _latest_mtime(roots)
         completed_at = None
 
+    if integrity == JobHistoryIntegrity.INVALID:
+        delete_state = JobDeleteState.INVALID
+        delete_reason = "任务目录或关键产物异常，需要先人工检查。"
+        can_delete = False
+    elif pipeline is None:
+        delete_state = JobDeleteState.READY
+        delete_reason = "未形成流水线的上传残留，可直接清理。"
+        can_delete = True
+    elif terminal:
+        delete_state = JobDeleteState.READY
+        delete_reason = "任务已结束，可直接清理。"
+        can_delete = True
+    else:
+        delete_state = JobDeleteState.NEEDS_CANCEL
+        delete_reason = "任务尚未结束，删除前会先请求停止流水线。"
+        can_delete = True
+
     return JobHistoryItem(
         job_id=job_id,
         filename=filename,
@@ -168,7 +185,10 @@ def _history_item(root: Path, job_id: UUID) -> JobHistoryItem:
         completed_at=completed_at,
         integrity=integrity,
         terminal=terminal,
-        can_delete=bool(terminal and integrity != JobHistoryIntegrity.INVALID),
+        can_delete=can_delete,
+        delete_state=delete_state,
+        delete_reason=delete_reason,
+        selected_delete_hint="删除将清理该合同的本机任务、上传、渲染和导出文件；共享法律库不会被删除。",
         storage_bytes=storage_bytes,
         warning=" ".join(warning_parts) if warning_parts else None,
     )

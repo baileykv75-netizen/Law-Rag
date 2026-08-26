@@ -75,6 +75,12 @@ def _signing_recommendation(overall_risk: str) -> str:
     return "未发现优先级较高的风险，但仍建议结合交易背景复核。"
 
 
+def _unfinished_signing_recommendation(overall: WorkspaceOverallState) -> str:
+    if overall == WorkspaceOverallState.INVALID:
+        return "审查产物异常，不能作为签署结论；请重新审查或清理后重新上传。"
+    return "审查尚未完成，不能作为低风险或签署结论；请等待风险分析和报告生成完成。"
+
+
 def _evidence_confidence(review: IssueWorkspaceReviewSummary, coverage: IssueWorkspaceCoverageSummary | None) -> str:
     if coverage is not None and not coverage.coverage_complete:
         return "待确认：合同文本覆盖不完整。"
@@ -138,6 +144,60 @@ def _load_optional(job_id: UUID, name: str, loader, *, stage: str, label: str):
     )
 
 
+def _load_historical_optional(
+    job_id: UUID,
+    name: str,
+    relaxed_loader,
+    strict_loader,
+    *,
+    stage: str,
+    label: str,
+):
+    path = _job_dir(job_id) / name
+    if not path.exists():
+        return (
+            _stage(stage, label, WorkspaceArtifactState.MISSING, name, f"{name} is not present."),
+            None,
+            [],
+        )
+    try:
+        value = relaxed_loader(job_id)
+    except Exception as exc:
+        return (
+            _stage(
+                stage,
+                label,
+                WorkspaceArtifactState.INVALID,
+                name,
+                f"{name} could not be loaded as a Stage 13 artifact: {type(exc).__name__}: {exc}",
+            ),
+            None,
+            [],
+        )
+
+    stage_summary = _stage(
+        stage,
+        label,
+        WorkspaceArtifactState.READY,
+        name,
+        f"Validated {name} is available locally.",
+    )
+    warnings: list[str] = []
+    try:
+        strict_loader(job_id)
+    except Exception as exc:
+        warning = (
+            f"{name} is a historical audit artifact. Current dependencies changed after it was generated "
+            f"({type(exc).__name__}: {exc}); display it as the report generated at that time and rerun audit "
+            "before relying on it for a new signing decision."
+        )
+        warnings.append(warning)
+        stage_summary.detail = (
+            f"Loaded historical {name}; current legal corpus or upstream fingerprints changed after generation."
+        )
+    return stage_summary, value, warnings
+
+
 def _base_workspace(job_id: UUID):
     """Reuse the proven Stage 2-7 reader but discard legacy Stage 8-10 semantics."""
 
@@ -161,34 +221,42 @@ def load_issue_workspace_summary(job_id: UUID) -> IssueWorkspaceSummary:
         stage="13B/C",
         label="Audit Planner and planning coverage",
     )
-    legal_stage, legal = _load_optional(
+    legal_stage, legal, legal_history_warnings = _load_historical_optional(
         job_id,
         "issue-legal-context.json",
+        lambda current_job_id: load_issue_legal_context(current_job_id, validate_freshness=False),
         load_issue_legal_context,
         stage="13D",
         label="Issue-based Legal RAG",
     )
-    primary_stage, primary = _load_optional(
+    primary_stage, primary, primary_history_warnings = _load_historical_optional(
         job_id,
         "issue-primary-audit.json",
+        lambda current_job_id: load_issue_primary_audit(current_job_id, validate_freshness=False),
         load_issue_primary_audit,
         stage="13E",
         label="DeepSeek issue-by-issue primary audit",
     )
-    secondary_stage, secondary = _load_optional(
+    secondary_stage, secondary, secondary_history_warnings = _load_historical_optional(
         job_id,
         "issue-secondary-review.json",
+        lambda current_job_id: load_issue_secondary_review(current_job_id, validate_freshness=False),
         load_issue_secondary_review,
         stage="13F",
         label="Kimi finding and coverage review",
     )
-    report_stage, report = _load_optional(
+    report_stage, report, report_history_warnings = _load_historical_optional(
         job_id,
         "issue-review-report.json",
+        lambda current_job_id: load_issue_review_report(current_job_id, validate_freshness=False),
         load_issue_review_report,
         stage="13G",
         label="Deterministic issue comparison",
     )
+    warnings.extend(legal_history_warnings)
+    warnings.extend(primary_history_warnings)
+    warnings.extend(secondary_history_warnings)
+    warnings.extend(report_history_warnings)
 
     if plan is not None:
         plan_stage.detail = (
@@ -344,9 +412,21 @@ def load_issue_workspace_summary(job_id: UUID) -> IssueWorkspaceSummary:
                     f"{stale_latest} latest Issue human decision(s) are stale against the current issue-review-report.json and must not close review."
                 )
         except HumanReviewError as exc:
-            human_stage.state = WorkspaceArtifactState.INVALID
-            human_stage.detail = f"human-review.json could not be validated: {exc}"
-            warnings.append(human_stage.detail)
+            message = str(exc)
+            if message.startswith("Persisted human-review.json is invalid") or "job_id does not match" in message:
+                human_stage.state = WorkspaceArtifactState.INVALID
+                human_stage.detail = f"human-review.json could not be validated: {exc}"
+                warnings.append(human_stage.detail)
+            else:
+                required_ids = {
+                    item.issue_id for item in report.comparisons if item.requires_human_review
+                }
+                review.human_review_outstanding_required_count = len(required_ids)
+                human_stage.detail = (
+                    "This is a historical issue report; handling decisions can be added after rerunning audit "
+                    "against the current legal corpus."
+                )
+                warnings.append(f"Issue handling decisions are unavailable for this historical report: {exc}")
 
     stages.append(human_stage)
 
@@ -473,6 +553,16 @@ def load_issue_workspace_summary(job_id: UUID) -> IssueWorkspaceSummary:
     else:
         overall = WorkspaceOverallState.INCOMPLETE
 
+    if presentation is not None and overall in {WorkspaceOverallState.INCOMPLETE, WorkspaceOverallState.INVALID}:
+        presentation = IssueWorkspacePresentationSummary(
+            overall_risk="待确认",
+            signing_recommendation=_unfinished_signing_recommendation(overall),
+            evidence_confidence="待确认：审计链尚未完整生成，现有发现只能作为阶段性线索。",
+            suggested_actions=["继续完成风险分析和报告生成后，再判断是否签署或修改。"],
+            top_risks=presentation.top_risks,
+            secondary_review_status_counts=presentation.secondary_review_status_counts,
+        )
+
     return IssueWorkspaceSummary(
         job_id=job_id,
         overall_state=overall,
@@ -506,7 +596,7 @@ def load_issue_workspace_detail(job_id: UUID, issue_id: str) -> IssueWorkspaceDe
     as_of: str | None = None
 
     try:
-        legal = load_issue_legal_context(job_id)
+        legal = load_issue_legal_context(job_id, validate_freshness=False)
         as_of = legal.as_of.isoformat()
         legal_item = next((item for item in legal.issues if item.issue_id == issue_id), None)
         warnings.extend(legal.warnings)
@@ -518,7 +608,7 @@ def load_issue_workspace_detail(job_id: UUID, issue_id: str) -> IssueWorkspaceDe
         warnings.append(f"Issue Legal RAG artifact is unavailable or stale: {type(exc).__name__}: {exc}")
 
     try:
-        primary = load_issue_primary_audit(job_id)
+        primary = load_issue_primary_audit(job_id, validate_freshness=False)
         as_of = as_of or primary.as_of.isoformat()
         primary_item = next((item for item in primary.results if item.issue_id == issue_id), None)
         warnings.extend(primary.warnings)
@@ -528,7 +618,7 @@ def load_issue_workspace_detail(job_id: UUID, issue_id: str) -> IssueWorkspaceDe
         warnings.append(f"Primary issue audit artifact is unavailable or stale: {type(exc).__name__}: {exc}")
 
     try:
-        secondary = load_issue_secondary_review(job_id)
+        secondary = load_issue_secondary_review(job_id, validate_freshness=False)
         secondary_item = next((item for item in secondary.results if item.issue_id == issue_id), None)
         warnings.extend(secondary.warnings)
     except FileNotFoundError:
@@ -537,7 +627,7 @@ def load_issue_workspace_detail(job_id: UUID, issue_id: str) -> IssueWorkspaceDe
         warnings.append(f"Secondary issue review artifact is unavailable or stale: {type(exc).__name__}: {exc}")
 
     try:
-        report = load_issue_review_report(job_id)
+        report = load_issue_review_report(job_id, validate_freshness=False)
         as_of = as_of or report.as_of
         comparison = next((item for item in report.comparisons if item.issue_id == issue_id), None)
         warnings.extend(report.warnings)

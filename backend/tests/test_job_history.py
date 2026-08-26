@@ -109,7 +109,7 @@ def test_history_is_persistent_sorted_and_reports_job_owned_storage(tmp_path: Pa
     assert page.items[0].storage_bytes > 5
 
 
-def test_running_job_is_visible_but_not_deletable(tmp_path: Path, monkeypatch) -> None:
+def test_running_job_is_visible_and_marked_for_cancel_before_delete(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
     _job(
@@ -125,7 +125,8 @@ def test_running_job_is_visible_but_not_deletable(tmp_path: Path, monkeypatch) -
 
     assert item.integrity == JobHistoryIntegrity.OK
     assert item.terminal is False
-    assert item.can_delete is False
+    assert item.can_delete is True
+    assert item.delete_state.value == "NEEDS_CANCEL"
     assert item.progress_percent == 55
 
 
@@ -142,7 +143,8 @@ def test_upload_only_interrupted_job_remains_visible_as_partial(tmp_path: Path, 
     assert item.integrity == JobHistoryIntegrity.PARTIAL
     assert item.pipeline_status is None
     assert item.terminal is False
-    assert item.can_delete is False
+    assert item.can_delete is True
+    assert item.delete_state.value == "READY"
     assert item.storage_bytes == 4
     assert "pipeline.json is missing" in (item.warning or "")
 

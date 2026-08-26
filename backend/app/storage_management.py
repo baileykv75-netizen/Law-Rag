@@ -14,10 +14,13 @@ from .batch_results_models import BatchManifest
 from .job_history import get_job_history, list_job_history
 from .safe_persistence import atomic_write_text
 from .storage import runtime_dir
+from .pipeline_control import get_pipeline_control, request_pipeline_cancel
 from .storage_management_models import (
+    BulkJobCleanupResponse,
     CleanupTransaction,
     CleanupTransactionState,
     JobCleanupResult,
+    SkippedJobCleanup,
     StorageSummary,
 )
 
@@ -138,12 +141,26 @@ def _load_batch_manifests(root: Path) -> list[tuple[Path, BatchManifest]]:
     return manifests
 
 
-def _validate_live_job_for_new_cleanup(root: Path, job_id: UUID) -> tuple[int, str]:
+_EMPTY_PIPELINE_SHA256 = "0" * 64
+
+
+def _validate_live_job_for_new_cleanup(root: Path, job_id: UUID, *, force_safe: bool = False) -> tuple[int, str]:
     item = get_job_history(job_id)
-    if not item.can_delete or not item.terminal:
+    if not item.can_delete:
         raise JobCleanupNotAllowed(
-            f"Job {job_id} is not a safely deletable terminal job (status={item.pipeline_status}, integrity={item.integrity.value})."
+            f"Job {job_id} is not safely deletable (status={item.pipeline_status}, integrity={item.integrity.value})."
         )
+    if not item.terminal:
+        if not force_safe:
+            raise JobCleanupNotAllowed(
+                f"Job {job_id} is not terminal. Use force_safe cleanup to cancel it before deletion."
+            )
+        control = get_pipeline_control(job_id)
+        if control.active_provider:
+            raise JobCleanupNotAllowed(
+                f"Job {job_id} is currently inside a {control.active_provider} provider call; retry deletion after the call returns or the app restarts."
+            )
+        request_pipeline_cancel(job_id)
 
     roots = _job_roots(root, job_id)
     for category, path in roots.items():
@@ -153,11 +170,11 @@ def _validate_live_job_for_new_cleanup(root: Path, job_id: UUID) -> tuple[int, s
             )
 
     pipeline_path = roots["jobs"] / "pipeline.json"
-    if not pipeline_path.is_file() or pipeline_path.is_symlink():
+    if pipeline_path.exists() and (not pipeline_path.is_file() or pipeline_path.is_symlink()):
         raise JobCleanupNotAllowed("A safely deletable job must retain a regular pipeline.json until cleanup begins.")
 
     _load_batch_manifests(root)
-    return item.storage_bytes, _sha256(pipeline_path)
+    return item.storage_bytes, _sha256(pipeline_path) if pipeline_path.exists() else _EMPTY_PIPELINE_SHA256
 
 
 def _transaction_has_started(root: Path, transaction: CleanupTransaction) -> bool:
@@ -176,12 +193,17 @@ def _move_job_roots(root: Path, transaction: CleanupTransaction) -> CleanupTrans
     if not started:
         _load_batch_manifests(root)
         item = get_job_history(transaction.job_id)
-        if not item.can_delete or not item.terminal:
+        if not item.can_delete:
             raise JobCleanupNotAllowed(
                 f"Job {transaction.job_id} changed state before cleanup started; transaction will not proceed."
             )
         pipeline = roots["jobs"] / "pipeline.json"
-        if not pipeline.is_file() or pipeline.is_symlink() or _sha256(pipeline) != transaction.pipeline_sha256:
+        if transaction.pipeline_sha256 == _EMPTY_PIPELINE_SHA256:
+            if pipeline.exists():
+                raise JobCleanupNotAllowed(
+                    f"Job {transaction.job_id} pipeline appeared before cleanup started; transaction will not proceed."
+                )
+        elif not pipeline.is_file() or pipeline.is_symlink() or _sha256(pipeline) != transaction.pipeline_sha256:
             raise JobCleanupNotAllowed(
                 f"Job {transaction.job_id} pipeline changed before cleanup started; transaction will not proceed."
             )
@@ -307,6 +329,48 @@ def delete_job_storage(job_id: UUID, *, confirm_job_id: UUID) -> JobCleanupResul
     )
     _persist_transaction(root, transaction)
     return _finish_transaction(root, transaction)
+
+
+def delete_job_storage_force_safe(job_id: UUID) -> JobCleanupResult:
+    root = _root()
+    storage_bytes, pipeline_sha256 = _validate_live_job_for_new_cleanup(root, job_id, force_safe=True)
+    transaction = CleanupTransaction(
+        cleanup_id=uuid4(),
+        job_id=job_id,
+        created_at=datetime.now(timezone.utc),
+        original_storage_bytes=storage_bytes,
+        pipeline_sha256=pipeline_sha256,
+    )
+    _persist_transaction(root, transaction)
+    return _finish_transaction(root, transaction)
+
+
+def delete_jobs_storage_bulk(job_ids: list[UUID], *, confirm: bool, mode: str = "force_safe") -> BulkJobCleanupResponse:
+    if not confirm:
+        raise JobCleanupNotAllowed("Bulk cleanup requires confirm=true.")
+    if mode != "force_safe":
+        raise JobCleanupNotAllowed("Bulk cleanup only supports mode='force_safe'.")
+
+    deleted: list[JobCleanupResult] = []
+    skipped: list[SkippedJobCleanup] = []
+    seen: set[UUID] = set()
+    for job_id in job_ids:
+        if job_id in seen:
+            continue
+        seen.add(job_id)
+        try:
+            deleted.append(delete_job_storage_force_safe(job_id))
+        except (JobCleanupNotAllowed, FileNotFoundError, StorageManagementError) as exc:
+            skipped.append(SkippedJobCleanup(job_id=job_id, reason=str(exc)))
+
+    return BulkJobCleanupResponse(
+        deleted=deleted,
+        skipped=skipped,
+        reclaimed_bytes=sum(item.reclaimed_bytes for item in deleted),
+        warnings=[
+            "部分任务未删除；请查看跳过原因。"
+        ] if skipped else [],
+    )
 
 
 def reconcile_storage_cleanup_transactions() -> tuple[int, list[str]]:

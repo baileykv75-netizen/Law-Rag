@@ -68,6 +68,7 @@
 }
 
 .history-header button,
+.history-bulk-toolbar button,
 .history-pagination button {
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -79,6 +80,7 @@
 }
 
 .history-header button:disabled,
+.history-bulk-toolbar button:disabled,
 .history-pagination button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -161,6 +163,7 @@
 
 .history-error,
 .history-notice,
+.history-bulk-toolbar,
 .history-list,
 .history-pagination {
   max-width: 1180px;
@@ -187,6 +190,37 @@
   color: #166534;
 }
 
+.history-bulk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #dbe5f1;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.history-bulk-toolbar > div {
+  margin-right: auto;
+}
+
+.history-bulk-toolbar strong,
+.history-bulk-toolbar span {
+  display: block;
+}
+
+.history-bulk-toolbar strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.history-bulk-toolbar span {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 11px;
+}
+
 .history-list {
   display: grid;
   gap: 12px;
@@ -194,7 +228,7 @@
 
 .history-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 18px;
   padding: 20px;
   border: 1px solid #e2e8f0;
@@ -205,6 +239,22 @@
 
 .history-card-main {
   min-width: 0;
+}
+
+.history-select {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding-top: 4px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.history-select input {
+  width: 16px;
+  height: 16px;
+  accent-color: #1d4ed8;
 }
 
 .history-card.integrity-partial {
@@ -267,8 +317,12 @@
   margin: 18px 0 0;
 }
 
+.history-meta.compact {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
 .history-meta span {
-  min-width: 150px;
+  min-width: 0;
   padding: 9px 10px;
   border-radius: 10px;
   background: #f8fafc;
@@ -389,6 +443,10 @@
     grid-template-columns: 1fr;
   }
 
+  .history-bulk-toolbar {
+    flex-wrap: wrap;
+  }
+
   .history-card-actions {
     align-items: flex-start;
   }
@@ -398,6 +456,10 @@
   }
 
   .history-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .history-meta.compact {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

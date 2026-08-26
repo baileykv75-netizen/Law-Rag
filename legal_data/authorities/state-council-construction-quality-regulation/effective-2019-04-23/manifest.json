@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "state-council-construction-quality-regulation",
+        "title": "建设工程质量管理条例",
+        "authority_type": "ADMINISTRATIVE_REGULATION",
+        "issuing_body": "国务院",
+        "document_number": "中华人民共和国国务院令第279号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2019-04-23",
+      "status": "EFFECTIVE",
+      "publication_date": "2019-04-23",
+      "effective_date": "2019-04-23",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "2019年第二次修订现行文本全文，共82条。",
+      "source_refs": [
+        {
+          "name": "国家法律法规数据库：建设工程质量管理条例",
+          "url": "https://flk.npc.gov.cn/detail?id=ff8080816f3cbb3c016f410b40e11333&title=建设工程质量管理条例",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国政府网国务院公报：建设工程质量管理条例",
+          "url": "https://www.gov.cn/gongbao/content/2019/content_5468867.htm",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "574e91aaebb80cc6aef44e155e193b0297c8477bb4d6233616365dea3e96b574",
+      "expected_article_count": 82,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "建设单位、勘察设计、施工、监理单位质量责任和保修责任，是建设工程质量风险审查核心法规。",
+      "verified_on": "2026-08-26",
+      "verification_note": "国家法律法规数据库核验现行版本为2019-04-23公布并施行；全文从中国政府网国务院公报页面提取并解析。"
+    }
+  ]
+}

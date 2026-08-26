@@ -13,6 +13,7 @@ from app.batch_results_models import BatchManifest
 from app.main import app
 from app.storage_management import (
     JobCleanupNotAllowed,
+    delete_jobs_storage_bulk,
     delete_job_storage,
     reconcile_storage_cleanup_transactions,
     storage_summary,
@@ -133,15 +134,35 @@ def test_delete_requires_exact_job_id_confirmation(tmp_path: Path, monkeypatch) 
     assert (tmp_path / "jobs" / str(job_id) / "pipeline.json").exists()
 
 
-def test_running_job_is_never_deletable(tmp_path: Path, monkeypatch) -> None:
+def test_running_job_requires_force_safe_cleanup(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     job_id = uuid4()
     _job(tmp_path, job_id, status="RUNNING")
 
-    with pytest.raises(JobCleanupNotAllowed, match="not a safely deletable terminal job"):
+    with pytest.raises(JobCleanupNotAllowed, match="not terminal"):
         delete_job_storage(job_id, confirm_job_id=job_id)
 
     assert (tmp_path / "jobs" / str(job_id)).exists()
+
+
+def test_bulk_delete_cancels_and_deletes_running_jobs(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+    complete = uuid4()
+    running = uuid4()
+    batch_id = uuid4()
+    _job(tmp_path, complete)
+    _job(tmp_path, running, status="RUNNING")
+    _batch(tmp_path, batch_id, [complete, running], latest=True)
+
+    result = delete_jobs_storage_bulk([complete, running], confirm=True)
+
+    assert len(result.deleted) == 2
+    assert result.skipped == []
+    assert result.reclaimed_bytes > 0
+    assert not (tmp_path / "jobs" / str(complete)).exists()
+    assert not (tmp_path / "jobs" / str(running)).exists()
+    manifest = BatchManifest.model_validate_json((tmp_path / "batches" / f"{batch_id}.json").read_text(encoding="utf-8"))
+    assert manifest.job_ids == []
 
 
 def test_cleanup_recovery_finishes_after_crash_between_tombstone_and_reference_update(tmp_path: Path, monkeypatch) -> None:
@@ -225,3 +246,22 @@ def test_storage_api_and_delete_api_use_explicit_confirmation(tmp_path: Path, mo
     assert mismatch.status_code == 409
     assert deleted.status_code == 200
     assert deleted.json()["deleted"] is True
+
+
+def test_bulk_delete_api_does_not_require_typed_job_id(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+    first = uuid4()
+    second = uuid4()
+    _job(tmp_path, first)
+    _job(tmp_path, second, status="RUNNING")
+    client = TestClient(app)
+
+    deleted = client.post(
+        "/api/batches/history/jobs/delete",
+        json={"job_ids": [str(first), str(second)], "mode": "force_safe", "confirm": True},
+    )
+
+    assert deleted.status_code == 200, deleted.text
+    body = deleted.json()
+    assert len(body["deleted"]) == 2
+    assert body["skipped"] == []

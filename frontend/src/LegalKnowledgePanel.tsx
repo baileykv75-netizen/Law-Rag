@@ -59,11 +59,28 @@ type LegalPackTreeNode = {
   pack_id: string
   display_name: string
   description: string
-  state: 'INSTALLED' | 'AVAILABLE' | 'ADAPTER_PENDING'
+  state: 'INSTALLED' | 'AVAILABLE' | 'DOWNLOADING' | 'FAILED' | 'ADAPTER_PENDING'
   authority_count: number
   installed_authority_count: number
+  law_refs: string[]
+  adapter_note: string | null
   source_refs: Array<{ name: string; url: string }>
   children: LegalPackTreeNode[]
+}
+
+type LegalPackDownloadTask = {
+  task_id: string
+  pack_id: string
+  state: 'QUEUED' | 'RUNNING' | 'COMPLETE' | 'FAILED'
+  message: string
+  progress_percent: number
+  result: {
+    state: 'INSTALLED' | 'FAILED' | 'UNAVAILABLE'
+    summary: LegalStoreSummary
+    imported_records: number
+    no_change_records: number
+    rejected_records: number
+  } | null
 }
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error'
@@ -89,8 +106,10 @@ function versionStatusLabel(value: string) {
 
 function packStateLabel(value: LegalPackTreeNode['state']) {
   if (value === 'INSTALLED') return '已内置'
-  if (value === 'AVAILABLE') return '可下载'
-  return '待适配'
+  if (value === 'AVAILABLE') return '可下载/更新'
+  if (value === 'DOWNLOADING') return '下载中'
+  if (value === 'FAILED') return '更新失败'
+  return '待补充适配'
 }
 
 function defaultVersion(versions: LegalVersion[]) {
@@ -110,10 +129,12 @@ function defaultVersion(versions: LegalVersion[]) {
 function PackNode({
   node,
   onDownload,
+  onSelect,
   working,
 }: {
   node: LegalPackTreeNode
   onDownload: (packId: string) => void
+  onSelect: (node: LegalPackTreeNode) => void
   working: boolean
 }) {
   const canDownload = node.state === 'AVAILABLE'
@@ -127,7 +148,16 @@ function PackNode({
       <small>
         已安装 {node.installed_authority_count} / {node.authority_count || '待整理'} 项法源
       </small>
+      {node.law_refs.length > 0 && (
+        <div className="legal-pack-laws">
+          {node.law_refs.slice(0, 8).map((name) => <span key={name}>{name}</span>)}
+        </div>
+      )}
+      {node.adapter_note && <p className="legal-pack-note">{node.adapter_note}</p>}
       <div className="legal-pack-actions">
+        <button type="button" onClick={() => onSelect(node)}>
+          查看领域
+        </button>
         <button type="button" disabled={!canDownload || working} onClick={() => onDownload(node.pack_id)}>
           {working ? '更新中…' : canDownload ? '一键下载/更新' : packStateLabel(node.state)}
         </button>
@@ -140,7 +170,7 @@ function PackNode({
       {node.children.length > 0 && (
         <div className="legal-pack-children">
           {node.children.map((child) => (
-            <PackNode key={child.pack_id} node={child} onDownload={onDownload} working={working} />
+            <PackNode key={child.pack_id} node={child} onDownload={onDownload} onSelect={onSelect} working={working} />
           ))}
         </div>
       )}
@@ -161,6 +191,7 @@ export default function LegalKnowledgePanel() {
   const [selected, setSelected] = useState<LegalArticleItem | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [workingPackId, setWorkingPackId] = useState<string | null>(null)
+  const [selectedPack, setSelectedPack] = useState<LegalPackTreeNode | null>(null)
 
   const selectedAuthority = useMemo(
     () => authorities.find((item) => item.authority.authority_id === selectedAuthorityId) ?? null,
@@ -242,11 +273,14 @@ export default function LegalKnowledgePanel() {
 
   const filteredAuthorities = useMemo(() => {
     const term = query.trim()
-    if (!term) return authorities
-    return authorities.filter((item) =>
-      `${item.authority.title} ${item.authority.issuing_body} ${item.authority.document_number ?? ''}`.includes(term),
-    )
-  }, [authorities, query])
+    const packTerms = selectedPack?.law_refs ?? []
+    return authorities.filter((item) => {
+      const haystack = `${item.authority.title} ${item.authority.issuing_body} ${item.authority.document_number ?? ''}`
+      const matchesQuery = !term || haystack.includes(term)
+      const matchesPack = !packTerms.length || packTerms.some((law) => haystack.includes(law) || law.includes(item.authority.title))
+      return matchesQuery && matchesPack
+    })
+  }, [authorities, query, selectedPack])
 
   const selectAuthority = async (item: AuthoritySummary) => {
     const nextVersion = defaultVersion(item.versions)
@@ -281,6 +315,12 @@ export default function LegalKnowledgePanel() {
     }
   }
 
+  const selectPack = (node: LegalPackTreeNode) => {
+    setSelectedPack(node)
+    setDrawerOpen(false)
+    setMessage(`已按「${node.display_name}」筛选法规；未安装的法源可在领域抽屉中下载/更新。`)
+  }
+
   const downloadPack = async (packId: string) => {
     setWorkingPackId(packId)
     setMessage('正在更新法律包并重建本地索引…')
@@ -291,7 +331,12 @@ export default function LegalKnowledgePanel() {
         const detail = body?.detail
         throw new Error(typeof detail === 'string' ? detail : detail?.message ?? `法律包更新失败（HTTP ${response.status}）。`)
       }
-      setMessage(body?.message ?? '法律包已更新。')
+      const task = body as LegalPackDownloadTask
+      if (task.state === 'FAILED') {
+        setMessage(task.message || '法律包暂时无法自动下载；可打开官方来源核验。')
+      } else {
+        setMessage(task.message || '法律包已更新。')
+      }
       await refresh()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '法律包更新失败。')
@@ -338,6 +383,15 @@ export default function LegalKnowledgePanel() {
           搜索
         </button>
       </section>
+      {selectedPack && (
+        <section className="legal-domain-filter">
+          <div>
+            <strong>{selectedPack.display_name}</strong>
+            <span>{selectedPack.law_refs.length ? selectedPack.law_refs.join('、') : '该领域法源清单待补充。'}</span>
+          </div>
+          <button type="button" onClick={() => setSelectedPack(null)}>取消领域筛选</button>
+        </section>
+      )}
 
       <section className="legal-browser-layout">
         <aside className="legal-authority-list" aria-label="法规列表">
@@ -424,7 +478,7 @@ export default function LegalKnowledgePanel() {
             </header>
             <div className="legal-pack-list">
               {packs.map((pack) => (
-                <PackNode key={pack.pack_id} node={pack} onDownload={downloadPack} working={workingPackId === pack.pack_id} />
+                <PackNode key={pack.pack_id} node={pack} onDownload={downloadPack} onSelect={selectPack} working={workingPackId === pack.pack_id} />
               ))}
             </div>
           </aside>

@@ -25,6 +25,7 @@ from app.pipeline_control_models import ProviderExecutionMode
 from app.storage import (
     job_contract_path,
     job_human_review_path,
+    job_issue_review_report_path,
     legal_db_path,
     legal_retrieval_index_path,
 )
@@ -239,6 +240,46 @@ def test_workspace_closes_mandatory_issue_review_only_after_fresh_final_decision
     for issue_id in required_ids:
         assert issue_rows[issue_id]["human_decision_state"] == "CONFIRMED"
         assert issue_rows[issue_id]["human_decision_stale"] is False
+
+
+def test_incomplete_issue_workspace_never_presents_low_risk(tmp_path: Path, monkeypatch) -> None:
+    contract, *_ = _run_chain(tmp_path, monkeypatch)
+    job_id = contract.job_id
+    job_issue_review_report_path(job_id).unlink()
+
+    workspace = client.get(f"/api/documents/{job_id}/workspace")
+
+    assert workspace.status_code == 200, workspace.text
+    body = workspace.json()
+    assert body["overall_state"] == "INCOMPLETE"
+    assert body["presentation"]["overall_risk"] == "待确认"
+    assert "审查尚未完成" in body["presentation"]["signing_recommendation"]
+
+
+def test_completed_issue_workspace_remains_readable_after_legal_corpus_update(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract, *_ = _run_chain(tmp_path, monkeypatch)
+    job_id = contract.job_id
+    repo_root = Path(__file__).resolve().parents[2]
+
+    import_manifest(
+        repo_root / "legal_data" / "authorities" / "prc-company-law" / "effective-2024-07-01" / "manifest.json",
+        legal_db_path(),
+        source_registry_path=repo_root / "legal_data" / "source_registry.json",
+    )
+    build_retrieval_index(legal_db_path(), legal_retrieval_index_path())
+
+    workspace = client.get(f"/api/documents/{job_id}/workspace")
+
+    assert workspace.status_code == 200, workspace.text
+    body = workspace.json()
+    assert body["overall_state"] != "INVALID"
+    assert body["presentation"]["overall_risk"] != "待确认" or body["review"]["secondary_pending_confirmation_count"] > 0
+    stages = {item["stage"]: item for item in body["stages"]}
+    assert stages["13D"]["state"] == "READY"
+    assert stages["13G"]["state"] == "READY"
+    assert any("historical audit artifact" in warning for warning in body["warnings"])
 
 
 def test_issue_handling_decision_new_statuses_are_resolved(tmp_path: Path, monkeypatch) -> None:

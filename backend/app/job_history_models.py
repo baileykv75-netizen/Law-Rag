@@ -13,6 +13,14 @@ class JobHistoryIntegrity(str, Enum):
     INVALID = "INVALID"
 
 
+class JobDeleteState(str, Enum):
+    READY = "READY"
+    NEEDS_CANCEL = "NEEDS_CANCEL"
+    LOCKED = "LOCKED"
+    PROTECTED = "PROTECTED"
+    INVALID = "INVALID"
+
+
 class JobHistoryItem(BaseModel):
     job_id: UUID
     filename: str | None = None
@@ -26,6 +34,9 @@ class JobHistoryItem(BaseModel):
     integrity: JobHistoryIntegrity
     terminal: bool
     can_delete: bool
+    delete_state: JobDeleteState = JobDeleteState.PROTECTED
+    delete_reason: str | None = None
+    selected_delete_hint: str | None = None
     storage_bytes: int = Field(ge=0)
     warning: str | None = None
 

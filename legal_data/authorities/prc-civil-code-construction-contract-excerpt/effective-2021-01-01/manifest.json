@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-civil-code-construction-contract-excerpt",
+        "title": "中华人民共和国民法典（建设工程合同摘录）",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会",
+        "document_number": "中华人民共和国主席令第四十五号",
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2021-01-01",
+      "status": "EFFECTIVE",
+      "publication_date": "2020-05-28",
+      "effective_date": "2021-01-01",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "CURATED_EXCERPT",
+      "coverage_note": "建设工程领域包内置摘录；仅含民法典第三编合同第二分编第十八章建设工程合同第七百八十八条至第八百零八条，不代表完整民法典。",
+      "source_refs": [
+        {
+          "name": "国家法律法规数据库：中华人民共和国民法典",
+          "url": "https://flk.npc.gov.cn/detail?id=ff808081729d1efe01729d50b5c500bf&title=中华人民共和国民法典",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "最高人民法院：中华人民共和国民法典全文转载",
+          "url": "https://www.court.gov.cn/zixun/xiangqing/233181.html",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "c5482de462251338c1b335c249db896ab29a61fd4b249fe0eddf74de6446ffb3",
+      "expected_article_count": 21,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "建设工程合同定义、形式、招投标、发承包义务、价款、质量责任和适用承揽合同规则，是建设工程合同审查的基础规则。",
+      "verified_on": "2026-08-26",
+      "verification_note": "国家法律法规数据库核验民法典版本为2020-05-28公布、2021-01-01施行；摘录文本从最高人民法院官方转载全文提取第788条至第808条。"
+    }
+  ]
+}

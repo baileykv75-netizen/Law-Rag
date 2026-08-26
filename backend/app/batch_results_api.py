@@ -22,10 +22,11 @@ from .storage import runtime_dir
 from .storage_management import (
     JobCleanupNotAllowed,
     StorageManagementError,
+    delete_jobs_storage_bulk,
     delete_job_storage,
     storage_summary,
 )
-from .storage_management_models import JobCleanupResult, StorageSummary
+from .storage_management_models import BulkJobCleanupRequest, BulkJobCleanupResponse, JobCleanupResult, StorageSummary
 
 router = APIRouter(prefix="/api/batches", tags=["batch-results"])
 
@@ -87,6 +88,18 @@ def _normalize_user_summary(summary: BatchResultSummary) -> BatchResultSummary:
 @router.post("", response_model=BatchManifest, status_code=status.HTTP_201_CREATED)
 def create_batch_api() -> BatchManifest:
     return create_batch()
+
+
+@router.post("/history/jobs/delete", response_model=BulkJobCleanupResponse)
+def delete_jobs_storage_bulk_api(request: BulkJobCleanupRequest) -> BulkJobCleanupResponse:
+    """Delete selected job-private runtime roots without requiring UUID typing."""
+
+    try:
+        return delete_jobs_storage_bulk(request.job_ids, confirm=request.confirm, mode=request.mode)
+    except JobCleanupNotAllowed as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (StorageManagementError, JobHistoryError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
 @router.post("/{batch_id}/jobs/{job_id}", response_model=BatchManifest)

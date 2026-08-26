@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1.0.0",
+  "records": [
+    {
+      "authority": {
+        "authority_id": "prc-construction-law",
+        "title": "中华人民共和国建筑法",
+        "authority_type": "LAW",
+        "issuing_body": "全国人民代表大会常务委员会",
+        "document_number": null,
+        "jurisdiction": "中华人民共和国"
+      },
+      "version_id": "effective-2019-04-23",
+      "status": "EFFECTIVE",
+      "publication_date": "2019-04-23",
+      "effective_date": "2019-04-23",
+      "end_date_exclusive": null,
+      "repeal_date": null,
+      "supersedes_version_id": null,
+      "superseded_by_version_id": null,
+      "coverage_type": "FULL_TEXT",
+      "coverage_note": "2019年修正现行文本全文，共85条。",
+      "source_refs": [
+        {
+          "name": "国家法律法规数据库：中华人民共和国建筑法",
+          "url": "https://flk.npc.gov.cn/detail?id=ff8080816f135f46016f21740ae61b10&title=中华人民共和国建筑法",
+          "role": "PRIMARY"
+        },
+        {
+          "name": "中国人大网：中华人民共和国建筑法",
+          "url": "http://www.npc.gov.cn/zgrdw/npc/xinwen/2019-05/07/content_2086833.htm",
+          "role": "TEXT"
+        }
+      ],
+      "snapshot_path": "snapshot.txt",
+      "expected_source_sha256": "6a4c3c920883b186cdb051306bafe8cf380e992c27d2252d6659daac2172ea95",
+      "expected_article_count": 85,
+      "parser": "chinese-articles-v1",
+      "inclusion_reason": "建设工程施工许可、从业资质、发承包、监理、安全生产和质量管理的基础法律。",
+      "verified_on": "2026-08-26",
+      "verification_note": "国家法律法规数据库核验现行版本为2019-04-23公布并施行；全文从中国人大网官方页面提取并解析。"
+    }
+  ]
+}
