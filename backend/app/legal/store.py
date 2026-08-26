@@ -250,10 +250,33 @@ def get_authority(db_path: Path, authority_id: str) -> AuthoritySummary:
         connection.close()
 
 
-def list_articles(db_path: Path, *, query: str | None = None, limit: int = 80) -> list[LegalArticleBrowserItem]:
+def list_version_identities(db_path: Path) -> set[tuple[str, str]]:
+    if not db_path.exists():
+        return set()
+    connection = connect(db_path)
+    try:
+        initialize_schema(connection)
+        rows = connection.execute(
+            "SELECT authority_id, version_id FROM authority_versions"
+        ).fetchall()
+        return {(row["authority_id"], row["version_id"]) for row in rows}
+    finally:
+        connection.close()
+
+
+def list_articles(
+    db_path: Path,
+    *,
+    query: str | None = None,
+    authority_id: str | None = None,
+    version_id: str | None = None,
+    limit: int = 80,
+    offset: int = 0,
+) -> list[LegalArticleBrowserItem]:
     if not db_path.exists():
         return []
-    bounded_limit = min(max(limit, 1), 200)
+    bounded_limit = min(max(limit, 1), 1000)
+    bounded_offset = max(offset, 0)
     term = (query or "").strip()
     sql = """
         SELECT a.*, v.*, au.title, au.authority_type, au.issuing_body, au.document_number, au.jurisdiction
@@ -263,17 +286,33 @@ def list_articles(db_path: Path, *, query: str | None = None, limit: int = 80) -
         JOIN authorities au ON au.authority_id = a.authority_id
     """
     params: list[object] = []
+    clauses: list[str] = []
+    if authority_id:
+        clauses.append("a.authority_id = ?")
+        params.append(authority_id)
+    if version_id:
+        clauses.append("a.version_id = ?")
+        params.append(version_id)
     if term:
-        sql += """
-        WHERE au.title LIKE ?
-           OR a.article_token LIKE ?
-           OR a.article_text LIKE ?
-           OR COALESCE(a.heading_context_json, '') LIKE ?
-        """
+        clauses.append(
+            """
+            (
+                au.title LIKE ?
+                OR a.article_token LIKE ?
+                OR a.article_text LIKE ?
+                OR COALESCE(a.heading_context_json, '') LIKE ?
+            )
+            """
+        )
         like = f"%{term}%"
         params.extend([like, like, like, like])
-    sql += " ORDER BY au.title, a.article_ordinal IS NULL, a.article_ordinal, a.article_token LIMIT ?"
-    params.append(bounded_limit)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += """
+        ORDER BY au.title, v.effective_date DESC, a.article_ordinal IS NULL, a.article_ordinal, a.article_token
+        LIMIT ? OFFSET ?
+    """
+    params.extend([bounded_limit, bounded_offset])
     connection = connect(db_path)
     try:
         initialize_schema(connection)

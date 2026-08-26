@@ -513,6 +513,13 @@
   color: #627084;
 }
 
+.legal-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .legal-browser-header button,
 .legal-browser-search button {
   border: 1px solid #cbd4df;
@@ -551,6 +558,12 @@
   font-size: 24px;
 }
 
+.legal-metric-note {
+  margin: -4px 0 12px;
+  color: #6b778a;
+  font-size: 12px;
+}
+
 .legal-browser-search {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -583,14 +596,28 @@
   display: grid;
   gap: 1px;
   align-content: start;
-  overflow: hidden;
+  max-height: 720px;
+  overflow: auto;
 }
 
-.legal-authority-list article {
+.legal-authority-list button {
   display: grid;
   gap: 4px;
+  width: 100%;
   padding: 13px;
+  border: 0;
   border-bottom: 1px solid #edf1f5;
+  background: #fff;
+  text-align: left;
+}
+
+.legal-authority-list button:hover,
+.legal-authority-list button.is-active {
+  background: #f4f7fb;
+}
+
+.legal-authority-list button.is-active {
+  box-shadow: inset 3px 0 0 #4e6380;
 }
 
 .legal-authority-list strong {
@@ -616,6 +643,33 @@
   overflow: auto;
   padding: 12px;
   border-right: 1px solid #edf1f5;
+}
+
+.legal-article-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  gap: 8px;
+  padding-bottom: 10px;
+  background: #fff;
+}
+
+.legal-article-toolbar strong {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.legal-article-toolbar select {
+  width: 100%;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fff;
+  color: #26354e;
 }
 
 .legal-article-list button.is-active {
@@ -663,6 +717,142 @@
   border-radius: 999px;
   background: #f0f3f7;
   padding: 6px 9px;
+  color: #526177;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.legal-pack-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(17, 24, 39, .32);
+}
+
+.legal-pack-drawer {
+  width: min(560px, calc(100% - 32px));
+  height: calc(100vh - 28px);
+  margin: 14px;
+  padding: 22px;
+  border: 1px solid #d5dce7;
+  border-radius: 8px;
+  background: #fbfcfe;
+  box-shadow: 0 24px 70px rgba(18, 28, 45, .22);
+  overflow: auto;
+}
+
+.legal-pack-drawer > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.legal-pack-drawer h2 {
+  margin: 6px 0;
+  color: #24324a;
+  font-size: 24px;
+}
+
+.legal-pack-drawer p {
+  margin: 0;
+  color: #647083;
+  line-height: 1.65;
+}
+
+.legal-pack-drawer header button,
+.legal-pack-actions button {
+  border: 1px solid #cbd4df;
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px 12px;
+  color: #26354e;
+  font-weight: 800;
+}
+
+.legal-pack-list,
+.legal-pack-children {
+  display: grid;
+  gap: 10px;
+}
+
+.legal-pack-children {
+  margin-top: 10px;
+  padding-left: 14px;
+  border-left: 2px solid #e2e8f0;
+}
+
+.legal-pack-node {
+  padding: 14px;
+  border: 1px solid #dce3ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.legal-pack-node > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.legal-pack-node strong {
+  color: #24324a;
+}
+
+.legal-pack-node > div:first-child span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: #edf2f7;
+  color: #56657a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.legal-pack-node.state-installed > div:first-child span {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.legal-pack-node.state-available > div:first-child span {
+  background: #dbeafe;
+  color: #1d4f91;
+}
+
+.legal-pack-node p {
+  margin: 8px 0;
+  color: #5f6d80;
+  font-size: 13px;
+}
+
+.legal-pack-node small {
+  display: block;
+  color: #738095;
+  font-size: 12px;
+}
+
+.legal-pack-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.legal-pack-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.legal-pack-actions a {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  background: #f0f3f7;
+  padding: 9px 10px;
   color: #526177;
   font-size: 12px;
   text-decoration: none;

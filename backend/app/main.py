@@ -30,6 +30,12 @@ from .legal.models import (
     LegalEvidenceRecord,
     LegalStoreSummary,
 )
+from .legal.pack_browser import (
+    LegalPackDownloadResponse,
+    LegalPackTreeNode,
+    install_legal_pack,
+    list_legal_pack_tree,
+)
 from .legal.retrieval import (
     RetrievalIndexError,
     get_retrieval_index_summary,
@@ -41,8 +47,8 @@ from .legal.store import (
     get_article_for_version,
     get_authority,
     get_evidence,
-    list_articles,
     get_summary,
+    list_articles,
     list_authorities,
     resolve_version,
 )
@@ -176,12 +182,43 @@ def legal_authority(authority_id: str) -> AuthoritySummary:
 @app.get("/api/legal/articles", response_model=list[LegalArticleBrowserItem])
 def legal_articles(
     query: str | None = Query(default=None, description="Optional keyword for title, article token or text"),
-    limit: int = Query(default=80, ge=1, le=200),
+    authority_id: str | None = Query(default=None, description="Optional exact authority id filter"),
+    version_id: str | None = Query(default=None, description="Optional exact legal version id filter"),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=80, ge=1, le=1000),
 ) -> list[LegalArticleBrowserItem]:
     try:
-        return list_articles(legal_db_path(), query=query, limit=limit)
+        return list_articles(
+            legal_db_path(),
+            query=query,
+            authority_id=authority_id,
+            version_id=version_id,
+            offset=offset,
+            limit=limit,
+        )
     except LegalStoreError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.get("/api/legal/packs", response_model=list[LegalPackTreeNode])
+def legal_packs() -> list[LegalPackTreeNode]:
+    try:
+        return list_legal_pack_tree()
+    except (LegalStoreError, RuntimeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.post("/api/legal/packs/{pack_id}/download", response_model=LegalPackDownloadResponse)
+def legal_pack_download(pack_id: str) -> LegalPackDownloadResponse:
+    try:
+        response = install_legal_pack(pack_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (LegalStoreError, RuntimeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    if response.state == "UNAVAILABLE":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=response.model_dump(mode="json"))
+    return response
 
 
 @app.get("/api/legal/evidence/{legal_evidence_id}", response_model=LegalEvidenceRecord)

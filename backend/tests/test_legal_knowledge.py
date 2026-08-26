@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.legal.importer import LegalImportError, import_manifest
 from app.legal.parser import normalize_snapshot_text, parse_chinese_articles
-from app.legal.store import get_evidence, get_summary, resolve_version
+from app.legal.store import get_evidence, get_summary, list_articles, resolve_version
 from app.main import app
 
 client = TestClient(app)
@@ -284,6 +284,32 @@ def test_real_curated_seed_manifest_validates_and_rebuilds(tmp_path: Path) -> No
     assert "违约金" in evidence.article.text
 
 
+def test_article_browser_can_filter_by_authority_and_version(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    manifest = repo_root / "legal_data" / "seed" / "manifest.json"
+    db = tmp_path / "legal.db"
+    import_manifest(manifest, db, rebuild=True)
+
+    civil_code = list_articles(
+        db,
+        authority_id="prc-civil-code",
+        version_id="effective-2021-01-01",
+        limit=1000,
+    )
+    assert len(civil_code) == 8
+    assert {item.authority.authority_id for item in civil_code} == {"prc-civil-code"}
+    assert civil_code[0].article.article_token == "第四百六十九条"
+
+    filtered = list_articles(
+        db,
+        query="违约金",
+        authority_id="prc-civil-code",
+        version_id="effective-2021-01-01",
+        limit=1000,
+    )
+    assert [item.article.article_token for item in filtered] == ["第五百八十五条"]
+
+
 def test_legal_api_summary_evidence_and_as_of_resolution(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     repo_root = Path(__file__).resolve().parents[2]
@@ -304,6 +330,17 @@ def test_legal_api_summary_evidence_and_as_of_resolution(tmp_path: Path, monkeyp
     assert articles.json()
     assert any("违约金" in item["article"]["text"] for item in articles.json())
 
+    civil_code_articles = client.get(
+        "/api/legal/articles",
+        params={
+            "authority_id": "prc-civil-code",
+            "version_id": "effective-2021-01-01",
+            "limit": 1000,
+        },
+    )
+    assert civil_code_articles.status_code == 200, civil_code_articles.text
+    assert len(civil_code_articles.json()) == 8
+
     evidence_id = "legal:prc-civil-code:effective-2021-01-01:article-586"
     evidence = client.get(f"/api/legal/evidence/{evidence_id}")
     assert evidence.status_code == 200
@@ -318,3 +355,24 @@ def test_legal_api_summary_evidence_and_as_of_resolution(tmp_path: Path, monkeyp
     assert body["resolution"]["state"] == "RESOLVED"
     assert body["resolution"]["version"]["version_id"] == "effective-2021-01-01"
     assert body["article"]["legal_evidence_id"].endswith(":article-585")
+
+
+def test_legal_pack_tree_and_download_endpoint(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
+
+    packs = client.get("/api/legal/packs")
+    assert packs.status_code == 200, packs.text
+    body = packs.json()
+    assert any(item["pack_id"] == "cn-contract-general-core" for item in body)
+    assert any(item["pack_id"] == "cn-construction-core" for item in body)
+
+    install = client.post("/api/legal/packs/cn-contract-general-core/download")
+    assert install.status_code == 200, install.text
+    installed = install.json()
+    assert installed["state"] == "INSTALLED"
+    assert installed["summary"]["article_count"] == 15
+    assert installed["rebuilt_index"] is True
+
+    unavailable = client.post("/api/legal/packs/cn-construction-core/download")
+    assert unavailable.status_code == 409, unavailable.text
+    assert unavailable.json()["detail"]["state"] == "UNAVAILABLE"
