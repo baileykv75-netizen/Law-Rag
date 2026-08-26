@@ -12,7 +12,7 @@ from .legal.store import get_summary
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS_ROOT = REPO_ROOT / "legal_data"
 DEFAULT_CORPUS_RELEASE = (
-    DEFAULT_CORPUS_ROOT / "releases" / "three-domain-core" / "1.0.0" / "release.json"
+    DEFAULT_CORPUS_ROOT / "releases" / "three-domain-core" / "1.1.0" / "release.json"
 )
 DEFAULT_SOURCE_REGISTRY = DEFAULT_CORPUS_ROOT / "source_registry.json"
 DEFAULT_OUTPUT = REPO_ROOT / "release" / ".build"
@@ -77,7 +77,7 @@ def build_public_release_assets(
 
     metadata: dict[str, object] = {
         "schema_version": "2.0.0",
-        "asset_profile": "stage15.5-three-domain-baseline",
+        "asset_profile": "stage15.5-competition-construction-baseline",
         "corpus_release": {
             "path": _repo_relative(release_path),
             "corpus_id": release["corpus_id"],

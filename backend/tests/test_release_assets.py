@@ -6,7 +6,7 @@ from pathlib import Path
 from app.release_assets_cli import DEFAULT_CORPUS_RELEASE, build_public_release_assets
 
 
-def test_public_release_assets_build_verified_three_domain_baseline(tmp_path: Path) -> None:
+def test_public_release_assets_build_verified_competition_baseline(tmp_path: Path) -> None:
     output = tmp_path / "release-build"
 
     metadata = build_public_release_assets(output, DEFAULT_CORPUS_RELEASE)
@@ -18,28 +18,28 @@ def test_public_release_assets_build_verified_three_domain_baseline(tmp_path: Pa
     assert retrieval_db.is_file()
     assert metadata_path.is_file()
     assert metadata["schema_version"] == "2.0.0"
-    assert metadata["asset_profile"] == "stage15.5-three-domain-baseline"
+    assert metadata["asset_profile"] == "stage15.5-competition-construction-baseline"
     assert metadata["corpus_release"]["corpus_id"] == "three-domain-core"
-    assert metadata["corpus_release"]["corpus_version"] == "1.0.0"
+    assert metadata["corpus_release"]["corpus_version"] == "1.1.0"
     assert metadata["corpus_release"]["release_digest"] == (
-        "4009c06967cd2281089e85bdfda64388dd4ac8fc3b86125d971bfa1c0f642b4f"
+        "d34ee505b9f8e8e0e075d4d55f933d39a23fdfaca07c15cf8a3b72288ae3b9ae"
     )
     assert metadata["legal"]["ready"] is True
-    assert metadata["legal"]["authority_count"] == 14
-    assert metadata["legal"]["version_count"] == 15
-    assert metadata["legal"]["article_count"] == 1274
-    assert metadata["legal"]["excerpt_version_count"] == 0
+    assert metadata["legal"]["authority_count"] == 18
+    assert metadata["legal"]["version_count"] == 19
+    assert metadata["legal"]["article_count"] == 1507
+    assert metadata["legal"]["excerpt_version_count"] == 1
     assert metadata["retrieval"]["ready"] is True
     assert metadata["retrieval"]["lexical_ready"] is True
-    assert metadata["retrieval"]["article_count"] == 1274
+    assert metadata["retrieval"]["article_count"] == 1507
     assert metadata["retrieval"]["semantic_ready"] is False
     assert metadata["build_summary"] == {
         "corpus_id": "three-domain-core",
-        "corpus_version": "1.0.0",
-        "pack_count": 3,
-        "authority_count": 14,
-        "version_count": 15,
-        "article_count": 1274,
+        "corpus_version": "1.1.0",
+        "pack_count": 4,
+        "authority_count": 18,
+        "version_count": 19,
+        "article_count": 1507,
     }
 
     persisted = json.loads(metadata_path.read_text(encoding="utf-8"))

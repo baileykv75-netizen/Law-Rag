@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from .corpus_packs import CorpusPackStatus, discover_corpus_packs
 from .importer import LegalImportError, import_manifest
-from .models import LegalManifest, ManifestRecord, VersionStatus
+from .models import CoverageType, LegalManifest, ManifestRecord, VersionStatus
 from .parser import LegalParseError, normalize_snapshot_text, parse_chinese_articles, sha256_text
 from .store import get_summary
 
@@ -97,9 +97,19 @@ def _validate_snapshot(root: Path, manifest_path: Path, record: ManifestRecord) 
         )
     except LegalParseError as exc:
         raise CorpusReleaseError(f"Snapshot parse failed: {exc}") from exc
-    if [item.article_ordinal for item in parsed.articles] != list(
-        range(1, record.expected_article_count + 1)
-    ):
+    ordinals = [item.article_ordinal for item in parsed.articles]
+    if record.coverage_type == CoverageType.CURATED_EXCERPT:
+        if (
+            len(ordinals) != record.expected_article_count
+            or ordinals != sorted(ordinals)
+            or len(set(ordinals)) != len(ordinals)
+        ):
+            raise CorpusReleaseError(
+                f"Invalid excerpt articles for {record.authority.authority_id}:{record.version_id}"
+            )
+        return
+
+    if ordinals != list(range(1, record.expected_article_count + 1)):
         raise CorpusReleaseError(
             f"Non-contiguous articles for {record.authority.authority_id}:{record.version_id}"
         )

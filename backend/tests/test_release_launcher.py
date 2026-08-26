@@ -104,14 +104,14 @@ def test_release_corpus_diagnostic_uses_packaged_baseline_without_creating_runti
     assert code == 0
     assert payload["ready"] is True
     assert payload["legal"] == {
-        "authority_count": 14,
-        "version_count": 15,
-        "article_count": 1274,
-        "excerpt_version_count": 0,
+        "authority_count": 18,
+        "version_count": 19,
+        "article_count": 1507,
+        "excerpt_version_count": 1,
     }
     assert payload["retrieval"]["ready"] is True
     assert payload["retrieval"]["lexical_ready"] is True
-    assert payload["retrieval"]["article_count"] == 1274
+    assert payload["retrieval"]["article_count"] == 1507
     assert payload["smoke_query"]["authority_id"] == "prc-labor-contract-law"
     assert payload["smoke_query"]["exact_hit"] is True
     assert not runtime.exists()

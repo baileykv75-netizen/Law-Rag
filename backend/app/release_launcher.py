@@ -191,9 +191,9 @@ def _corpus_diagnostic() -> tuple[bool, dict[str, object]]:
             ),
             None,
         )
-    baseline_authority_count = 14
-    baseline_version_count = 15
-    baseline_article_count = 1274
+    baseline_authority_count = 18
+    baseline_version_count = 19
+    baseline_article_count = 1507
     ready = bool(
         legal.ready
         and legal.authority_count >= baseline_authority_count

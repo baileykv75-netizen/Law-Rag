@@ -1,0 +1,18 @@
+{
+  "pack_schema_version": "1.0.0",
+  "pack_id": "cn-construction-engineering-core",
+  "pack_version": "0.1.0",
+  "display_name": "中国建设工程核心法规",
+  "jurisdiction": "中华人民共和国",
+  "description": "建设工程施工合同、工程价款、质量责任、发承包和施工资质审查的比赛版内置核心规范包。",
+  "domain_tags": [
+    "construction-engineering"
+  ],
+  "status": "READY",
+  "authority_manifest_paths": [
+    "authorities/prc-civil-code-construction-contract-excerpt/effective-2021-01-01/manifest.json",
+    "authorities/prc-construction-law/effective-2019-04-23/manifest.json",
+    "authorities/spc-construction-contract-interpretation-1/effective-2021-01-01/manifest.json",
+    "authorities/state-council-construction-quality-regulation/effective-2019-04-23/manifest.json"
+  ]
+}
