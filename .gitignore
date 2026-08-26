@@ -67,6 +67,7 @@ release/.build-venv/
 release/dist/
 release/work/
 release/rc/
+release/installer-dist/
 
 # Stage 14.5 transient OCR model verification payloads. Model binaries are
 # fetched only into ignored build/verification staging and are never tracked.
