@@ -92,13 +92,13 @@ function validateFile(file: File): string | null {
 
 function friendlySourceWarning(warning: string) {
   if (warning.startsWith('DOCX_FOOTER_PRESENT')) {
-    return '检测到页脚内容；当前不会把页脚当作合同正文，技术细节可在高级模式查看。'
+    return '检测到页脚内容；当前不会把页脚当作合同正文。'
   }
   if (warning.startsWith('DOCX_HEADER_PRESENT')) {
-    return '检测到页眉内容；当前不会把页眉当作合同正文，技术细节可在高级模式查看。'
+    return '检测到页眉内容；当前不会把页眉当作合同正文。'
   }
   if (warning.startsWith('PDF_') || warning.startsWith('IMAGE_') || warning.startsWith('DOCX_')) {
-    return '源文件存在一项解析提示；正文审计仍会按已验证证据继续，技术细节可在高级模式查看。'
+    return '源文件存在一项解析提示；正文审计仍会按已验证证据继续。'
   }
   return warning.length > 180 ? `${warning.slice(0, 177)}…` : warning
 }
@@ -107,8 +107,8 @@ function sourceWarningNotice(warnings: string[]) {
   if (!warnings.length) return null
   const friendly = warnings.slice(0, 2).map(friendlySourceWarning)
   const visible = friendly.join('；')
-  const remainder = warnings.length > 2 ? '；另有解析提示可在高级模式查看。' : ''
-  return `源文件提示：${visible}${remainder}`
+  const remainder = warnings.length > 2 ? '；另有解析提示。' : ''
+  return `源文件解析提示：${visible}${remainder}`
 }
 
 function sourceSummary(result: UploadResponse) {
@@ -753,7 +753,6 @@ function IntakeApp() {
           <p className="intake-eyebrow">LAW-RAG</p>
           <h1>合同审计</h1>
         </div>
-        <a className="intake-developer-link" href="/developer" aria-label="打开高级调试模式">高级模式</a>
       </header>
 
       <section className="intake-card" aria-label="合同文件导入">

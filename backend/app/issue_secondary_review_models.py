@@ -32,6 +32,12 @@ class IssueSecondaryReviewStatus(str, Enum):
     INTERRUPTED = "INTERRUPTED"
 
 
+class SecondaryReviewDecisionStatus(str, Enum):
+    REVIEWED = "REVIEWED"
+    SKIPPED_CLEAR = "SKIPPED_CLEAR"
+    PENDING_CONFIRMATION = "PENDING_CONFIRMATION"
+
+
 class ModelIssueSecondaryDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -62,6 +68,7 @@ class IssueSecondaryReviewResult(BaseModel):
     issue_id: str
     topic: str
     primary_state: str
+    review_status: SecondaryReviewDecisionStatus = SecondaryReviewDecisionStatus.REVIEWED
     assessment: SecondaryIssueAssessment
     coverage_assessment: SecondaryCoverageAssessment
     severity: FindingSeverity

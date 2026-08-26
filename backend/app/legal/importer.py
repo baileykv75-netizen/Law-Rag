@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -450,6 +451,22 @@ def write_import_report(report: ManifestImportReport, report_path: Path) -> None
     report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
 
+def _replace_rebuilt_database(working_path: Path, target_path: Path) -> None:
+    last_error: OSError | None = None
+    for attempt in range(1, 9):
+        try:
+            os.replace(working_path, target_path)
+            return
+        except OSError as exc:
+            last_error = exc
+            winerror = getattr(exc, "winerror", None)
+            if winerror not in {5, 32, 33} and exc.errno not in {13, 16}:
+                raise
+            time.sleep(min(0.025 * (2 ** max(0, attempt - 1)), 0.4))
+    assert last_error is not None
+    raise last_error
+
+
 def import_manifest(
     manifest_path: Path,
     db_path: Path,
@@ -527,7 +544,7 @@ def import_manifest(
 
     if rebuild:
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(working_path, target_path)
+        _replace_rebuilt_database(working_path, target_path)
 
     report = _report(manifest_path, target_path, validations)
     if report_path:

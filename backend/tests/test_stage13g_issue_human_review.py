@@ -241,6 +241,22 @@ def test_workspace_closes_mandatory_issue_review_only_after_fresh_final_decision
         assert issue_rows[issue_id]["human_decision_stale"] is False
 
 
+def test_issue_handling_decision_new_statuses_are_resolved(tmp_path: Path, monkeypatch) -> None:
+    contract, _, _, _, _, report = _run_chain(tmp_path, monkeypatch)
+    job_id = contract.job_id
+    issue_id = _required_issue_ids(report)[0]
+
+    saved = _post_issue_decision(job_id, issue_id, state="MODIFIED")
+
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["latest_by_target"][f"issue:{issue_id}"]["state"] == "MODIFIED"
+    workspace = client.get(f"/api/documents/{job_id}/workspace")
+    assert workspace.status_code == 200, workspace.text
+    body = workspace.json()
+    assert body["review"]["human_review_outstanding_required_count"] == len(_required_issue_ids(report)) - 1
+
+
+
 def test_issue_revision_becomes_stale_after_a_valid_new_issue_report(tmp_path: Path, monkeypatch) -> None:
     contract, _, _, _, _, report = _run_chain(tmp_path, monkeypatch)
     job_id = contract.job_id

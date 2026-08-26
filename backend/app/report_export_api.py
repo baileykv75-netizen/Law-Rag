@@ -7,7 +7,6 @@ from fastapi.responses import FileResponse
 
 from .report_export import ReportExportError, export_audit_report
 from .report_export_models import ReportExportFormat
-from .tester_report_watermark import TesterReportWatermarkError, apply_tester_report_watermark
 
 router = APIRouter(tags=["report-export"])
 
@@ -21,20 +20,15 @@ _MEDIA_TYPES = {
 def create_report_export(job_id: UUID, format: ReportExportFormat) -> FileResponse:
     """Render a local report from validated ISSUE_V1 artifacts only.
 
-    This endpoint never invokes OCR, DeepSeek, Kimi, retrieval, or another
-    provider. It only reads already-persisted authoritative artifacts. Limited
-    tester builds add the active signed Tester ID as a visible report footer and
-    then recompute the exported-file SHA-256.
+    This endpoint never invokes OCR, retrieval, or another provider. It only
+    reads already-persisted authoritative artifacts and renders a local report.
     """
 
     try:
         path, result = export_audit_report(job_id, format)
-        result = apply_tester_report_watermark(path, result)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ReportExportError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except TesterReportWatermarkError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(

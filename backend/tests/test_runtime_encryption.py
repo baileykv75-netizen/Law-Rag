@@ -75,7 +75,12 @@ def test_symlink_in_managed_tree_never_becomes_a_protected_claim(tmp_path: Path,
     (outside / "secret.txt").write_text("outside", encoding="utf-8")
     jobs = tmp_path / "jobs"
     jobs.mkdir()
-    (jobs / "escape").symlink_to(outside, target_is_directory=True)
+    try:
+        (jobs / "escape").symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable in this session.")
+        raise
 
     encrypted: set[Path] = set()
 

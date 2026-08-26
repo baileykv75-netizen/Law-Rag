@@ -51,15 +51,27 @@ def configure_release_environment(*, use_packaged_legal: bool = False) -> dict[s
 
     defaults = {
         "LAW_RAG_RUNTIME_DIR": str(runtime_root),
-        "LAW_RAG_LEGAL_DB": str(default_legal),
-        "LAW_RAG_RETRIEVAL_DB": str(default_retrieval),
         "LAW_RAG_FRONTEND_DIST": str(asset_root / "frontend-dist"),
         "LAW_RAG_OCR_MODEL_ROOT": str(asset_root / "ocr-models"),
         "LAW_RAG_OCR_MODEL_MANIFEST": str(asset_root / "release" / "ocr-models-manifest.json"),
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
-    return {key: os.environ[key] for key in defaults}
+    for key, value, marker in (
+        ("LAW_RAG_LEGAL_DB", str(default_legal), "LAW_RAG_LEGAL_DB_DEFAULT_RUNTIME"),
+        ("LAW_RAG_RETRIEVAL_DB", str(default_retrieval), "LAW_RAG_RETRIEVAL_DB_DEFAULT_RUNTIME"),
+    ):
+        current = os.getenv(key, "").strip()
+        marker_value = os.getenv(marker, "").strip()
+        stale_implicit_default = False
+        if current and marker_value and Path(marker_value).expanduser().resolve() != runtime_root:
+            old_default = Path(marker_value).expanduser().resolve() / "legal" / Path(value).name
+            stale_implicit_default = Path(current).expanduser().resolve() == old_default
+        if not current or stale_implicit_default:
+            os.environ[key] = value
+            os.environ[marker] = str(runtime_root)
+    configured_keys = (*defaults.keys(), "LAW_RAG_LEGAL_DB", "LAW_RAG_RETRIEVAL_DB")
+    return {key: os.environ[key] for key in configured_keys}
 
 
 def _format_exception_chain(exc: BaseException) -> str:

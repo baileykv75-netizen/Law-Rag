@@ -3,6 +3,8 @@ export type OverallState = 'COMPLETE' | 'INCOMPLETE' | 'HUMAN_REVIEW_REQUIRED' |
 export type Severity = 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 export type ReviewPriority = 'NORMAL' | 'IMPORTANT' | 'HIGH_ATTENTION'
 export type HumanDecisionState = 'UNREVIEWED' | 'CONFIRMED' | 'REJECTED' | 'NEEDS_MORE_REVIEW'
+  | 'ACCEPTED_RISK' | 'FALSE_POSITIVE' | 'MODIFIED' | 'NEEDS_LAWYER_REVIEW'
+export type SecondaryReviewStatus = 'REVIEWED' | 'SKIPPED_CLEAR' | 'PENDING_CONFIRMATION'
 
 export type WorkspaceDocument = {
   filename: string
@@ -45,6 +47,9 @@ export type IssueWorkspaceReview = {
   secondary_provider: string | null
   secondary_model: string | null
   secondary_completed_issue_count: number
+  secondary_reviewed_count: number
+  secondary_skipped_clear_count: number
+  secondary_pending_confirmation_count: number
   comparison_available: boolean
   final_review_state: 'NO_MANDATORY_REVIEW' | 'HUMAN_REVIEW_REQUIRED' | null
   compared_issue_count: number
@@ -72,12 +77,33 @@ export type IssueQueueItem = {
   primary_state: string | null
   primary_severity: Severity | null
   secondary_assessment: string | null
+  secondary_review_status: SecondaryReviewStatus | null
   coverage_assessment: string | null
   comparison_state: string | null
   requires_human_review: boolean
   human_decision_state: HumanDecisionState | null
   human_decision_revision: number | null
   human_decision_stale: boolean
+}
+
+export type IssueWorkspaceRiskSummary = {
+  issue_id: string
+  title: string
+  severity: Severity
+  risk_level: string
+  reason: string
+  suggested_action: string
+  requires_decision: boolean
+  secondary_review_status: SecondaryReviewStatus
+}
+
+export type IssueWorkspacePresentationSummary = {
+  overall_risk: string
+  signing_recommendation: string
+  top_risks: IssueWorkspaceRiskSummary[]
+  suggested_actions: string[]
+  evidence_confidence: string
+  secondary_review_status_counts: Record<string, number>
 }
 
 export type IssueWorkspaceSummary = {
@@ -91,6 +117,7 @@ export type IssueWorkspaceSummary = {
   stages: WorkspaceStage[]
   coverage: IssueWorkspaceCoverage | null
   review: IssueWorkspaceReview
+  presentation: IssueWorkspacePresentationSummary | null
   issues: IssueQueueItem[]
   source_uncertainty: string[]
   warnings: string[]
@@ -152,6 +179,7 @@ export type IssueSecondaryResult = {
   issue_id: string
   topic: string
   primary_state: string
+  review_status?: SecondaryReviewStatus
   assessment: string
   coverage_assessment: string
   severity: Severity

@@ -655,18 +655,22 @@ def _run_issue_secondary_stage(report: PipelineReport) -> None:
 
     health = delegate.health()
     if not health.configured:
-        raise _StageWaitingConfiguration(
-            PipelineStage.ISSUE_SECONDARY_REVIEW,
-            "KIMI_NOT_CONFIGURED",
-            health.detail,
+        _mark_running(report, PipelineStage.ISSUE_SECONDARY_REVIEW, "Kimi 未配置；争议复审将标记为可稍后补审。")
+        run_issue_secondary_review(
+            job_id,
+            provider_override=delegate,
+            allow_provider_unavailable=True,
         )
+        _mark_done(report, PipelineStage.ISSUE_SECONDARY_REVIEW, detail="Kimi 未配置；争议复审已标记为可稍后补审。")
+        return
 
     _mark_running(report, PipelineStage.ISSUE_SECONDARY_REVIEW, "正在重建 Kimi 逐项复核上下文并复用已有检查点。")
     run_issue_secondary_review(
         job_id,
         provider_override=_PipelineSecondaryProvider(delegate, report),
+        allow_provider_unavailable=True,
     )
-    _mark_done(report, PipelineStage.ISSUE_SECONDARY_REVIEW, detail="Kimi 已完成全部审查问题的独立复核。")
+    _mark_done(report, PipelineStage.ISSUE_SECONDARY_REVIEW, detail="Kimi 争议复审已完成或标记为可稍后补审。")
 
 
 def _run_issue_review_stage(report: PipelineReport) -> None:
@@ -882,7 +886,7 @@ def start_pipeline(job_id: UUID, request: PipelineStartRequest) -> PipelineRepor
             return existing
         if _is_legacy_pipeline(existing):
             raise PipelineError(
-                "This job has an unfinished legacy pipeline. Use the explicit compatibility path instead of silently migrating it."
+                "This job has an unfinished legacy RC2 pipeline. Use the explicit compatibility path instead of silently migrating it."
             )
         if existing.status == PipelineStatus.CANCELLED:
             raise PipelineError("This pipeline was explicitly cancelled. Use the resume action to restart it.")

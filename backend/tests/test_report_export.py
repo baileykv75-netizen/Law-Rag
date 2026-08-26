@@ -169,7 +169,12 @@ def test_export_root_symlink_fails_closed(tmp_path: Path, monkeypatch) -> None:
     job_id = uuid4()
     outside = tmp_path / "outside"
     outside.mkdir()
-    (tmp_path / "exports").symlink_to(outside, target_is_directory=True)
+    try:
+        (tmp_path / "exports").symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink creation requires a privilege not available in this test session.")
+        raise
     monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path))
     monkeypatch.setattr(report_export, "build_audit_report", lambda _: _sample_report(job_id))
 

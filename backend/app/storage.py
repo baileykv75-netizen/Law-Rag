@@ -62,14 +62,26 @@ def legal_runtime_dir() -> Path:
 def legal_db_path() -> Path:
     configured = os.getenv("LAW_RAG_LEGAL_DB")
     if configured:
-        return Path(configured).expanduser().resolve()
+        implicit_runtime = os.getenv("LAW_RAG_LEGAL_DB_DEFAULT_RUNTIME")
+        configured_path = Path(configured).expanduser().resolve()
+        if implicit_runtime and Path(implicit_runtime).expanduser().resolve() != runtime_dir():
+            stale_default = Path(implicit_runtime).expanduser().resolve() / "legal" / "legal.db"
+            if configured_path == stale_default:
+                return legal_runtime_dir() / "legal.db"
+        return configured_path
     return legal_runtime_dir() / "legal.db"
 
 
 def legal_retrieval_index_path() -> Path:
     configured = os.getenv("LAW_RAG_RETRIEVAL_DB")
     if configured:
-        return Path(configured).expanduser().resolve()
+        implicit_runtime = os.getenv("LAW_RAG_RETRIEVAL_DB_DEFAULT_RUNTIME")
+        configured_path = Path(configured).expanduser().resolve()
+        if implicit_runtime and Path(implicit_runtime).expanduser().resolve() != runtime_dir():
+            stale_default = Path(implicit_runtime).expanduser().resolve() / "legal" / "retrieval.db"
+            if configured_path == stale_default:
+                return legal_runtime_dir() / "retrieval.db"
+        return configured_path
     return legal_runtime_dir() / "retrieval.db"
 
 

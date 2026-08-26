@@ -26,6 +26,7 @@ from .document_ingestion import DocumentProcessingError, inspect_document
 from .legal.models import (
     ArticleVersionResolution,
     AuthoritySummary,
+    LegalArticleBrowserItem,
     LegalEvidenceRecord,
     LegalStoreSummary,
 )
@@ -40,6 +41,7 @@ from .legal.store import (
     get_article_for_version,
     get_authority,
     get_evidence,
+    list_articles,
     get_summary,
     list_authorities,
     resolve_version,
@@ -167,6 +169,17 @@ def legal_authority(authority_id: str) -> AuthoritySummary:
         return get_authority(legal_db_path(), authority_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LegalStoreError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@app.get("/api/legal/articles", response_model=list[LegalArticleBrowserItem])
+def legal_articles(
+    query: str | None = Query(default=None, description="Optional keyword for title, article token or text"),
+    limit: int = Query(default=80, ge=1, le=200),
+) -> list[LegalArticleBrowserItem]:
+    try:
+        return list_articles(legal_db_path(), query=query, limit=limit)
     except LegalStoreError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 

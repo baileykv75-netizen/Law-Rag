@@ -5,7 +5,7 @@ import type {
   IssueWorkspaceDetail,
 } from './issue-workspace-types'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+import { API_BASE_URL } from './apiBase'
 
 type Props = {
   detail: IssueWorkspaceDetail
@@ -13,10 +13,12 @@ type Props = {
 }
 
 function decisionLabel(value: HumanDecisionState) {
-  if (value === 'CONFIRMED') return '确认当前结论'
-  if (value === 'REJECTED') return '不采纳当前结论'
-  if (value === 'NEEDS_MORE_REVIEW') return '继续复核'
-  return '未形成决定'
+  if (value === 'CONFIRMED') return '已确认风险'
+  if (value === 'ACCEPTED_RISK') return '已接受风险'
+  if (value === 'FALSE_POSITIVE' || value === 'REJECTED') return '误报'
+  if (value === 'MODIFIED') return '已修改'
+  if (value === 'NEEDS_LAWYER_REVIEW' || value === 'NEEDS_MORE_REVIEW') return '需律师复核'
+  return '待处理'
 }
 
 export default function IssueHumanDecisionPanel({ detail, onSaved }: Props) {
@@ -31,7 +33,7 @@ export default function IssueHumanDecisionPanel({ detail, onSaved }: Props) {
   useEffect(() => {
     setView(null)
     if (!reportAvailable) {
-      setMessage('需要有效 issue-review-report.json 后才能记录 Issue 人工决定。')
+      setMessage('报告生成后才能记录处理决策。')
       return
     }
     let cancelled = false
@@ -45,14 +47,14 @@ export default function IssueHumanDecisionPanel({ detail, onSaved }: Props) {
           throw new Error(errorDetail)
         }
         if (!body || body.authoritative_architecture !== 'ISSUE_V1') {
-          throw new Error('人工复核 API 没有返回 ISSUE_V1 权威视图。')
+          throw new Error('处理决策记录无法读取。')
         }
         if (!cancelled) {
           setView(body as IssueHumanReviewView)
-          setMessage('人工决定只追加到本机 human-review.json；不会改写模型报告。')
+          setMessage('处理决策只记录业务处理状态，不会自动触发 AI 重审。')
         }
       } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : '无法读取 Issue 人工复核记录。')
+        if (!cancelled) setMessage(error instanceof Error ? error.message : '无法读取处理决策记录。')
       }
     }
     void load()
@@ -82,7 +84,7 @@ export default function IssueHumanDecisionPanel({ detail, onSaved }: Props) {
     event.preventDefault()
     if (busy || !reportAvailable) return
     setBusy(true)
-    setMessage('正在追加 Issue 人工复核 revision…')
+    setMessage('正在保存处理决策…')
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/documents/${encodeURIComponent(detail.job_id)}/human-review/decisions`,
@@ -103,13 +105,13 @@ export default function IssueHumanDecisionPanel({ detail, onSaved }: Props) {
         throw new Error(errorDetail)
       }
       if (!body || body.authoritative_architecture !== 'ISSUE_V1') {
-        throw new Error('保存后未返回 ISSUE_V1 人工复核视图。')
+        throw new Error('保存后未返回处理决策视图。')
       }
       setView(body as IssueHumanReviewView)
-      setMessage('已追加新的 Issue revision；服务端已快照当前合同 Evidence、Legal Evidence 与 report fingerprint。')
+      setMessage('处理决策已保存。')
       onSaved()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Issue 人工决定保存失败。')
+      setMessage(error instanceof Error ? error.message : '处理决策保存失败。')
     } finally {
       setBusy(false)
     }
@@ -117,31 +119,29 @@ export default function IssueHumanDecisionPanel({ detail, onSaved }: Props) {
 
   return (
     <section className="human-decision-panel issue-human-decision-panel">
-      <div className="context-eyebrow">HUMAN REVIEW · ISSUE IDENTITY</div>
+      <div className="report-kicker">处理决策</div>
       <div className="human-target-heading">
         <strong>{detail.plan_issue.topic}</strong>
-        <span>issue · {detail.issue_id}</span>
       </div>
 
       {detail.comparison?.requires_human_review ? (
-        <p className="issue-human-required">确定性 Comparison 已标记该 Issue 必须人工复核。</p>
+        <p className="issue-human-required">该风险需要形成处理决策。</p>
       ) : (
-        <p className="human-panel-message">该 Issue 没有强制人工复核要求，但仍可留下人工决定。</p>
+        <p className="human-panel-message">该风险可直接记录业务处理状态；不会自动触发 AI 重审。</p>
       )}
 
       {latest && (
         <div className={`latest-decision ${latest.is_stale ? 'is-stale' : ''}`}>
-          <span>当前最新 Issue 记录</span>
-          <strong>{decisionLabel(latest.state)} · revision {latest.revision}</strong>
+          <span>当前处理状态</span>
+          <strong>{decisionLabel(latest.state)}</strong>
           <small>{new Date(latest.decided_at).toLocaleString()}</small>
-          <small>合同 Evidence {latest.contract_evidence_ids.length} · Legal Evidence {latest.legal_evidence_ids.length}</small>
-          {latest.is_stale && <em>STALE · issue-review-report 已变化，该决定不能关闭当前复核</em>}
+          {latest.is_stale && <em>报告已更新，请重新确认该处理状态</em>}
         </div>
       )}
 
       <form onSubmit={submit}>
-        <div className="decision-options" role="group" aria-label="Issue 人工决定状态">
-          {(['CONFIRMED', 'REJECTED', 'NEEDS_MORE_REVIEW', 'UNREVIEWED'] as HumanDecisionState[]).map((value) => (
+        <div className="decision-options" role="group" aria-label="处理决策状态">
+          {(['UNREVIEWED', 'CONFIRMED', 'ACCEPTED_RISK', 'FALSE_POSITIVE', 'MODIFIED', 'NEEDS_LAWYER_REVIEW'] as HumanDecisionState[]).map((value) => (
             <button
               type="button"
               key={value}
@@ -152,17 +152,17 @@ export default function IssueHumanDecisionPanel({ detail, onSaved }: Props) {
             </button>
           ))}
         </div>
-        <label htmlFor={`issue-human-review-note-${detail.issue_id}`}>复核备注</label>
+        <label htmlFor={`issue-human-review-note-${detail.issue_id}`}>处理备注</label>
         <textarea
           id={`issue-human-review-note-${detail.issue_id}`}
           value={note}
           onChange={(event) => setNote(event.target.value)}
-          placeholder="说明为什么确认/不采纳当前结论，或者还需要核查什么。"
+          placeholder="说明已修改、接受风险、判断为误报，或需要律师复核的原因。"
           rows={4}
           maxLength={4000}
         />
         <button className="save-human-decision" type="submit" disabled={busy || !reportAvailable}>
-          {busy ? '保存中…' : '追加 Issue 人工决定 revision'}
+          {busy ? '保存中…' : '保存处理决策'}
         </button>
       </form>
 
@@ -170,16 +170,15 @@ export default function IssueHumanDecisionPanel({ detail, onSaved }: Props) {
 
       {history.length > 0 && (
         <div className="human-history">
-          <div className="context-eyebrow">ISSUE REVISION HISTORY</div>
+          <div className="report-kicker">处理记录</div>
           {history.map((item) => (
             <article key={item.decision_id} className={item.is_stale ? 'is-stale' : ''}>
               <div>
-                <strong>r{item.revision} · {decisionLabel(item.state)}</strong>
+                <strong>{decisionLabel(item.state)}</strong>
                 <span>{new Date(item.decided_at).toLocaleString()}</span>
               </div>
               {item.reviewer_note && <p>{item.reviewer_note}</p>}
-              <small>合同 Evidence {item.contract_evidence_ids.length} · Legal Evidence {item.legal_evidence_ids.length}</small>
-              {item.is_stale && <em>基于旧 issue-review-report</em>}
+              {item.is_stale && <em>基于旧报告</em>}
             </article>
           ))}
         </div>

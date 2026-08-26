@@ -14,7 +14,7 @@ from .job_architecture_models import (
     LegacyPipelineMigrationRecord,
 )
 from .pipeline_models import PipelineReport, PipelineStage, PipelineStatus
-from .safe_persistence import atomic_write_text, read_text_with_retry
+from .safe_persistence import atomic_write_bytes, atomic_write_text, read_text_with_retry
 from .storage import runtime_dir
 
 
@@ -301,7 +301,7 @@ def preserve_legacy_pipeline_snapshot(job_id: UUID, report: PipelineReport) -> t
         if existing_digest != digest:
             raise JobArchitectureError("A different legacy pipeline snapshot already exists; refusing to overwrite migration history.")
         return snapshot, digest
-    atomic_write_text(snapshot, raw.decode("utf-8"))
+    atomic_write_bytes(snapshot, raw)
     return snapshot, digest
 
 

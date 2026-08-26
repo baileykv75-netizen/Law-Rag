@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from app.secret_store import (
+    SecretStoreError,
     delete_secure_secret,
     read_secure_secret,
     resolve_provider_secret,
@@ -19,7 +20,12 @@ def test_windows_credential_manager_round_trip(monkeypatch) -> None:
     secret = "law-rag-stage12d-synthetic-secret"
     delete_secure_secret("deepseek")
     try:
-        write_secure_secret("deepseek", secret)
+        try:
+            write_secure_secret("deepseek", secret)
+        except SecretStoreError as exc:
+            if "error 1312" in str(exc):
+                pytest.skip("Windows Credential Manager is unavailable in this session.")
+            raise
         assert read_secure_secret("deepseek") == secret
         resolved = resolve_provider_secret("deepseek")
         assert resolved.value == secret

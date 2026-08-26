@@ -1,34 +1,24 @@
-import { useEffect, useState } from 'react'
-import IssueAuditQueuePane from './IssueAuditQueuePane'
+import { useEffect, useMemo, useState } from 'react'
 import IssueReviewContextPane from './IssueReviewContextPane'
 import ReportExportControls from './ReportExportControls'
-import ResourceBudgetPanel from './ResourceBudgetPanel'
-import SourceViewerPane from './SourceViewerPane'
 import type {
   ArtifactState,
   IssueQueueItem,
   IssueWorkspaceDetail,
+  IssueWorkspacePresentationSummary,
+  IssueWorkspaceRiskSummary,
   IssueWorkspaceSummary,
   OverallState,
 } from './issue-workspace-types'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+import { API_BASE_URL } from './apiBase'
 
-function artifactLabel(state: ArtifactState) {
-  if (state === 'READY') return '已就绪'
-  if (state === 'NOT_REQUIRED') return '无需执行'
-  if (state === 'INVALID') return '完整性异常'
-  return '尚未完成'
+type Props = {
+  summary: IssueWorkspaceSummary
+  onRefresh: () => void
 }
 
-function overallLabel(state: OverallState) {
-  if (state === 'COMPLETE') return 'Issue 审计链完整'
-  if (state === 'HUMAN_REVIEW_REQUIRED') return '需要人工复核'
-  if (state === 'INVALID') return '存在完整性异常'
-  return 'Issue 审计链未完成'
-}
-
-function stateClass(state: ArtifactState | OverallState) {
+function stateClass(state: ArtifactState | OverallState | string) {
   if (state === 'READY' || state === 'COMPLETE') return 'is-ready'
   if (state === 'NOT_REQUIRED') return 'is-muted'
   if (state === 'HUMAN_REVIEW_REQUIRED') return 'is-review'
@@ -36,34 +26,86 @@ function stateClass(state: ArtifactState | OverallState) {
   return 'is-missing'
 }
 
-function sourceExtent(document: IssueWorkspaceSummary['document']) {
-  if (!document) return '源结构未知'
-  return document.document_kind === 'docx' ? 'DOCX 逻辑结构' : `${document.page_count} 页`
+function riskClass(risk: string) {
+  if (risk === '低风险') return 'risk-low'
+  if (risk === '中风险') return 'risk-medium'
+  if (risk === '高风险') return 'risk-high'
+  if (risk === '重大风险') return 'risk-critical'
+  return 'risk-pending'
 }
 
-type Props = {
-  summary: IssueWorkspaceSummary
-  onRefresh: () => void
+function stageLabel(stage: string) {
+  if (stage === 'upload') return '上传完成'
+  if (stage === 'ocr') return '文本识别'
+  if (stage === 'structure') return '条款整理'
+  if (stage === 'analysis') return '风险分析'
+  if (stage === 'secondary') return '争议复审'
+  return '报告生成'
+}
+
+function stageState(summary: IssueWorkspaceSummary, stage: string): ArtifactState {
+  if (stage === 'upload') return summary.source_available ? 'READY' : 'MISSING'
+  const relevant = summary.stages.filter((item) => {
+    if (stage === 'ocr') return item.stage === '3'
+    if (stage === 'structure') return item.stage === '4'
+    if (stage === 'analysis') return ['5', '6', '7', '13B/C', '13D', '13E'].includes(item.stage)
+    if (stage === 'secondary') return item.stage === '13F'
+    return item.stage === '13G'
+  })
+  if (!relevant.length) return 'MISSING'
+  if (relevant.some((item) => item.state === 'INVALID')) return 'INVALID'
+  if (relevant.every((item) => item.state === 'READY' || item.state === 'NOT_REQUIRED')) return 'READY'
+  return 'MISSING'
+}
+
+function fallbackPresentation(summary: IssueWorkspaceSummary): IssueWorkspacePresentationSummary {
+  const pending = summary.review.secondary_pending_confirmation_count > 0
+  const hasHigh = summary.issues.some((item) => item.primary_severity === 'HIGH' || item.primary_severity === 'CRITICAL')
+  const overall = pending ? '待确认' : hasHigh ? '高风险' : '低风险'
+  return {
+    overall_risk: overall,
+    signing_recommendation: pending ? '存在未完成复审事项，建议确认后再推进签署。' : '未发现优先级较高的风险，建议结合交易背景复核。',
+    top_risks: [],
+    suggested_actions: [],
+    evidence_confidence: pending ? '待确认：部分争议复审可稍后补跑。' : '较充分：关键问题已完成证据审查。',
+    secondary_review_status_counts: {
+      REVIEWED: summary.review.secondary_reviewed_count,
+      SKIPPED_CLEAR: summary.review.secondary_skipped_clear_count,
+      PENDING_CONFIRMATION: summary.review.secondary_pending_confirmation_count,
+    },
+  }
+}
+
+function decisionText(issue: IssueQueueItem | undefined) {
+  if (!issue?.human_decision_state || issue.human_decision_state === 'UNREVIEWED') return '待处理'
+  if (issue.human_decision_state === 'CONFIRMED') return '已确认风险'
+  if (issue.human_decision_state === 'ACCEPTED_RISK') return '已接受风险'
+  if (issue.human_decision_state === 'FALSE_POSITIVE' || issue.human_decision_state === 'REJECTED') return '误报'
+  if (issue.human_decision_state === 'MODIFIED') return '已修改'
+  if (issue.human_decision_state === 'NEEDS_LAWYER_REVIEW' || issue.human_decision_state === 'NEEDS_MORE_REVIEW') return '需律师复核'
+  return '待处理'
 }
 
 export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(summary.issues[0]?.issue_id ?? null)
+  const presentation = summary.presentation ?? fallbackPresentation(summary)
+  const initialIssueId = presentation.top_risks[0]?.issue_id ?? summary.issues[0]?.issue_id ?? null
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
   const [detail, setDetail] = useState<IssueWorkspaceDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [detailMessage, setDetailMessage] = useState(
-    summary.issues.length ? '正在读取第一个 AuditPlan Issue…' : 'Audit Planner 尚未产生可查看的 Issue。',
-  )
-  const [selectedContractEvidenceId, setSelectedContractEvidenceId] = useState<string | null>(null)
+  const [detailMessage, setDetailMessage] = useState('选择一个风险点查看依据。')
+  const [secondaryMessage, setSecondaryMessage] = useState<string | null>(null)
+  const [secondaryBusy, setSecondaryBusy] = useState(false)
 
   useEffect(() => {
     if (!selectedIssueId) {
       setDetail(null)
+      setDetailMessage('选择一个风险点查看依据。')
       return
     }
     let cancelled = false
     const load = async () => {
       setDetailLoading(true)
-      setDetailMessage('正在读取本地 Issue 审计上下文…')
+      setDetailMessage('正在读取风险依据…')
       try {
         const response = await fetch(
           `${API_BASE_URL}/api/documents/${encodeURIComponent(summary.job_id)}/workspace/issues/${encodeURIComponent(selectedIssueId)}`,
@@ -75,12 +117,12 @@ export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
         }
         if (!cancelled) {
           setDetail(body as IssueWorkspaceDetail)
-          setDetailMessage('已读取本地 Issue 审计链；未触发任何模型调用。')
+          setDetailMessage('风险依据已读取。')
         }
       } catch (error) {
         if (!cancelled) {
           setDetail(null)
-          setDetailMessage(error instanceof Error ? error.message : 'Issue 上下文无法读取。')
+          setDetailMessage(error instanceof Error ? error.message : '风险依据无法读取。')
         }
       } finally {
         if (!cancelled) setDetailLoading(false)
@@ -90,30 +132,101 @@ export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
     return () => { cancelled = true }
   }, [selectedIssueId, summary.job_id])
 
-  const handleIssueSelect = (issue: IssueQueueItem) => {
-    setSelectedIssueId(issue.issue_id)
-    setSelectedContractEvidenceId(null)
+  const selectedIssue = useMemo(
+    () => summary.issues.find((item) => item.issue_id === selectedIssueId),
+    [selectedIssueId, summary.issues],
+  )
+  const selectedRisk = useMemo(
+    () => presentation.top_risks.find((item) => item.issue_id === selectedIssueId),
+    [presentation.top_risks, selectedIssueId],
+  )
+  const reportExportEnabled = summary.overall_state === 'COMPLETE' || summary.overall_state === 'HUMAN_REVIEW_REQUIRED'
+  const stages = ['upload', 'ocr', 'structure', 'analysis', 'secondary', 'report']
+
+  const openRisk = (risk: IssueWorkspaceRiskSummary) => {
+    setSelectedIssueId(risk.issue_id)
   }
 
-  const coverage = summary.coverage
-  const reviewedCoverageCount = coverage
-    ? coverage.reviewed_with_issue_count + coverage.reviewed_no_specific_issue_count
-    : 0
-  const reportExportEnabled = summary.overall_state === 'COMPLETE' || summary.overall_state === 'HUMAN_REVIEW_REQUIRED'
+  const retrySecondary = async () => {
+    setSecondaryBusy(true)
+    setSecondaryMessage(null)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/${encodeURIComponent(summary.job_id)}/issue-secondary-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'kimi' }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) {
+        const message = body && typeof body.detail === 'string' ? body.detail : `HTTP ${response.status}`
+        throw new Error(message)
+      }
+      setSecondaryMessage('已重新提交争议复审并刷新报告。')
+      onRefresh()
+    } catch (error) {
+      setSecondaryMessage(error instanceof Error ? error.message : '争议复审暂时无法提交。')
+    } finally {
+      setSecondaryBusy(false)
+    }
+  }
 
   return (
-    <>
-      <section className="workspace-summarybar issue-summarybar">
-        <div className="summary-document">
-          <span className="eyebrow">CURRENT JOB · ISSUE_V1</span>
+    <main className="legal-report-shell">
+      <section className="legal-report-hero">
+        <div>
+          <span className="report-kicker">法律审查报告</span>
           <h1>{summary.document?.filename ?? '文档元数据不可用'}</h1>
-          <div className="summary-meta">
-            <span>{sourceExtent(summary.document)}</span>
-            <span>{coverage?.contract_type ?? 'CONTRACT TYPE UNKNOWN'}</span>
-            <span>{coverage?.planning_mode ?? 'PLANNING PENDING'}</span>
-            <span className={summary.source_available ? 'source-ok' : 'source-broken'}>
-              {summary.source_available ? '源文件可用' : '源文件异常'}
-            </span>
+          <p>{presentation.signing_recommendation}</p>
+        </div>
+        <div className={`report-risk-card ${riskClass(presentation.overall_risk)}`}>
+          <span>总体风险</span>
+          <strong>{presentation.overall_risk}</strong>
+        </div>
+      </section>
+
+      <section className="report-progress-strip" aria-label="审查进度">
+        {stages.map((stage) => {
+          const state = stageState(summary, stage)
+          return (
+            <div className={stateClass(state)} key={stage}>
+              <span />
+              <strong>{stageLabel(stage)}</strong>
+            </div>
+          )
+        })}
+      </section>
+
+      <section className="report-overview-grid">
+        <article>
+          <span>签署建议</span>
+          <strong>{presentation.signing_recommendation}</strong>
+        </article>
+        <article>
+          <span>证据可信度</span>
+          <strong>{presentation.evidence_confidence}</strong>
+        </article>
+        <article>
+          <span>争议复审</span>
+          <strong>
+            已复核 {presentation.secondary_review_status_counts.REVIEWED ?? 0} ·
+            无需复核 {presentation.secondary_review_status_counts.SKIPPED_CLEAR ?? 0} ·
+            待确认 {presentation.secondary_review_status_counts.PENDING_CONFIRMATION ?? 0}
+          </strong>
+          {(presentation.secondary_review_status_counts.PENDING_CONFIRMATION ?? 0) > 0 && (
+            <button type="button" onClick={() => void retrySecondary()} disabled={secondaryBusy}>
+              {secondaryBusy ? '提交中…' : '重新提交二审'}
+            </button>
+          )}
+        </article>
+      </section>
+
+      {secondaryMessage && <p className="report-inline-message">{secondaryMessage}</p>}
+
+      <section className="report-section">
+        <div className="report-section-head">
+          <div>
+            <span className="report-kicker">关键风险</span>
+            <h2>优先处理事项</h2>
           </div>
           <ReportExportControls
             jobId={summary.job_id}
@@ -121,123 +234,62 @@ export default function IssueWorkspaceView({ summary, onRefresh }: Props) {
             outstandingHumanReview={summary.review.human_review_outstanding_required_count}
           />
         </div>
-        <div className={`overall-state ${stateClass(summary.overall_state)}`}>
-          <span>Stage 13G 最终状态</span>
-          <strong>{overallLabel(summary.overall_state)}</strong>
-          <small>
-            {summary.review.human_review_required_count > 0
-              ? `人工复核 ${summary.review.human_review_resolved_required_count}/${summary.review.human_review_required_count}`
-              : (summary.review.final_review_state ?? '尚无 Issue Review Report')}
-          </small>
-        </div>
-      </section>
 
-      <section className="issue-coverage-strip" aria-label="审计规划覆盖">
-        <div>
-          <span className="eyebrow">PLANNING COVERAGE</span>
-          <strong>{coverage ? `${reviewedCoverageCount} / ${coverage.canonical_object_count}` : '—'}</strong>
-          <small>{coverage ? (coverage.coverage_complete ? 'Canonical objects 全部进入规划覆盖' : '规划覆盖不完整') : 'AuditPlan 尚未生成'}</small>
-        </div>
-        <div><span>形成 Issue</span><strong>{coverage?.reviewed_with_issue_count ?? '—'}</strong><small>REVIEWED_WITH_ISSUE</small></div>
-        <div><span>无特定 Issue</span><strong>{coverage?.reviewed_no_specific_issue_count ?? '—'}</strong><small>不等于法律安全</small></div>
-        <div><span>AuditPlan Issues</span><strong>{coverage?.issue_count ?? 0}</strong><small>全部 Issue 均可展开</small></div>
-        <div className={summary.review.human_review_outstanding_required_count > 0 ? 'needs-attention' : ''}>
-          <span>人工复核待办</span><strong>{summary.review.human_review_outstanding_required_count}</strong><small>已完成 {summary.review.human_review_resolved_required_count}</small>
-        </div>
-      </section>
-
-      {!coverage?.coverage_complete && coverage && (
-        <div className="coverage-global-warning">审计规划覆盖不完整。工作台不会把“没有形成 Issue”解释为“合同安全”，Issue 人工决定也不能豁免未覆盖文本。</div>
-      )}
-
-      <ResourceBudgetPanel jobId={summary.job_id} />
-
-      <section className="workstation-grid issue-workstation-grid">
-        <aside className="workstation-pane source-pane" aria-label="合同来源与 Stage 13 处理链">
-          <div className="pane-heading">
-            <div><span className="eyebrow">SOURCE</span><h2>合同来源</h2></div>
-            <span>{sourceExtent(summary.document)}</span>
+        {presentation.top_risks.length === 0 ? (
+          <div className="report-empty-state">暂未形成优先风险项。</div>
+        ) : (
+          <div className="risk-summary-list">
+            {presentation.top_risks.map((risk, index) => {
+              const issue = summary.issues.find((item) => item.issue_id === risk.issue_id)
+              return (
+                <button type="button" className="risk-summary-card" key={risk.issue_id} onClick={() => openRisk(risk)}>
+                  <span className="risk-index">{index + 1}</span>
+                  <div>
+                    <h3>{risk.title}</h3>
+                    <p>{risk.reason}</p>
+                    <small>{decisionText(issue)}</small>
+                  </div>
+                  <strong className={`risk-level-badge ${riskClass(risk.risk_level)}`}>{risk.risk_level}</strong>
+                </button>
+              )
+            })}
           </div>
+        )}
+      </section>
 
-          {summary.document ? (
-            <SourceViewerPane
-              jobId={summary.job_id}
-              documentKind={summary.document.document_kind}
-              pageCount={summary.document.page_count}
-              sourceAvailable={summary.source_available}
-              requestedEvidenceId={selectedContractEvidenceId}
-            />
-          ) : (
-            <div className="source-viewer-error"><strong>文档元数据不可用</strong><p>没有可靠的源文档结构信息，工作台不会猜测源位置。</p></div>
-          )}
+      <section className="report-section">
+        <span className="report-kicker">建议动作</span>
+        {presentation.suggested_actions.length === 0 ? (
+          <p className="report-muted">暂无独立修改建议。</p>
+        ) : (
+          <ol className="action-list">
+            {presentation.suggested_actions.map((action) => <li key={action}>{action}</li>)}
+          </ol>
+        )}
+      </section>
 
-          {summary.document && summary.document.document_kind === 'docx' ? (
-            <div className="document-facts">
-              <div><span>源格式</span><strong>DOCX</strong></div>
-              <div><span>稳定页码</span><strong>无</strong></div>
-              <div><span>定位方式</span><strong>结构锚点</strong></div>
-              <div><span>页级 OCR</span><strong>不适用</strong></div>
-            </div>
-          ) : summary.document ? (
-            <div className="document-facts">
-              <div><span>原生文本页</span><strong>{summary.document.native_text_pages}</strong></div>
-              <div><span>需要 OCR 页</span><strong>{summary.document.ocr_required_pages}</strong></div>
-              <div><span>实际使用 OCR</span><strong>{summary.document.ocr_used ? '是' : '否'}</strong></div>
-              <div><span>低置信 OCR 页</span><strong>{summary.document.low_confidence_ocr_pages}</strong></div>
-            </div>
-          ) : null}
-
-          <div className="stage-timeline">
-            <div className="subheading">权威处理链</div>
-            {summary.stages.map((item) => (
-              <div className="stage-row" key={`${item.stage}-${item.label}`}>
-                <span className={`stage-dot ${stateClass(item.state)}`} />
-                <div><strong>Stage {item.stage} · {item.label}</strong><span>{item.detail}</span></div>
-                <em className={stateClass(item.state)}>{artifactLabel(item.state)}</em>
+      {selectedIssueId && (
+        <aside className="risk-detail-drawer" aria-label="风险详情抽屉">
+          <div className="risk-detail-card">
+            <div className="drawer-titlebar">
+              <div>
+                <span className="report-kicker">风险详情</span>
+                <h2>{selectedRisk?.title ?? selectedIssue?.topic ?? '审查事项'}</h2>
               </div>
-            ))}
+              <button type="button" onClick={() => setSelectedIssueId(null)} aria-label="关闭风险详情">
+                ×
+              </button>
+            </div>
+            <IssueReviewContextPane
+              detail={detail}
+              loading={detailLoading}
+              message={detailMessage}
+              onContractEvidence={() => undefined}
+              onHumanReviewSaved={onRefresh}
+            />
           </div>
         </aside>
-
-        <section className="workstation-pane findings-pane" aria-label="AuditPlan Issue 队列">
-          <div className="pane-heading">
-            <div><span className="eyebrow">AUDIT PLAN</span><h2>逐项审计</h2></div>
-            <span>{summary.issues.length} 个 Issue</span>
-          </div>
-
-          <div className="review-metrics issue-review-metrics">
-            <article><span>DeepSeek 已审</span><strong>{summary.review.primary_completed_issue_count}</strong><small>{summary.review.primary_available ? '逐 Issue checkpoint 可用' : '尚未生成'}</small></article>
-            <article><span>Kimi 已复核</span><strong>{summary.review.secondary_completed_issue_count}</strong><small>{summary.review.secondary_available ? 'finding + coverage' : '尚未生成'}</small></article>
-            <article className={summary.review.human_review_outstanding_required_count > 0 ? 'needs-attention' : ''}><span>人工待复核</span><strong>{summary.review.human_review_outstanding_required_count}</strong><small>Fresh final decision required</small></article>
-            <article className={summary.review.human_review_stale_latest_count > 0 ? 'needs-attention' : ''}><span>过期人工决定</span><strong>{summary.review.human_review_stale_latest_count}</strong><small>report 已变化</small></article>
-          </div>
-
-          <IssueAuditQueuePane issues={summary.issues} selectedIssueId={selectedIssueId} onSelect={handleIssueSelect} />
-        </section>
-
-        <aside className="workstation-pane evidence-pane" aria-label="Issue 证据与双模型复核上下文">
-          <div className="pane-heading">
-            <div><span className="eyebrow">ISSUE REVIEW CONTEXT</span><h2>证据与复核</h2></div>
-          </div>
-
-          <div className="provider-summary-row">
-            <div className="provider-card"><span>PRIMARY</span><strong>{summary.review.primary_provider ?? '未生成'}</strong><small>{summary.review.primary_model ?? '—'}</small></div>
-            <div className="provider-card"><span>SECONDARY</span><strong>{summary.review.secondary_provider ?? '未生成'}</strong><small>{summary.review.secondary_model ?? '—'}</small></div>
-          </div>
-
-          <IssueReviewContextPane
-            detail={detail}
-            loading={detailLoading}
-            message={detailMessage}
-            onContractEvidence={setSelectedContractEvidenceId}
-            onHumanReviewSaved={onRefresh}
-          />
-
-          {summary.warnings.length > 0 && (
-            <div className="warning-panel"><div className="subheading">任务级警告</div><ul>{summary.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>
-          )}
-        </aside>
-      </section>
-    </>
+      )}
+    </main>
   )
 }

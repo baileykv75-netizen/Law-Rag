@@ -105,6 +105,11 @@
   min-height: 76px;
 }
 
+.batch-summary-grid.compact article {
+  min-height: 76px;
+  border-radius: 8px;
+}
+
 .batch-summary-grid strong {
   font-size: 30px;
   line-height: 1;
@@ -147,6 +152,12 @@
   background: #fff;
 }
 
+.batch-result-card.compact {
+  min-height: 86px;
+  padding: 16px 18px;
+  border-radius: 8px;
+}
+
 .batch-result-card.needs-attention {
   border-color: #f2b8b5;
 }
@@ -184,6 +195,28 @@
   font-size: 12px;
   font-weight: 700;
 }
+
+.batch-row-badges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.risk-level-badge {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.risk-low { background: #e8f3eb; color: #28633a; }
+.risk-medium { background: #fff4d6; color: #76530f; }
+.risk-high { background: #fde8df; color: #a04424; }
+.risk-critical { background: #fee4e2; color: #b42318; }
+.risk-pending { background: #edf0f4; color: #596579; }
 
 .needs-attention .batch-state-badge {
   background: #fef3f2;

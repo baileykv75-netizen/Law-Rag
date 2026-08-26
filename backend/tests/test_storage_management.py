@@ -188,7 +188,12 @@ def test_symlink_job_root_fails_closed(tmp_path: Path, monkeypatch) -> None:
     for child in upload_root.iterdir():
         child.unlink()
     upload_root.rmdir()
-    upload_root.symlink_to(outside, target_is_directory=True)
+    try:
+        upload_root.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable in this session.")
+        raise
 
     with pytest.raises(JobCleanupNotAllowed):
         delete_job_storage(job_id, confirm_job_id=job_id)

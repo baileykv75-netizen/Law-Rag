@@ -10,6 +10,7 @@ from .models import (
     AuthorityType,
     CoverageType,
     LegalArticle,
+    LegalArticleBrowserItem,
     LegalAuthority,
     LegalEvidenceRecord,
     LegalStoreSummary,
@@ -196,7 +197,8 @@ def get_summary(db_path: Path) -> LegalStoreSummary:
 def list_authorities(db_path: Path) -> list[AuthoritySummary]:
     if not db_path.exists():
         return []
-    with connect(db_path) as connection:
+    connection = connect(db_path)
+    try:
         initialize_schema(connection)
         authorities = connection.execute("SELECT * FROM authorities ORDER BY title, authority_id").fetchall()
         results: list[AuthoritySummary] = []
@@ -217,12 +219,15 @@ def list_authorities(db_path: Path) -> list[AuthoritySummary]:
                 )
             )
         return results
+    finally:
+        connection.close()
 
 
 def get_authority(db_path: Path, authority_id: str) -> AuthoritySummary:
     if not db_path.exists():
         raise FileNotFoundError("Legal database has not been built yet.")
-    with connect(db_path) as connection:
+    connection = connect(db_path)
+    try:
         initialize_schema(connection)
         authority_row = connection.execute(
             "SELECT * FROM authorities WHERE authority_id = ?", (authority_id,)
@@ -241,12 +246,55 @@ def get_authority(db_path: Path, authority_id: str) -> AuthoritySummary:
             versions=[_version_from_row(row) for row in version_rows],
             article_count=count,
         )
+    finally:
+        connection.close()
+
+
+def list_articles(db_path: Path, *, query: str | None = None, limit: int = 80) -> list[LegalArticleBrowserItem]:
+    if not db_path.exists():
+        return []
+    bounded_limit = min(max(limit, 1), 200)
+    term = (query or "").strip()
+    sql = """
+        SELECT a.*, v.*, au.title, au.authority_type, au.issuing_body, au.document_number, au.jurisdiction
+        FROM legal_articles a
+        JOIN authority_versions v
+          ON v.authority_id = a.authority_id AND v.version_id = a.version_id
+        JOIN authorities au ON au.authority_id = a.authority_id
+    """
+    params: list[object] = []
+    if term:
+        sql += """
+        WHERE au.title LIKE ?
+           OR a.article_token LIKE ?
+           OR a.article_text LIKE ?
+           OR COALESCE(a.heading_context_json, '') LIKE ?
+        """
+        like = f"%{term}%"
+        params.extend([like, like, like, like])
+    sql += " ORDER BY au.title, a.article_ordinal IS NULL, a.article_ordinal, a.article_token LIMIT ?"
+    params.append(bounded_limit)
+    connection = connect(db_path)
+    try:
+        initialize_schema(connection)
+        rows = connection.execute(sql, params).fetchall()
+        return [
+            LegalArticleBrowserItem(
+                authority=_authority_from_row(row),
+                version=_version_from_row(row),
+                article=_article_from_row(row),
+            )
+            for row in rows
+        ]
+    finally:
+        connection.close()
 
 
 def get_evidence(db_path: Path, legal_evidence_id: str) -> LegalEvidenceRecord:
     if not db_path.exists():
         raise FileNotFoundError("Legal database has not been built yet.")
-    with connect(db_path) as connection:
+    connection = connect(db_path)
+    try:
         initialize_schema(connection)
         row = connection.execute(
             """
@@ -266,12 +314,15 @@ def get_evidence(db_path: Path, legal_evidence_id: str) -> LegalEvidenceRecord:
             version=_version_from_row(row),
             article=_article_from_row(row),
         )
+    finally:
+        connection.close()
 
 
 def resolve_version(db_path: Path, authority_id: str, as_of: date) -> VersionResolution:
     if not db_path.exists():
         raise FileNotFoundError("Legal database has not been built yet.")
-    with connect(db_path) as connection:
+    connection = connect(db_path)
+    try:
         initialize_schema(connection)
         rows = connection.execute(
             """
@@ -313,6 +364,8 @@ def resolve_version(db_path: Path, authority_id: str, as_of: date) -> VersionRes
             candidate_version_ids=[version.version_id],
             message=f"Resolved version {version.version_id} for {as_of.isoformat()}.",
         )
+    finally:
+        connection.close()
 
 
 def get_article_for_version(
@@ -320,7 +373,8 @@ def get_article_for_version(
 ) -> LegalArticle | None:
     if not db_path.exists():
         raise FileNotFoundError("Legal database has not been built yet.")
-    with connect(db_path) as connection:
+    connection = connect(db_path)
+    try:
         initialize_schema(connection)
         row = connection.execute(
             """
@@ -330,3 +384,5 @@ def get_article_for_version(
             (authority_id, version_id, article_token),
         ).fetchone()
         return _article_from_row(row) if row is not None else None
+    finally:
+        connection.close()

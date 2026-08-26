@@ -42,6 +42,8 @@ AS_OF = date(2026, 8, 18)
 
 def _stable_fingerprint(model) -> str:
     payload = model.model_dump(mode="json", exclude={"artifact_fingerprint"})
+    if isinstance(model, IssueSecondaryReviewArtifact):
+        payload = _without_secondary_review_status(payload)
     encoded = json.dumps(
         payload,
         ensure_ascii=False,
@@ -50,6 +52,18 @@ def _stable_fingerprint(model) -> str:
         default=str,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _without_secondary_review_status(payload):
+    if isinstance(payload, dict):
+        return {
+            key: _without_secondary_review_status(value)
+            for key, value in payload.items()
+            if key != "review_status"
+        }
+    if isinstance(payload, list):
+        return [_without_secondary_review_status(item) for item in payload]
+    return payload
 
 
 def _contract() -> CanonicalContract:

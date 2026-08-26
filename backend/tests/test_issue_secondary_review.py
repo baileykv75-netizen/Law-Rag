@@ -36,8 +36,9 @@ from app.issue_secondary_review_models import (
     ModelIssueSecondaryDraft,
     SecondaryCoverageAssessment,
     SecondaryIssueAssessment,
+    SecondaryReviewDecisionStatus,
 )
-from app.issue_secondary_review_provider import IssueSecondaryReviewProvider
+from app.issue_secondary_review_provider import IssueSecondaryReviewProvider, IssueSecondaryReviewProviderError
 from app.main import app
 from app.pipeline_control import (
     PipelineCancellationRequested,
@@ -75,6 +76,12 @@ class FixtureSecondaryProvider(IssueSecondaryReviewProvider):
         if self.cancel_after is not None and len(self.calls) == self.cancel_after:
             request_pipeline_cancel(context.job_id)
         return ProviderAuditResult(provider=self.provider_name, model=self.model_name, content=content, raw_response_hash=f"hash-{context.issue_id}")
+
+
+class RecoverableFailingSecondaryProvider(FixtureSecondaryProvider):
+    def generate(self, context, primary) -> ProviderAuditResult:
+        self.calls.append(context.issue_id)
+        raise IssueSecondaryReviewProviderError("fixture rate limited", code="KIMI_RATE_LIMITED", recoverable=True)
 
 
 def _context(job_id, issue_id: str, *, legal_state: IssueLegalSupportState = IssueLegalSupportState.NO_MATCH_IN_LOCAL_CORPUS) -> IssuePrimaryAuditContext:
@@ -223,6 +230,26 @@ def test_stage13f_allows_supplied_global_fact_contract_evidence() -> None:
             ]
         }
     )
+
+
+def _clear_primary_result(context: IssuePrimaryAuditContext) -> IssuePrimaryAuditResult:
+    return IssuePrimaryAuditResult(
+        issue_id=context.issue_id,
+        topic=context.topic,
+        state=IssuePrimaryAuditState.SUPPORTED_FINDING,
+        evidence_sufficiency=IssueEvidenceSufficiency.SUFFICIENT,
+        legal_support_state=IssueLegalSupportState.EVIDENCE_FOUND,
+        legal_conclusion=True,
+        risk_category=context.topic,
+        severity=FindingSeverity.LOW,
+        title="fixture clear primary",
+        reasoning_summary="fixture clear primary reasoning",
+        suggestion="fixture clear primary suggestion",
+        canonical_object_ids=[context.target_items[0].canonical_object_id],
+        contract_evidence_ids=context.target_items[0].evidence_ids,
+        legal_evidence_ids=["legal:fixture"],
+        context_fingerprint=context.context_fingerprint,
+    )
     primary = _primary_result(context)
     draft = ModelIssueSecondaryDraft(
         issue_id=context.issue_id,
@@ -293,6 +320,53 @@ def test_stage13f_oversized_context_is_not_sent_to_kimi(tmp_path, monkeypatch) -
     assert result.assessment == SecondaryIssueAssessment.REVIEW_REQUIRED
     assert result.coverage_assessment == SecondaryCoverageAssessment.INSUFFICIENT_EVIDENCE
     assert "SECONDARY_CONTEXT_BUDGET_EXCEEDED" in result.review_reasons
+
+
+def test_stage13f_skips_kimi_for_clear_supported_issue(tmp_path, monkeypatch) -> None:
+    job_id, _, primary, contexts = _patch_upstream(monkeypatch, tmp_path, count=1)
+    clear_context = _context(job_id, "issue-1", legal_state=IssueLegalSupportState.EVIDENCE_FOUND)
+    primary.results = [_clear_primary_result(clear_context)]
+    import app.issue_secondary_review as module
+    monkeypatch.setattr(module, "build_issue_primary_contexts", lambda _job_id: [clear_context])
+
+    provider = FixtureSecondaryProvider()
+    artifact = run_issue_secondary_review(job_id, provider_override=provider)
+
+    assert provider.calls == []
+    assert artifact.status.value == "COMPLETE"
+    assert artifact.results[0].review_status == SecondaryReviewDecisionStatus.SKIPPED_CLEAR
+    assert artifact.results[0].contract_evidence_ids == contexts[0].target_items[0].evidence_ids
+
+
+def test_stage13f_recoverable_kimi_error_marks_pending_and_completes(tmp_path, monkeypatch) -> None:
+    job_id, plan, _, _ = _patch_upstream(monkeypatch, tmp_path, count=3)
+    provider = RecoverableFailingSecondaryProvider()
+
+    artifact = run_issue_secondary_review(job_id, provider_override=provider, allow_provider_unavailable=True)
+
+    assert provider.calls == [plan.issues[0].issue_id]
+    assert artifact.status.value == "COMPLETE"
+    assert artifact.completed_issue_count == 3
+    assert all(item.review_status == SecondaryReviewDecisionStatus.PENDING_CONFIRMATION for item in artifact.results)
+    assert all("SECONDARY_REVIEW_PENDING_CONFIRMATION" in item.review_reasons for item in artifact.results)
+
+
+def test_stage13f_retry_pending_resubmits_only_pending_items(tmp_path, monkeypatch) -> None:
+    job_id, plan, _, _ = _patch_upstream(monkeypatch, tmp_path, count=2)
+    first = RecoverableFailingSecondaryProvider()
+    pending = run_issue_secondary_review(job_id, provider_override=first, allow_provider_unavailable=True)
+    assert all(item.review_status == SecondaryReviewDecisionStatus.PENDING_CONFIRMATION for item in pending.results)
+
+    second = FixtureSecondaryProvider()
+    refreshed = run_issue_secondary_review(
+        job_id,
+        provider_override=second,
+        allow_provider_unavailable=True,
+        retry_pending=True,
+    )
+
+    assert second.calls == [item.issue_id for item in plan.issues]
+    assert all(item.review_status == SecondaryReviewDecisionStatus.REVIEWED for item in refreshed.results)
 
 
 def test_stage13f_api_route_is_mounted() -> None:

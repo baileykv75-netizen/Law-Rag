@@ -24,6 +24,7 @@ from .issue_secondary_review_models import (
     ModelIssueSecondaryDraft,
     SecondaryCoverageAssessment,
     SecondaryIssueAssessment,
+    SecondaryReviewDecisionStatus,
 )
 from .issue_secondary_review_provider import (
     IssueSecondaryReviewProvider,
@@ -43,6 +44,22 @@ from .storage import job_issue_secondary_review_path
 
 MAX_SECONDARY_ISSUE_REQUESTS = 256
 MAX_SECONDARY_CONTEXT_CHARS = 120_000
+_SENSITIVE_SECONDARY_KEYWORDS = (
+    "担保",
+    "保证",
+    "违约",
+    "解除",
+    "赔偿",
+    "个人信息",
+    "数据",
+    "竞业",
+    "保密",
+    "知识产权",
+    "许可",
+    "付款",
+    "租金",
+    "工程",
+)
 
 
 class IssueSecondaryReviewError(RuntimeError):
@@ -60,6 +77,18 @@ class IssueSecondaryReviewStaleError(IssueSecondaryReviewError):
 def _fingerprint(payload: object) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _fingerprint_payload(payload: object) -> object:
+    if isinstance(payload, dict):
+        return {
+            key: _fingerprint_payload(value)
+            for key, value in payload.items()
+            if key != "review_status"
+        }
+    if isinstance(payload, list):
+        return [_fingerprint_payload(item) for item in payload]
+    return payload
 
 
 def _unique(values) -> list[str]:
@@ -114,6 +143,63 @@ def _budget_result(context, primary: IssuePrimaryAuditResult) -> IssueSecondaryR
         contract_evidence_ids=contract_ids,
         legal_evidence_ids=[],
         review_reasons=["SECONDARY_CONTEXT_BUDGET_EXCEEDED"],
+        context_fingerprint=context.context_fingerprint,
+    )
+
+
+def _needs_kimi_review(context, primary: IssuePrimaryAuditResult) -> bool:
+    if primary.state.value in {"REVIEW_REQUIRED", "INSUFFICIENT_EVIDENCE"}:
+        return True
+    if primary.evidence_sufficiency.value != "SUFFICIENT":
+        return True
+    if primary.review_reasons:
+        return True
+    if primary.legal_conclusion and context.legal_support_state.value != "EVIDENCE_FOUND":
+        return True
+    topic_blob = f"{context.topic} {primary.risk_category} {primary.title}"
+    if primary.severity.value in {"HIGH", "CRITICAL"} and any(keyword in topic_blob for keyword in _SENSITIVE_SECONDARY_KEYWORDS):
+        return True
+    return False
+
+
+def _skipped_clear_result(context, primary: IssuePrimaryAuditResult) -> IssueSecondaryReviewResult:
+    return IssueSecondaryReviewResult(
+        issue_id=context.issue_id,
+        topic=context.topic,
+        primary_state=primary.state.value,
+        review_status=SecondaryReviewDecisionStatus.SKIPPED_CLEAR,
+        assessment=SecondaryIssueAssessment.SUPPORTED,
+        coverage_assessment=SecondaryCoverageAssessment.COVERED,
+        severity=primary.severity,
+        reasoning_summary="主审结论已有充分合同证据和法律证据支持，未触发争议复审条件。",
+        suggestion=primary.suggestion,
+        contract_evidence_ids=_unique(primary.contract_evidence_ids),
+        legal_evidence_ids=_unique(primary.legal_evidence_ids),
+        review_reasons=["SECONDARY_REVIEW_SKIPPED_CLEAR"],
+        context_fingerprint=context.context_fingerprint,
+    )
+
+
+def _pending_confirmation_result(
+    context,
+    primary: IssuePrimaryAuditResult,
+    *,
+    reason_code: str,
+    detail: str,
+) -> IssueSecondaryReviewResult:
+    return IssueSecondaryReviewResult(
+        issue_id=context.issue_id,
+        topic=context.topic,
+        primary_state=primary.state.value,
+        review_status=SecondaryReviewDecisionStatus.PENDING_CONFIRMATION,
+        assessment=SecondaryIssueAssessment.REVIEW_REQUIRED,
+        coverage_assessment=SecondaryCoverageAssessment.INSUFFICIENT_EVIDENCE,
+        severity=primary.severity,
+        reasoning_summary=f"Kimi 争议复审未完成：{detail}",
+        suggestion="先基于主审结果和本地法律依据查看报告；网络或额度恢复后，可仅重新提交二审。",
+        contract_evidence_ids=_unique(primary.contract_evidence_ids),
+        legal_evidence_ids=_unique(primary.legal_evidence_ids),
+        review_reasons=_unique(["SECONDARY_REVIEW_PENDING_CONFIRMATION", reason_code]),
         context_fingerprint=context.context_fingerprint,
     )
 
@@ -184,6 +270,7 @@ def validate_issue_secondary_output(content: str, context, primary: IssuePrimary
         issue_id=context.issue_id,
         topic=context.topic,
         primary_state=primary.state.value,
+        review_status=SecondaryReviewDecisionStatus.REVIEWED,
         assessment=draft.assessment,
         coverage_assessment=coverage,
         severity=draft.severity,
@@ -226,7 +313,10 @@ def _payload(*, job_id: UUID, status: IssueSecondaryReviewStatus, provider: str,
 
 
 def _persist(payload: dict) -> IssueSecondaryReviewArtifact:
-    artifact = IssueSecondaryReviewArtifact(**payload, artifact_fingerprint=_fingerprint(payload))
+    artifact = IssueSecondaryReviewArtifact(
+        **payload,
+        artifact_fingerprint=_fingerprint(_fingerprint_payload(payload)),
+    )
     atomic_write_text(Path(job_issue_secondary_review_path(artifact.job_id)), artifact.model_dump_json(indent=2))
     return artifact
 
@@ -241,7 +331,14 @@ def _load_checkpoint(job_id: UUID) -> IssueSecondaryReviewArtifact | None:
         return None
 
 
-def run_issue_secondary_review(job_id: UUID, *, provider_name: str = "kimi", provider_override: IssueSecondaryReviewProvider | None = None) -> IssueSecondaryReviewArtifact:
+def run_issue_secondary_review(
+    job_id: UUID,
+    *,
+    provider_name: str = "kimi",
+    provider_override: IssueSecondaryReviewProvider | None = None,
+    allow_provider_unavailable: bool = False,
+    retry_pending: bool = False,
+) -> IssueSecondaryReviewArtifact:
     try:
         plan = load_audit_plan(job_id)
         primary = load_issue_primary_audit(job_id)
@@ -262,42 +359,67 @@ def run_issue_secondary_review(job_id: UUID, *, provider_name: str = "kimi", pro
     if set(primary_by_id) != set(plan_ids) or set(context_by_id) != set(plan_ids):
         raise IssueSecondaryReviewStaleError("AuditPlan, Stage 13E results and Stage 13F contexts do not contain the same issue set.")
     ensure_pipeline_control(job_id, ProviderExecutionMode.REQUIRE_APPROVAL)
+    provider: IssueSecondaryReviewProvider | None = None
+    health_detail = "Kimi 二审服务暂不可用。"
     try:
         provider = provider_override or issue_secondary_provider_from_name(provider_name)
         health = provider.health()
+        health_detail = health.detail
     except IssueSecondaryReviewProviderError as exc:
-        raise IssueSecondaryReviewError(str(exc)) from exc
-    if not health.configured:
+        if not allow_provider_unavailable:
+            raise IssueSecondaryReviewError(str(exc)) from exc
+        health_detail = str(exc)
+    if provider is not None and not health.configured:
+        if allow_provider_unavailable:
+            health_detail = health.detail
+            provider = None
+        else:
+            raise IssueSecondaryReviewError(health.detail)
+    if provider is None and not allow_provider_unavailable:
         raise IssueSecondaryReviewError(health.detail)
 
     checkpoint = _load_checkpoint(job_id)
     reusable: dict[str, IssueSecondaryReviewResult] = {}
     reusable_calls: dict[str, IssueSecondaryProviderCall] = {}
-    if checkpoint and checkpoint.provider == provider.provider_name and checkpoint.model == provider.model_name and checkpoint.issue_primary_audit_fingerprint == primary.artifact_fingerprint:
+    artifact_provider = provider.provider_name if provider is not None else provider_name
+    artifact_model = provider.model_name if provider is not None else "unavailable"
+    if checkpoint and checkpoint.provider == artifact_provider and checkpoint.model == artifact_model and checkpoint.issue_primary_audit_fingerprint == primary.artifact_fingerprint:
         reusable = {item.issue_id: item for item in checkpoint.results}
         reusable_calls = {item.issue_id: item for item in checkpoint.provider_calls}
 
     results: list[IssueSecondaryReviewResult] = []
     calls: list[IssueSecondaryProviderCall] = []
     warnings: list[str] = []
-    for issue_id in plan_ids:
+    for index, issue_id in enumerate(plan_ids):
         context = context_by_id[issue_id]
         primary_result = primary_by_id[issue_id]
         old = reusable.get(issue_id)
         if old is not None and old.context_fingerprint == context.context_fingerprint:
-            results.append(old)
-            if issue_id in reusable_calls:
-                calls.append(reusable_calls[issue_id])
+            if retry_pending and old.review_status == SecondaryReviewDecisionStatus.PENDING_CONFIRMATION:
+                pass
+            else:
+                results.append(old)
+                if issue_id in reusable_calls:
+                    calls.append(reusable_calls[issue_id])
+                continue
+        if not _needs_kimi_review(context, primary_result):
+            results.append(_skipped_clear_result(context, primary_result))
+            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=artifact_provider, model=artifact_model, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+            continue
+        if provider is None:
+            results.append(_pending_confirmation_result(context, primary_result, reason_code="KIMI_PROVIDER_UNAVAILABLE", detail=health_detail))
+            warnings.append(f"Issue {issue_id} secondary review deferred: {health_detail}")
+            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=artifact_provider, model=artifact_model, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
             continue
         if not context.target_items:
             results.append(_no_contract_result(context, primary_result))
-            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=artifact_provider, model=artifact_model, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
             continue
         context_chars = _secondary_context_char_count(context, primary_result)
         if context_chars > MAX_SECONDARY_CONTEXT_CHARS:
             results.append(_budget_result(context, primary_result))
             warnings.append(f"Issue {issue_id} secondary context size {context_chars} exceeded {MAX_SECONDARY_CONTEXT_CHARS}; no truncated Kimi request was sent.")
-            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=artifact_provider, model=artifact_model, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
             continue
         try:
             begin_provider_call(job_id, provider.provider_name)
@@ -307,18 +429,43 @@ def run_issue_secondary_review(job_id: UUID, *, provider_name: str = "kimi", pro
                 finish_provider_call(job_id, provider.provider_name)
             result = validate_issue_secondary_output(provider_result.content, context, primary_result)
         except (PipelineCancellationRequested, ProviderBoundaryPaused):
-            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.INTERRUPTED, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=[*warnings, "Stage 13F interrupted by persisted provider/cancel control; completed issue reviews were checkpointed."]))
+            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.INTERRUPTED, provider=artifact_provider, model=artifact_model, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=[*warnings, "Stage 13F interrupted by persisted provider/cancel control; completed issue reviews were checkpointed."]))
             raise
         except (IssueSecondaryReviewProviderError, IssueSecondaryReviewValidationError) as exc:
-            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.INTERRUPTED, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=[*warnings, f"Issue {issue_id} interrupted Stage 13F: {exc}"]))
-            raise IssueSecondaryReviewError(str(exc)) from exc
+            reason_code = str(getattr(exc, "code", type(exc).__name__))
+            warnings.append(f"Issue {issue_id} secondary review deferred: {exc}")
+            results.append(_pending_confirmation_result(context, primary_result, reason_code=reason_code, detail=str(exc)))
+            if bool(getattr(exc, "recoverable", False)):
+                for remaining_issue_id in plan_ids[index + 1 :]:
+                    remaining_context = context_by_id[remaining_issue_id]
+                    remaining_primary = primary_by_id[remaining_issue_id]
+                    old_remaining = reusable.get(remaining_issue_id)
+                    if old_remaining is not None and old_remaining.context_fingerprint == remaining_context.context_fingerprint:
+                        results.append(old_remaining)
+                        if remaining_issue_id in reusable_calls:
+                            calls.append(reusable_calls[remaining_issue_id])
+                    elif _needs_kimi_review(remaining_context, remaining_primary):
+                        results.append(
+                            _pending_confirmation_result(
+                                remaining_context,
+                                remaining_primary,
+                                reason_code=reason_code,
+                                detail="Kimi 争议复审已因外部服务状态延后，剩余争议项未继续发送。",
+                            )
+                        )
+                    else:
+                        results.append(_skipped_clear_result(remaining_context, remaining_primary))
+                _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=artifact_provider, model=artifact_model, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+                break
+            _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=artifact_provider, model=artifact_model, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+            continue
         results.append(result)
         calls.append(IssueSecondaryProviderCall(issue_id=issue_id, provider=provider_result.provider, model=provider_result.model, request_id=provider_result.request_id, finish_reason=provider_result.finish_reason, raw_response_hash=provider_result.raw_response_hash, usage=provider_result.usage))
-        _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+        _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.IN_PROGRESS, provider=artifact_provider, model=artifact_model, plan_fingerprint=context.audit_plan_fingerprint, legal_fingerprint=context.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
     if len(results) != len(plan_ids) or {item.issue_id for item in results} != set(plan_ids):
         raise IssueSecondaryReviewValidationError("Stage 13F completed without exactly one Kimi review result for every AuditPlan issue.")
     template = contexts[0]
-    return _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.COMPLETE, provider=provider.provider_name, model=provider.model_name, plan_fingerprint=template.audit_plan_fingerprint, legal_fingerprint=template.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
+    return _persist(_payload(job_id=job_id, status=IssueSecondaryReviewStatus.COMPLETE, provider=artifact_provider, model=artifact_model, plan_fingerprint=template.audit_plan_fingerprint, legal_fingerprint=template.issue_legal_context_fingerprint, primary_fingerprint=primary.artifact_fingerprint, total_issue_count=len(plan_ids), results=results, calls=calls, warnings=warnings))
 
 
 def load_issue_secondary_review(job_id: UUID, *, validate_freshness: bool = True) -> IssueSecondaryReviewArtifact:
@@ -332,7 +479,7 @@ def load_issue_secondary_review(job_id: UUID, *, validate_freshness: bool = True
     if artifact.job_id != job_id:
         raise IssueSecondaryReviewValidationError("Persisted Stage 13F artifact belongs to a different job.")
     payload = artifact.model_dump(mode="json", exclude={"artifact_fingerprint"})
-    if artifact.artifact_fingerprint != _fingerprint(payload):
+    if artifact.artifact_fingerprint != _fingerprint(_fingerprint_payload(payload)):
         raise IssueSecondaryReviewValidationError("Persisted Stage 13F artifact fingerprint is invalid.")
     if validate_freshness:
         try:

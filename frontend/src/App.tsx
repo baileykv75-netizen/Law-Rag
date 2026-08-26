@@ -1,6 +1,6 @@
 import { ChangeEvent, DragEvent, useRef, useState } from 'react'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+import { API_BASE_URL } from './apiBase'
 const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
 const MAX_BYTES = 50 * 1024 * 1024
 const DEFAULT_AUDIT_PROFILE = 'basic-bilateral-v1'

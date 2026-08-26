@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+import { API_BASE_URL } from './apiBase'
 
 type RetrievalChannel = 'EXACT' | 'LEXICAL' | 'SEMANTIC'
 type RetrievalState =

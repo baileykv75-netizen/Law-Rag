@@ -17,6 +17,7 @@ from .issue_secondary_review_models import (
     IssueSecondaryReviewResult,
     SecondaryCoverageAssessment,
     SecondaryIssueAssessment,
+    SecondaryReviewDecisionStatus,
 )
 
 
@@ -78,7 +79,10 @@ def compare_issue(
     legal_evidence = _evidence_alignment(primary.legal_evidence_ids, secondary.legal_evidence_ids)
     reasons: list[str] = []
 
-    if secondary.coverage_assessment == SecondaryCoverageAssessment.POSSIBLE_OMISSION:
+    if secondary.review_status == SecondaryReviewDecisionStatus.PENDING_CONFIRMATION:
+        overall = IssueReviewComparisonState.REVIEW_REQUIRED
+        reasons.append("SECONDARY_REVIEW_PENDING_CONFIRMATION")
+    elif secondary.coverage_assessment == SecondaryCoverageAssessment.POSSIBLE_OMISSION:
         overall = IssueReviewComparisonState.POSSIBLE_OMISSION
         reasons.append("SECONDARY_POSSIBLE_OMISSION")
     elif (
@@ -126,7 +130,12 @@ def compare_issue(
         if legal_evidence.state == IssueEvidenceAlignmentState.DISJOINT:
             overall = IssueReviewComparisonState.CONSISTENT_WITH_REVIEW
             reasons.append("LEGAL_EVIDENCE_DISJOINT")
-        if primary.review_reasons or secondary.review_reasons:
+        material_secondary_reasons = [
+            reason
+            for reason in secondary.review_reasons
+            if reason not in {"SECONDARY_REVIEW_SKIPPED_CLEAR"}
+        ]
+        if primary.review_reasons or material_secondary_reasons:
             overall = IssueReviewComparisonState.CONSISTENT_WITH_REVIEW
             reasons.append("UPSTREAM_REVIEW_REASON_PRESENT")
 

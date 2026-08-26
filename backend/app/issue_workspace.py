@@ -14,10 +14,16 @@ from .issue_secondary_review import load_issue_secondary_review
 from .issue_workspace_models import (
     IssueWorkspaceCoverageSummary,
     IssueWorkspaceDetail,
+    IssueWorkspacePresentationSummary,
     IssueWorkspaceQueueItem,
+    IssueWorkspaceRiskSummary,
     IssueWorkspaceReviewSummary,
     IssueWorkspaceSummary,
 )
+from .ai_audit_models import FindingSeverity
+from .issue_primary_audit_models import IssuePrimaryAuditState
+from .issue_review_report_models import IssueReviewComparisonState
+from .issue_secondary_review_models import SecondaryReviewDecisionStatus
 from .storage import runtime_dir
 from .workspace import load_workspace_summary
 from .workspace_models import WorkspaceArtifactState, WorkspaceOverallState, WorkspaceStageSummary
@@ -30,7 +36,63 @@ class IssueWorkspaceError(RuntimeError):
 _RESOLVED_HUMAN_STATES = {
     HumanDecisionState.CONFIRMED,
     HumanDecisionState.REJECTED,
+    HumanDecisionState.ACCEPTED_RISK,
+    HumanDecisionState.FALSE_POSITIVE,
+    HumanDecisionState.MODIFIED,
+    HumanDecisionState.NEEDS_LAWYER_REVIEW,
 }
+
+_SEVERITY_ORDER = {
+    FindingSeverity.CRITICAL: 0,
+    FindingSeverity.HIGH: 1,
+    FindingSeverity.MEDIUM: 2,
+    FindingSeverity.LOW: 3,
+    FindingSeverity.INFO: 4,
+}
+
+
+def _risk_level(severity: FindingSeverity | None, *, pending: bool = False, critical: bool = False) -> str:
+    if pending:
+        return "待确认"
+    if critical or severity == FindingSeverity.CRITICAL:
+        return "重大风险"
+    if severity == FindingSeverity.HIGH:
+        return "高风险"
+    if severity == FindingSeverity.MEDIUM:
+        return "中风险"
+    return "低风险"
+
+
+def _signing_recommendation(overall_risk: str) -> str:
+    if overall_risk == "重大风险":
+        return "暂不建议签署，需先修改关键条款并由律师复核。"
+    if overall_risk == "高风险":
+        return "建议修改后签署，并确认高风险条款的责任边界。"
+    if overall_risk == "中风险":
+        return "可在补充确认和完善条款后推进签署。"
+    if overall_risk == "待确认":
+        return "存在未完成复审或证据不足事项，建议确认后再签署。"
+    return "未发现优先级较高的风险，但仍建议结合交易背景复核。"
+
+
+def _evidence_confidence(review: IssueWorkspaceReviewSummary, coverage: IssueWorkspaceCoverageSummary | None) -> str:
+    if coverage is not None and not coverage.coverage_complete:
+        return "待确认：合同文本覆盖不完整。"
+    if review.secondary_pending_confirmation_count:
+        return "待确认：部分争议复审可稍后补跑。"
+    if review.insufficient_evidence_count:
+        return "待确认：部分问题证据不足。"
+    return "较充分：关键问题已完成证据审查。"
+
+
+def _unique(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
 
 
 def _job_dir(job_id: UUID) -> Path:
@@ -201,6 +263,18 @@ def load_issue_workspace_summary(job_id: UUID) -> IssueWorkspaceSummary:
         review.secondary_provider = secondary.provider
         review.secondary_model = secondary.model
         review.secondary_completed_issue_count = secondary.completed_issue_count
+        review.secondary_reviewed_count = sum(
+            item.review_status == SecondaryReviewDecisionStatus.REVIEWED
+            for item in secondary.results
+        )
+        review.secondary_skipped_clear_count = sum(
+            item.review_status == SecondaryReviewDecisionStatus.SKIPPED_CLEAR
+            for item in secondary.results
+        )
+        review.secondary_pending_confirmation_count = sum(
+            item.review_status == SecondaryReviewDecisionStatus.PENDING_CONFIRMATION
+            for item in secondary.results
+        )
     if report is not None:
         review.comparison_available = True
         review.final_review_state = report.final_state
@@ -310,6 +384,7 @@ def load_issue_workspace_summary(job_id: UUID) -> IssueWorkspaceSummary:
                     primary_state=primary_item.state if primary_item is not None else None,
                     primary_severity=primary_item.severity if primary_item is not None else None,
                     secondary_assessment=secondary_item.assessment if secondary_item is not None else None,
+                    secondary_review_status=secondary_item.review_status if secondary_item is not None else None,
                     coverage_assessment=secondary_item.coverage_assessment if secondary_item is not None else None,
                     comparison_state=comparison.overall_state if comparison is not None else None,
                     requires_human_review=comparison.requires_human_review if comparison is not None else False,
@@ -318,6 +393,72 @@ def load_issue_workspace_summary(job_id: UUID) -> IssueWorkspaceSummary:
                     human_decision_stale=human_item.is_stale if human_item is not None else False,
                 )
             )
+
+    presentation = None
+    if primary is not None:
+        top_candidates: list[IssueWorkspaceRiskSummary] = []
+        for issue in queue:
+            primary_item = primary_by_id.get(issue.issue_id)
+            if primary_item is None:
+                continue
+            comparison = comparison_by_id.get(issue.issue_id)
+            pending_secondary = issue.secondary_review_status == SecondaryReviewDecisionStatus.PENDING_CONFIRMATION
+            requires_decision = bool(comparison.requires_human_review if comparison is not None else pending_secondary)
+            if (
+                primary_item.state != IssuePrimaryAuditState.SUPPORTED_FINDING
+                and not requires_decision
+                and not pending_secondary
+            ):
+                continue
+            level = _risk_level(
+                primary_item.severity,
+                pending=pending_secondary,
+                critical=comparison is not None
+                and comparison.overall_state
+                in {IssueReviewComparisonState.MATERIAL_DISAGREEMENT, IssueReviewComparisonState.POSSIBLE_OMISSION},
+            )
+            top_candidates.append(
+                IssueWorkspaceRiskSummary(
+                    issue_id=issue.issue_id,
+                    title=primary_item.title or issue.topic,
+                    severity=primary_item.severity,
+                    risk_level=level,
+                    reason=primary_item.reasoning_summary,
+                    suggested_action=primary_item.suggestion,
+                    requires_decision=requires_decision,
+                    secondary_review_status=issue.secondary_review_status or SecondaryReviewDecisionStatus.PENDING_CONFIRMATION,
+                )
+            )
+        top_candidates.sort(
+            key=lambda item: (
+                0 if item.risk_level == "重大风险" else 1 if item.risk_level == "高风险" else 2 if item.risk_level == "待确认" else 3,
+                _SEVERITY_ORDER[item.severity],
+                item.title,
+            )
+        )
+        top_risks = top_candidates[:5]
+        if review.secondary_pending_confirmation_count:
+            overall_risk = "待确认"
+        elif any(item.risk_level == "重大风险" for item in top_candidates):
+            overall_risk = "重大风险"
+        elif any(item.risk_level == "高风险" for item in top_candidates):
+            overall_risk = "高风险"
+        elif any(item.risk_level == "中风险" for item in top_candidates):
+            overall_risk = "中风险"
+        else:
+            overall_risk = "低风险"
+        presentation = IssueWorkspacePresentationSummary(
+            overall_risk=overall_risk,
+            signing_recommendation=_signing_recommendation(overall_risk),
+            evidence_confidence=_evidence_confidence(review, coverage),
+            suggested_actions=_unique([item.suggested_action for item in top_risks if item.suggested_action])[:5],
+            top_risks=top_risks,
+            secondary_review_status_counts={
+                "REVIEWED": review.secondary_reviewed_count,
+                "SKIPPED_CLEAR": review.secondary_skipped_clear_count,
+                "PENDING_CONFIRMATION": review.secondary_pending_confirmation_count,
+            },
+        )
 
     if WorkspaceArtifactState.INVALID in audit_chain_states or human_stage.state == WorkspaceArtifactState.INVALID:
         overall = WorkspaceOverallState.INVALID
@@ -340,6 +481,7 @@ def load_issue_workspace_summary(job_id: UUID) -> IssueWorkspaceSummary:
         stages=stages,
         coverage=coverage,
         review=review,
+        presentation=presentation,
         issues=queue,
         source_uncertainty=base.source_uncertainty,
         warnings=sorted(set(warnings)),

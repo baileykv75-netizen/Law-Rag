@@ -132,3 +132,54 @@ def atomic_write_text(
                     temp_path.unlink(missing_ok=True)
                 except OSError:
                     pass
+
+
+def atomic_write_bytes(
+    path: Path,
+    content: bytes,
+    *,
+    attempts: int = _DEFAULT_IO_ATTEMPTS,
+    base_delay_seconds: float = _DEFAULT_BASE_DELAY_SECONDS,
+) -> None:
+    """Atomically replace a binary artifact while preserving exact bytes."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    with _lock_for(path):
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temp_path = Path(handle.name)
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+
+            last_error: OSError | None = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    os.replace(temp_path, path)
+                    temp_path = None
+                    return
+                except OSError as exc:
+                    last_error = exc
+                    if attempt >= attempts or not _retryable_os_error(exc):
+                        raise
+                    _sleep_before_retry(attempt, base_delay_seconds)
+
+            assert last_error is not None
+            raise last_error
+        except Exception as exc:
+            raise AtomicWriteError(
+                f"Atomic write failed for {path.name}: {type(exc).__name__}"
+            ) from exc
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass

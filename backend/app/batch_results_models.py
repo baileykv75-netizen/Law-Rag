@@ -38,6 +38,8 @@ class BatchJobResult(BaseModel):
     job_id: UUID
     filename: str
     state: BatchJobState
+    completion_state: str | None = None
+    overall_risk: str | None = None
     progress_percent: int = Field(ge=0, le=100)
     pipeline_status: str | None = None
     failure_code: str | None = None

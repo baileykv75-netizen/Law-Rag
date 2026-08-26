@@ -10,7 +10,9 @@ from app.release_launcher import configure_release_environment, main
 _RELEASE_KEYS = (
     "LAW_RAG_RUNTIME_DIR",
     "LAW_RAG_LEGAL_DB",
+    "LAW_RAG_LEGAL_DB_DEFAULT_RUNTIME",
     "LAW_RAG_RETRIEVAL_DB",
+    "LAW_RAG_RETRIEVAL_DB_DEFAULT_RUNTIME",
     "LAW_RAG_FRONTEND_DIST",
     "LAW_RAG_RELEASE_ASSET_ROOT",
 )

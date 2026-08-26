@@ -194,6 +194,12 @@ class LegalEvidenceRecord(BaseModel):
     article: LegalArticle
 
 
+class LegalArticleBrowserItem(BaseModel):
+    authority: LegalAuthority
+    version: LegalVersion
+    article: LegalArticle
+
+
 class VersionResolution(BaseModel):
     authority_id: str
     as_of: date

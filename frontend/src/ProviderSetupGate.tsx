@@ -1,7 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
-import ProviderAdvancedSettings from './ProviderAdvancedSettings'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+import { API_BASE_URL } from './apiBase'
+import { LOCAL_ROUTE_CHANGE_EVENT } from './localRouting'
 
 type ProviderName = 'deepseek' | 'kimi'
 
@@ -32,19 +31,13 @@ type ProviderSetupGateProps = {
 }
 
 function sourceLabel(source: string | null) {
-  if (source === 'windows_credential_manager') return 'Windows 安全存储'
-  if (source === 'environment') return '开发环境变量'
+  if (source === 'windows_credential_manager') return '已保存'
+  if (source === 'environment') return '环境变量'
   return ''
 }
 
-function runtimeSourceLabel(source: string) {
-  if (source === 'SAVED') return '本地高级设置'
-  if (source === 'ENVIRONMENT') return '环境变量运行参数'
-  return '内置默认运行参数'
-}
-
 function providerLabel(provider: ProviderName) {
-  return provider === 'deepseek' ? 'DeepSeek' : 'Kimi / Moonshot'
+  return provider === 'deepseek' ? '主审模型' : '争议复审模型'
 }
 
 export default function ProviderSetupGate({ children }: ProviderSetupGateProps) {
@@ -70,6 +63,21 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
 
   useEffect(() => {
     void load()
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('settings') === '1') setOpen(true)
+    const sync = () => {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('settings') === '1') setOpen(true)
+    }
+    window.addEventListener('popstate', sync)
+    window.addEventListener(LOCAL_ROUTE_CHANGE_EVENT, sync)
+    return () => {
+      window.removeEventListener('popstate', sync)
+      window.removeEventListener(LOCAL_ROUTE_CHANGE_EVENT, sync)
+    }
   }, [])
 
   const byProvider = useMemo(() => {
@@ -118,12 +126,20 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
       setDeepseekKey('')
       setKimiKey('')
       setProbe({})
-      setOpen(false)
+      close()
     } catch (err) {
       setError(err instanceof Error ? err.message : '无法保存 API 配置。')
     } finally {
       setBusy(false)
     }
+  }
+
+  const close = () => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('settings') === '1') {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+    setOpen(false)
   }
 
   const skip = async () => {
@@ -133,9 +149,10 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
       const response = await fetch(`${API_BASE_URL}/api/config/providers/skip`, { method: 'POST' })
       if (!response.ok) throw new Error(`暂时跳过失败（HTTP ${response.status}）。`)
       setOverview((await response.json()) as ProviderOverview)
-      setOpen(false)
+      close()
     } catch (err) {
       setError(err instanceof Error ? err.message : '暂时无法跳过配置。')
+      close()
     } finally {
       setBusy(false)
     }
@@ -168,11 +185,10 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
         <div className="provider-setup-provider-head">
           <div>
             <strong>{providerLabel(provider)}</strong>
-            {item && <span>{item.model}</span>}
-            {item && <small>{item.base_url} · {runtimeSourceLabel(item.runtime_source)}</small>}
+            {item && <span>{item.configured ? '已配置' : '未配置'}</span>}
           </div>
           <div className={`provider-config-chip ${item?.configured ? 'is-ready' : ''}`}>
-            {item?.configured ? `已配置${item.source ? ` · ${sourceLabel(item.source)}` : ''}` : '未配置'}
+            {item?.configured ? sourceLabel(item.source) || '已配置' : '未配置'}
           </div>
         </div>
         <label>
@@ -181,7 +197,7 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
             type="password"
             autoComplete="off"
             value={value}
-            placeholder={item?.configured ? '已安全保存；留空则保持不变' : '粘贴 API Key'}
+            placeholder={item?.configured ? '留空则保持不变' : '粘贴 API Key'}
             onChange={(event) => setValue(event.target.value)}
           />
         </label>
@@ -213,30 +229,26 @@ export default function ProviderSetupGate({ children }: ProviderSetupGateProps) 
           <section className="provider-setup-modal" role="dialog" aria-modal="true" aria-labelledby="provider-setup-title">
             <div className="provider-setup-titlebar">
               <div>
-                <p>本地 Provider 配置</p>
+                <p>API 设置</p>
                 <h2 id="provider-setup-title">连接审计模型</h2>
               </div>
-              {overview?.setup_completed && (
-                <button className="provider-setup-close" type="button" onClick={() => setOpen(false)} aria-label="关闭 API 设置">
-                  ×
-                </button>
-              )}
+              <button className="provider-setup-close" type="button" onClick={close} aria-label="关闭 API 设置">
+                ×
+              </button>
             </div>
             <p className="provider-setup-intro">
-              Law-Rag 的本地解析、规则和法律检索不需要 API。完整双模型审计需要 DeepSeek 与 Kimi；API Key 与非秘密运行参数分开保存，避免把凭据写入普通配置文件。
+              完整审查需要配置主审模型和争议复审模型。代码和安装包不内置任何 API Key。
             </p>
             {overview && !overview.secure_storage_available && (
               <div className="provider-setup-warning">
-                当前平台不提供 Windows Credential Manager 安全写入。开发环境请使用 DEEPSEEK_API_KEY / MOONSHOT_API_KEY；非秘密高级运行参数仍可在下方独立保存。
+                当前平台暂不支持保存 API Key，可通过环境变量配置后重试。
               </div>
             )}
             {providerBlock('deepseek', deepseekKey, setDeepseekKey)}
             {providerBlock('kimi', kimiKey, setKimiKey)}
 
-            <ProviderAdvancedSettings onChanged={load} />
-
             <p className="provider-setup-cost-note">
-              只有“测试当前 Endpoint”会把所填或已保存的 API Key 发送到上方显示的当前地址，并发送一个不含合同内容的极短测试请求，可能产生极少量 API 用量；保存 API Key 或高级运行参数本身不会调用模型。
+              测试连接会产生极少量 API 用量；保存设置本身不会调用模型。
             </p>
             {error && <div className="provider-setup-error">{error}</div>}
             <div className="provider-setup-footer">

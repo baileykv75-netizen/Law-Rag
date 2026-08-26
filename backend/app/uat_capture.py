@@ -61,6 +61,18 @@ def _stable_fingerprint(payload: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _secondary_review_fingerprint_payload(payload: object) -> object:
+    if isinstance(payload, dict):
+        return {
+            key: _secondary_review_fingerprint_payload(value)
+            for key, value in payload.items()
+            if key != "review_status"
+        }
+    if isinstance(payload, list):
+        return [_secondary_review_fingerprint_payload(item) for item in payload]
+    return payload
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     try:
@@ -114,6 +126,8 @@ def _validate_embedded_fingerprint(value: BaseModel, *, label: str) -> str:
     if not isinstance(embedded, str) or not _SHA256_RE.fullmatch(embedded):
         raise UATCaptureError(f"{label} does not contain a valid embedded artifact fingerprint.")
     payload = value.model_dump(mode="json", exclude={"artifact_fingerprint"})
+    if label == "issue-secondary-review.json":
+        payload = _secondary_review_fingerprint_payload(payload)
     expected = _stable_fingerprint(payload)
     if embedded != expected:
         raise UATCaptureError(f"{label} embedded artifact fingerprint is stale or invalid.")

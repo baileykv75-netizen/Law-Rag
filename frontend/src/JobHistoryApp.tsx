@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+import { API_BASE_URL } from './apiBase'
 const PAGE_SIZE = 30
 
 type HistoryItem = {
@@ -65,6 +65,13 @@ function formatTime(value: string | null) {
 function statusLabel(item: HistoryItem) {
   if (item.integrity === 'INVALID') return '产物异常'
   if (item.integrity === 'PARTIAL' && !item.pipeline_status) return '未形成流水线'
+  if (item.pipeline_status === 'COMPLETE') return '已完成'
+  if (item.pipeline_status === 'FAILED') return '失败'
+  if (item.pipeline_status === 'RUNNING') return '运行中'
+  if (item.pipeline_status === 'PAUSED_BEFORE_PROVIDER') return '等待模型'
+  if (item.pipeline_status === 'WAITING_WORKER') return '等待处理'
+  if (item.pipeline_status === 'WAITING_EXTERNAL_SERVICE') return '等待外部服务'
+  if (item.pipeline_status === 'CANCELLED') return '已取消'
   return item.pipeline_status ?? '未知状态'
 }
 
@@ -207,14 +214,14 @@ export default function JobHistoryApp() {
                 </span>
               </div>
 
-              <dl className="history-meta">
-                <div><dt>架构</dt><dd>{item.architecture ?? '—'}</dd></div>
-                <div><dt>文件</dt><dd>{item.document_kind?.toUpperCase() ?? '—'}</dd></div>
-                <div><dt>进度</dt><dd>{item.progress_percent == null ? '—' : `${item.progress_percent}%`}</dd></div>
-                <div><dt>占用</dt><dd>{formatBytes(item.storage_bytes)}</dd></div>
-                <div><dt>最近更新</dt><dd>{formatTime(item.updated_at ?? item.started_at)}</dd></div>
-                <div><dt>完整性</dt><dd>{item.integrity}</dd></div>
-              </dl>
+              <div className="history-meta" aria-label="任务摘要">
+                <span><em>架构</em><strong>{item.architecture ?? '—'}</strong></span>
+                <span><em>文件</em><strong>{item.document_kind?.toUpperCase() ?? '—'}</strong></span>
+                <span><em>进度</em><strong>{item.progress_percent == null ? '—' : `${item.progress_percent}%`}</strong></span>
+                <span><em>占用</em><strong>{formatBytes(item.storage_bytes)}</strong></span>
+                <span><em>最近更新</em><strong>{formatTime(item.updated_at ?? item.started_at)}</strong></span>
+                <span><em>完整性</em><strong>{item.integrity}</strong></span>
+              </div>
 
               {item.warning ? <p className="history-warning">{item.warning}</p> : null}
             </div>

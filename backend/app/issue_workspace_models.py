@@ -13,6 +13,7 @@ from .issue_primary_audit_models import IssuePrimaryAuditResult, IssuePrimaryAud
 from .issue_review_report_models import IssueReviewComparison, IssueReviewComparisonState, IssueReviewFinalState
 from .issue_secondary_review_models import (
     IssueSecondaryReviewResult,
+    SecondaryReviewDecisionStatus,
     SecondaryCoverageAssessment,
     SecondaryIssueAssessment,
 )
@@ -59,6 +60,29 @@ class IssueWorkspaceReviewSummary(BaseModel):
     human_review_resolved_required_count: int = Field(default=0, ge=0)
     human_review_outstanding_required_count: int = Field(default=0, ge=0)
     human_review_stale_latest_count: int = Field(default=0, ge=0)
+    secondary_reviewed_count: int = Field(default=0, ge=0)
+    secondary_skipped_clear_count: int = Field(default=0, ge=0)
+    secondary_pending_confirmation_count: int = Field(default=0, ge=0)
+
+
+class IssueWorkspaceRiskSummary(BaseModel):
+    issue_id: str
+    title: str
+    severity: FindingSeverity
+    risk_level: str
+    reason: str
+    suggested_action: str
+    requires_decision: bool = False
+    secondary_review_status: SecondaryReviewDecisionStatus = SecondaryReviewDecisionStatus.REVIEWED
+
+
+class IssueWorkspacePresentationSummary(BaseModel):
+    overall_risk: str
+    signing_recommendation: str
+    evidence_confidence: str
+    suggested_actions: list[str] = Field(default_factory=list)
+    top_risks: list[IssueWorkspaceRiskSummary] = Field(default_factory=list)
+    secondary_review_status_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class IssueWorkspaceQueueItem(BaseModel):
@@ -72,6 +96,7 @@ class IssueWorkspaceQueueItem(BaseModel):
     primary_state: IssuePrimaryAuditState | None = None
     primary_severity: FindingSeverity | None = None
     secondary_assessment: SecondaryIssueAssessment | None = None
+    secondary_review_status: SecondaryReviewDecisionStatus | None = None
     coverage_assessment: SecondaryCoverageAssessment | None = None
     comparison_state: IssueReviewComparisonState | None = None
     requires_human_review: bool = False
@@ -91,6 +116,7 @@ class IssueWorkspaceSummary(BaseModel):
     stages: list[WorkspaceStageSummary]
     coverage: IssueWorkspaceCoverageSummary | None = None
     review: IssueWorkspaceReviewSummary
+    presentation: IssueWorkspacePresentationSummary | None = None
     issues: list[IssueWorkspaceQueueItem] = Field(default_factory=list)
     source_uncertainty: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

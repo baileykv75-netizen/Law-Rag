@@ -299,6 +299,11 @@ def test_legal_api_summary_evidence_and_as_of_resolution(tmp_path: Path, monkeyp
     assert authorities.status_code == 200
     assert len(authorities.json()) == 2
 
+    articles = client.get("/api/legal/articles", params={"query": "违约金", "limit": 5})
+    assert articles.status_code == 200, articles.text
+    assert articles.json()
+    assert any("违约金" in item["article"]["text"] for item in articles.json())
+
     evidence_id = "legal:prc-civil-code:effective-2021-01-01:article-586"
     evidence = client.get(f"/api/legal/evidence/{evidence_id}")
     assert evidence.status_code == 200

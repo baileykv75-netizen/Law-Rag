@@ -313,4 +313,4 @@ def test_home_intake_exposes_complete_stage14_source_set_and_visible_source_warn
     assert "sourceWarningNotice" in source
     assert "源文件解析提示" in source
     assert "result.document_kind === 'docx'" in source
-    assert "DOCX · ${result.evidence_count} 个源证据" in source
+    assert "DOCX · 已提取 ${result.evidence_count} 项可审计证据" in source

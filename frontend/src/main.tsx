@@ -1,13 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import BatchResultsApp from './BatchResultsApp'
-import DeveloperApp from './DeveloperApp'
-import IntakeApp from './IntakeApp'
-import JobHistoryApp from './JobHistoryApp'
-import LocalNavigation from './LocalNavigation'
-import ProviderSetupGate from './ProviderSetupGate'
-import TesterLicenseGate from './TesterLicenseGate'
-import WorkspaceApp from './WorkspaceApp'
+import AppRouter from './AppRouter'
 import './styles.css'
 import './workspace.css'
 import './source-viewer.css'
@@ -19,35 +12,10 @@ import './workstation-polish.css'
 import './intake.css'
 import './provider-setup.css'
 import './batch-results.css'
-import './developer.css'
 import './job-history.css'
-import './tester-license.css'
-
-const pathname = window.location.pathname
-const isWorkspaceRoute = pathname === '/workspace' || pathname.startsWith('/workspace/')
-const isResultsRoute = pathname === '/results' || pathname.startsWith('/results/')
-const isHistoryRoute = pathname === '/history' || pathname.startsWith('/history/')
-const isDeveloperRoute = pathname === '/developer' || pathname.startsWith('/developer/')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <TesterLicenseGate>
-      <LocalNavigation />
-      {isWorkspaceRoute ? (
-        <WorkspaceApp />
-      ) : isResultsRoute ? (
-        <ProviderSetupGate>
-          <BatchResultsApp />
-        </ProviderSetupGate>
-      ) : isHistoryRoute ? (
-        <JobHistoryApp />
-      ) : isDeveloperRoute ? (
-        <DeveloperApp />
-      ) : (
-        <ProviderSetupGate>
-          <IntakeApp />
-        </ProviderSetupGate>
-      )}
-    </TesterLicenseGate>
+    <AppRouter />
   </StrictMode>,
 )
