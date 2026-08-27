@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import sys
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -11,17 +12,33 @@ from pydantic import BaseModel, Field
 
 from app.storage import legal_db_path, legal_last_import_report_path, legal_retrieval_index_path, runtime_dir
 
-from .corpus_packs import discover_corpus_packs
+from .corpus_packs import CorpusPackError, discover_corpus_packs
 from .importer import import_manifest
 from .models import LegalManifest, LegalStoreSummary
 from .official_downloader import OfficialLegalDownloadError, download_npc_legal_manifest, has_official_text_source
 from .retrieval import RetrievalIndexError, build_retrieval_index, get_retrieval_index_summary
-from .store import get_summary, list_version_identities
+from .store import get_summary, list_authorities, list_version_identities
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-LEGAL_DATA_ROOT = REPO_ROOT / "legal_data"
-SOURCE_REGISTRY_PATH = LEGAL_DATA_ROOT / "source_registry.json"
+
+
+def legal_data_root() -> Path:
+    configured = os.getenv("LAW_RAG_LEGAL_DATA_ROOT")
+    if configured:
+        return Path(configured).expanduser().resolve()
+
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        bundled = Path(bundle_root).resolve() / "legal_data"
+        if bundled.exists():
+            return bundled
+
+    return REPO_ROOT / "legal_data"
+
+
+def source_registry_path() -> Path:
+    return legal_data_root() / "source_registry.json"
 
 
 PackState = Literal["INSTALLED", "AVAILABLE", "DOWNLOADING", "FAILED", "ADAPTER_PENDING"]
@@ -384,11 +401,14 @@ def _load_manifest(path: Path) -> LegalManifest:
 
 def _manifest_path(path_ref: str) -> Path:
     path = Path(path_ref)
-    return path if path.is_absolute() else LEGAL_DATA_ROOT / path
+    return path if path.is_absolute() else legal_data_root() / path
 
 
 def _ready_pack_manifest_paths() -> dict[str, tuple[str, ...]]:
-    discovered = discover_corpus_packs(LEGAL_DATA_ROOT)
+    try:
+        discovered = discover_corpus_packs(legal_data_root())
+    except (CorpusPackError, OSError):
+        return {}
     return {
         pack.manifest.pack_id: tuple(member.authority_manifest_path for member in pack.members)
         for pack in discovered
@@ -399,7 +419,13 @@ def _ready_pack_manifest_paths() -> dict[str, tuple[str, ...]]:
 def _manifest_identities(relative_paths: tuple[str, ...]) -> set[tuple[str, str]]:
     identities: set[tuple[str, str]] = set()
     for relative in relative_paths:
-        manifest = _load_manifest(_manifest_path(relative))
+        manifest_path = _manifest_path(relative)
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = _load_manifest(manifest_path)
+        except (OSError, ValueError):
+            continue
         for record in manifest.records:
             identities.add((record.authority.authority_id, record.version_id))
     return identities
@@ -417,10 +443,34 @@ def _dedupe_paths(paths: list[str]) -> tuple[str, ...]:
 
 def _bundled_manifest_paths_for_law_ref(law_ref: str) -> tuple[str, ...]:
     matches: list[str] = []
+    root = legal_data_root()
     for keyword, paths in LOCAL_SNAPSHOT_HINTS.items():
         if keyword in law_ref:
             matches.extend(paths)
-    return tuple(path for path in matches if (LEGAL_DATA_ROOT / path).is_file())
+    return tuple(path for path in matches if (root / path).is_file())
+
+
+def _normalize_law_ref(value: str) -> str:
+    return (
+        value.replace("（", "")
+        .replace("）", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace(" ", "")
+        .strip()
+    )
+
+
+def _installed_law_ref_count(law_refs: tuple[str, ...], installed_titles: tuple[str, ...]) -> int:
+    if not law_refs or not installed_titles:
+        return 0
+    normalized_titles = [_normalize_law_ref(title) for title in installed_titles]
+    count = 0
+    for law_ref in law_refs:
+        normalized_ref = _normalize_law_ref(law_ref)
+        if any(normalized_ref in title or title in normalized_ref for title in normalized_titles):
+            count += 1
+    return count
 
 
 def _definition_manifest_resolution(
@@ -450,15 +500,22 @@ def _node(
     definition: PackDefinition,
     *,
     installed: set[tuple[str, str]],
+    installed_titles: tuple[str, ...],
     ready_paths: dict[str, tuple[str, ...]],
 ) -> LegalPackTreeNode:
     resolution = _definition_manifest_resolution(definition, ready_paths)
     manifest_paths = resolution.manifest_paths
     identities = _manifest_identities(manifest_paths) if manifest_paths else set()
-    installed_count = len(identities & installed)
+    if identities:
+        installed_count = len(identities & installed)
+    else:
+        installed_count = _installed_law_ref_count(definition.law_refs, installed_titles)
     downloadable_refs = [law_ref for law_ref in resolution.unresolved_law_refs if has_official_text_source(law_ref)]
+    authority_count = max(len(identities) + len(resolution.unresolved_law_refs), len(definition.law_refs))
     if identities and installed_count == len(identities) and not resolution.unresolved_law_refs:
         state: PackState = "INSTALLED"
+    elif not identities and definition.law_refs and installed_count == len(definition.law_refs):
+        state = "INSTALLED"
     elif identities or downloadable_refs:
         state = "AVAILABLE"
     else:
@@ -483,19 +540,27 @@ def _node(
         display_name=definition.display_name,
         description=definition.description,
         state=state,
-        authority_count=len(identities) + len(resolution.unresolved_law_refs),
+        authority_count=authority_count,
         installed_authority_count=installed_count,
         law_refs=list(definition.law_refs),
         adapter_note=adapter_note if state in {"AVAILABLE", "ADAPTER_PENDING"} else None,
         source_refs=list(definition.source_refs),
-        children=[_node(child, installed=installed, ready_paths=ready_paths) for child in definition.children],
+        children=[
+            _node(child, installed=installed, installed_titles=installed_titles, ready_paths=ready_paths)
+            for child in definition.children
+        ],
     )
 
 
 def list_legal_pack_tree() -> list[LegalPackTreeNode]:
     ready_paths = _ready_pack_manifest_paths()
-    installed = list_version_identities(legal_db_path())
-    return [_node(definition, installed=installed, ready_paths=ready_paths) for definition in PACK_TREE]
+    db_path = legal_db_path()
+    installed = list_version_identities(db_path)
+    installed_titles = tuple(summary.authority.title for summary in list_authorities(db_path))
+    return [
+        _node(definition, installed=installed, installed_titles=installed_titles, ready_paths=ready_paths)
+        for definition in PACK_TREE
+    ]
 
 
 def _find_definition(pack_id: str, definitions: tuple[PackDefinition, ...] = PACK_TREE) -> PackDefinition | None:
@@ -556,7 +621,7 @@ def install_legal_pack(pack_id: str) -> LegalPackDownloadResponse:
             _manifest_path(relative),
             db_path,
             rebuild=(not db_existed and index == 0),
-            source_registry_path=SOURCE_REGISTRY_PATH,
+            source_registry_path=source_registry_path(),
             report_path=legal_last_import_report_path(),
         )
         imported += report.imported_records

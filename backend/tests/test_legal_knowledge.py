@@ -398,3 +398,18 @@ def test_legal_pack_tree_and_download_endpoint(tmp_path: Path, monkeypatch) -> N
     unavailable_body = unavailable.json()
     assert unavailable_body["state"] == "FAILED"
     assert unavailable_body["result"]["state"] == "UNAVAILABLE"
+
+
+def test_legal_pack_tree_handles_missing_source_manifests(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LAW_RAG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setenv("LAW_RAG_LEGAL_DATA_ROOT", str(tmp_path / "missing-legal-data"))
+    monkeypatch.setenv("LAW_RAG_LEGAL_ONLINE_DOWNLOADS", "0")
+
+    response = client.get("/api/legal/packs")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert any(item["pack_id"] == "cn-contract-general-core" for item in body)
+    construction = next(item for item in body if item["pack_id"] == "cn-construction-core")
+    assert construction["authority_count"] == 4
+    assert construction["state"] in {"ADAPTER_PENDING", "AVAILABLE", "INSTALLED"}

@@ -49,6 +49,7 @@ ocr_metadata = [
 datas = [
     (str(REPO_ROOT / "frontend" / "dist"), "frontend-dist"),
     (str(BUILD_ASSETS / "public-assets"), "public-assets"),
+    (str(REPO_ROOT / "legal_data"), "legal_data"),
     (str(BUILD_ASSETS / "public-assets-metadata.json"), "release"),
     (str(BUILD_ASSETS / "release-metadata.json"), "release"),
     (str(BUILD_ASSETS / "THIRD-PARTY-NOTICES"), "THIRD-PARTY-NOTICES"),
